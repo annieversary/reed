@@ -63,7 +63,7 @@ public enum ArticleHTML {
         <title>\(escape(title))</title>
         <style>
         :root { color-scheme: light dark; --paper:#faf8f4; --ink:#282d28; --muted:#797e74; --accent:#4c6450; --font-size:19px; }
-        @media(prefers-color-scheme:dark) { :root { --paper:#20241f; --ink:#e5e8df; --muted:#a0a89b; --accent:#b6cda8; } }
+        @media(prefers-color-scheme:dark) { :root { --paper:#000; --ink:#e5e8df; --muted:#a0a89b; --accent:#b6cda8; } }
         * { box-sizing:border-box } html { background:var(--paper); overflow-wrap:anywhere; }
         body { max-width:740px; margin:0 auto; padding:60px 42px 140px; color:var(--ink); font:var(--font-size)/1.8 Georgia,serif; }
         header { margin-bottom:38px; padding-bottom:30px; border-bottom:1px solid color-mix(in srgb,var(--muted) 25%,transparent); }

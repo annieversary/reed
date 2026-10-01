@@ -29,6 +29,13 @@ import WebKit
         }, {passive:true});
         """, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient)
         configuration.userContentController.addUserScript(script)
+        // Articles saved with an older template carry their own dark background.
+        let darkPaper = WKUserScript(source: """
+        const style = document.createElement('style');
+        style.textContent = '@media(prefers-color-scheme:dark){:root{--paper:#000}}';
+        document.head.appendChild(style);
+        """, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient)
+        configuration.userContentController.addUserScript(darkPaper)
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = coordinator
         #if os(macOS)

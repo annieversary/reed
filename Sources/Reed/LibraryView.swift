@@ -152,7 +152,9 @@ struct LibraryView: View {
                     .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
                 #endif
                 ForEach(visibleArticles) { article in
-                    NavigationLink(value: article.id) { ArticleRow(article: article) }
+                    // A hidden link keeps row navigation without the disclosure chevron.
+                    ArticleRow(article: article)
+                        .background(NavigationLink(value: article.id) { EmptyView() }.opacity(0))
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
                         .contextMenu {
