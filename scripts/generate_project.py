@@ -23,12 +23,12 @@ SHARE = ROOT / "Sources/ReedShare"
 # The share extension only needs the inbox it writes to, not the rest of ReedCore.
 share_sources = sorted(SHARE.glob("*.swift")) + [ROOT / "Sources/ReedCore/ShareInbox.swift"]
 sources = sorted(path for path in ROOT.glob("Sources/**/*.swift") if SHARE not in path.parents)
-resources = sorted((ROOT / "Sources/ReedCore/Resources").iterdir())
+resources = sorted((ROOT / "Sources/ReedCore/Resources").iterdir()) + [ROOT / "Sources/Reed/Assets.xcassets"]
 children, source_builds, resource_builds, share_builds = [], [], [], []
 for path in sorted(set(sources + resources + share_sources)):
     relative = path.relative_to(ROOT).as_posix()
     file_ref = put(relative, isa="PBXFileReference", path=relative, sourceTree="SOURCE_ROOT",
-                   lastKnownFileType="sourcecode.swift" if path.suffix == ".swift" else "text")
+                   lastKnownFileType={".swift": "sourcecode.swift", ".xcassets": "folder.assetcatalog"}.get(path.suffix, "text"))
     children.append(file_ref)
     if path in sources or path in resources:
         build = put("build:" + relative, isa="PBXBuildFile", fileRef=file_ref)
@@ -79,7 +79,7 @@ for mode in ["Debug", "Release"]:
         **signing,
         "TARGETED_DEVICE_FAMILY": "1,2", "CURRENT_PROJECT_VERSION": "1",
         "MARKETING_VERSION": "0.1.0", "ENABLE_APP_SANDBOX": "NO",
-        "COMBINE_HIDPI_IMAGES": "YES", "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/../Frameworks @executable_path/Frameworks",
+        "COMBINE_HIDPI_IMAGES": "YES", "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon", "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/../Frameworks @executable_path/Frameworks",
     }
     share_settings = {
         "PRODUCT_NAME": "ReedShare", "PRODUCT_BUNDLE_IDENTIFIER": "town.versary.reed.share",

@@ -16,7 +16,7 @@ device_ids = $(shell $(list_devices) --columns Identifier 2>/dev/null | awk '{pr
 device_id = $(firstword $(device_ids))
 
 .DEFAULT_GOAL := help
-.PHONY: help mac test smoke ios device check-device device-build project clean
+.PHONY: help mac test smoke ios device check-device device-build project icon clean
 
 help: ## list targets
 	@grep -hE '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:[^#]*## /\t/' | expand -t16
@@ -60,6 +60,9 @@ device-build:
 
 project: ## regenerate Reed.xcodeproj after adding source or resource files
 	python3 scripts/generate_project.py
+
+icon: ## regenerate the app icon
+	swift scripts/make_icon.swift
 
 clean: ## drop all build products
 	rm -rf .build build

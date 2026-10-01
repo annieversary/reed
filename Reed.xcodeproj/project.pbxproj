@@ -46,6 +46,24 @@
 			<key>fileRef</key>
 			<string>CD30CCE4A34F006D70CC05E8</string>
 		</dict>
+		<key>58082E44E6C06764D52E1DD7</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/Assets.xcassets</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>folder.assetcatalog</string>
+		</dict>
+		<key>280AFA5966C83D33008AA46F</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>58082E44E6C06764D52E1DD7</string>
+		</dict>
 		<key>7FFB9C3824D5D12742BB27B3</key>
 		<dict>
 			<key>isa</key>
@@ -385,6 +403,7 @@
 			<array>
 				<string>8A1C9B68090CF9EC3BF00E03</string>
 				<string>CD30CCE4A34F006D70CC05E8</string>
+				<string>58082E44E6C06764D52E1DD7</string>
 				<string>7FFB9C3824D5D12742BB27B3</string>
 				<string>EA6A37D30699070A655CB24E</string>
 				<string>E9837CD9914E91D5750B82BD</string>
@@ -438,6 +457,7 @@
 			<integer>2147483647</integer>
 			<key>files</key>
 			<array>
+				<string>280AFA5966C83D33008AA46F</string>
 				<string>95F9C476FA29F4B4FE75BFA6</string>
 				<string>AEC029FEFB7F48EAA6D5738F</string>
 				<string>28237ABACD757084E075B439</string>
@@ -597,6 +617,8 @@
 				<string>NO</string>
 				<key>COMBINE_HIDPI_IMAGES</key>
 				<string>YES</string>
+				<key>ASSETCATALOG_COMPILER_APPICON_NAME</key>
+				<string>AppIcon</string>
 				<key>LD_RUNPATH_SEARCH_PATHS</key>
 				<string>$(inherited) @executable_path/../Frameworks @executable_path/Frameworks</string>
 			</dict>
@@ -715,6 +737,8 @@
 				<string>NO</string>
 				<key>COMBINE_HIDPI_IMAGES</key>
 				<string>YES</string>
+				<key>ASSETCATALOG_COMPILER_APPICON_NAME</key>
+				<string>AppIcon</string>
 				<key>LD_RUNPATH_SEARCH_PATHS</key>
 				<string>$(inherited) @executable_path/../Frameworks @executable_path/Frameworks</string>
 			</dict>
