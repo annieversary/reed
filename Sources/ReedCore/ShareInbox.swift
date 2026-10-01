@@ -24,8 +24,12 @@ public struct ShareInbox: Sendable {
 
     public func deposit(_ url: URL) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        // A millisecond prefix keeps the files in the order they were shared.
-        let name = String(format: "%013.0f-%@.link", Date().timeIntervalSince1970 * 1000, UUID().uuidString)
+        // A millisecond prefix keeps the files in the order they were shared. Links shared within
+        // the same millisecond take the next free one, since the UUID suffix would order them randomly.
+        let latest = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+            .compactMap { UInt64($0.prefix(while: \.isNumber)) }.max() ?? 0
+        let stamp = max(UInt64(Date().timeIntervalSince1970 * 1000), latest + 1)
+        let name = String(format: "%013llu-%@.link", stamp, UUID().uuidString)
         try Data(url.absoluteString.utf8).write(to: directory.appendingPathComponent(name), options: .atomic)
         let center = CFNotificationCenterGetDarwinNotifyCenter()
         CFNotificationCenterPostNotification(center, CFNotificationName(Self.didDeposit.rawValue as CFString), nil, nil, true)
