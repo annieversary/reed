@@ -25,7 +25,7 @@ enum CollectionFilter: String, CaseIterable, Identifiable {
 }
 
 enum SidebarItem: Hashable {
-    case collection(CollectionFilter), source(ExternalSource)
+    case collection(CollectionFilter), discover(Discover)
 }
 
 struct LibraryView: View {
@@ -100,13 +100,13 @@ struct LibraryView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) { narrationBar(when: columnsStack) }
         } content: {
             Group {
-                if case .source(let source) = selection {
-                    SourceListView(library: library, source: source, open: { selectedID = $0.id }) { article in
+                if case .discover(let origin) = selection {
+                    SourceListView(library: library, origin: origin, open: { selectedID = $0.id }) { article in
                         if selectedID == article.id { selectedID = nil }
                         if narrator.articleID == article.id { narrator.stop() }
                         library.discard(article)
                     }
-                    .id(source)
+                    .id(origin)
                 } else {
                     articleList
                 }
@@ -203,14 +203,9 @@ struct LibraryView: View {
                 } header: { Text("LIBRARY").font(.system(size: 10, weight: .medium)).tracking(1.7) }
                 Section {
                     ForEach(ExternalSource.allCases) { source in
-                        NavigationLink(value: SidebarItem.source(source)) {
-                            HStack(spacing: 10) {
-                                Image(systemName: source.symbol).frame(width: 18)
-                                Text(source.rawValue)
-                            }
-                            .padding(.vertical, 5)
-                        }
+                        discoverLink(.frontPage(source), symbol: source.symbol)
                     }
+                    discoverLink(.feeds, symbol: "dot.radiowaves.up.forward")
                 } header: { Text("DISCOVER").font(.system(size: 10, weight: .medium)).tracking(1.7) }
             }
             .listStyle(.sidebar)
@@ -221,6 +216,16 @@ struct LibraryView: View {
         #else
         .toolbar(.hidden, for: .navigationBar)
         #endif
+    }
+
+    private func discoverLink(_ origin: Discover, symbol: String) -> some View {
+        NavigationLink(value: SidebarItem.discover(origin)) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol).frame(width: 18)
+                Text(origin.title)
+            }
+            .padding(.vertical, 5)
+        }
     }
 
     private var articleList: some View {

@@ -68,7 +68,7 @@ public final class Article {
 
 public enum ReedError: LocalizedError {
     case invalidURL, unsupportedContent, emptyArticle, oversizedDownload, httpStatus(Int), extractionTimeout
-    case damagedArticle
+    case damagedArticle, noFeed, unreadableFeed
 
     public var errorDescription: String? {
         switch self {
@@ -79,6 +79,8 @@ public enum ReedError: LocalizedError {
         case .httpStatus(let code): "The website returned an error (HTTP \(code)). Try opening the original link."
         case .extractionTimeout: "Article extraction took too long. Please try again."
         case .damagedArticle: "The saved article files are missing. Retry to download them again."
+        case .noFeed: "No feed was found at this address."
+        case .unreadableFeed: "The feed couldn't be read."
         }
     }
 }

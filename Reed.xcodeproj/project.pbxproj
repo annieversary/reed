@@ -64,6 +64,24 @@
 			<key>fileRef</key>
 			<string>58082E44E6C06764D52E1DD7</string>
 		</dict>
+		<key>55138BB89AD0F42AA656C991</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/FeedViews.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>AF2981C8D415CDED6EA81231</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>55138BB89AD0F42AA656C991</string>
+		</dict>
 		<key>7FFB9C3824D5D12742BB27B3</key>
 		<dict>
 			<key>isa</key>
@@ -316,6 +334,24 @@
 			<key>fileRef</key>
 			<string>E54706938FEB6E4E3EB76450</string>
 		</dict>
+		<key>71ED38E1A22A53FC09CC788E</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Feed.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>195C31670E982970F5E5921F</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>71ED38E1A22A53FC09CC788E</string>
+		</dict>
 		<key>709F77BB5F9974865AC45CF4</key>
 		<dict>
 			<key>isa</key>
@@ -530,6 +566,7 @@
 				<string>8A1C9B68090CF9EC3BF00E03</string>
 				<string>CD30CCE4A34F006D70CC05E8</string>
 				<string>58082E44E6C06764D52E1DD7</string>
+				<string>55138BB89AD0F42AA656C991</string>
 				<string>7FFB9C3824D5D12742BB27B3</string>
 				<string>26ECBB57E0E465EB30EFF084</string>
 				<string>2A88CBB9E73D0A0E48B9C71C</string>
@@ -544,6 +581,7 @@
 				<string>0F00F9E6EFCE07893391938D</string>
 				<string>98CED4B3A5C97EFC85BEB56A</string>
 				<string>E54706938FEB6E4E3EB76450</string>
+				<string>71ED38E1A22A53FC09CC788E</string>
 				<string>709F77BB5F9974865AC45CF4</string>
 				<string>62F2B30EADC9532F27B629D9</string>
 				<string>CEFEDFD4E31E49F4A1E14286</string>
@@ -598,6 +636,7 @@
 			<array>
 				<string>6028FB5DE9020B01ED4401D3</string>
 				<string>87E1C50AE6666844D88732DE</string>
+				<string>AF2981C8D415CDED6EA81231</string>
 				<string>23C4BE1CC27D3C948AF14841</string>
 				<string>E1FE09D28E34B5F60D61E9C1</string>
 				<string>E0E7870EA5D095C9234442AA</string>
@@ -612,6 +651,7 @@
 				<string>E1ABA6BD0D809094C5E6E816</string>
 				<string>3483221D2BB5C1A5B6A79D8D</string>
 				<string>AE024CFD9B7E72C3CD28BCD8</string>
+				<string>195C31670E982970F5E5921F</string>
 				<string>E990D3D09BB177A7DFFE6EEE</string>
 				<string>6679307645738DA919E28E26</string>
 				<string>E02CFC5074F0F3AE2CC43C5B</string>

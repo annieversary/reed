@@ -91,11 +91,15 @@ public struct SourceItem: Identifiable, Hashable, Codable, Sendable {
     public let id: String
     public let title: String
     public let url: URL
-    public let discussionURL: URL
+    /// Where the link is discussed, for sites that host discussions.
+    public let discussionURL: URL?
     public let author: String?
     public let points: Int?
     public let comments: Int?
     public let postedAt: Date?
+    /// The subscribed feed it came from, if any.
+    public var feedID: UUID? = nil
+    public var excerpt: String? = nil
 
     public var domain: String {
         let host = url.host() ?? ""

@@ -11,6 +11,13 @@ public final class Library {
     public private(set) var imageActivity: String?
     /// The front page last fetched from each source, kept between launches.
     public private(set) var frontPages: [ExternalSource: FrontPage] = [:]
+    /// Subscribed feeds, in the order they were added.
+    public private(set) var feeds: [Feed] = [] { didSet { feedItems = Self.river(of: feeds) } }
+    /// Entries from every feed, newest first, each link only once.
+    public private(set) var feedItems: [SourceItem] = []
+    /// When the feeds were last looked at, so what has arrived since can be told apart.
+    public private(set) var feedsVisitedAt: Date?
+    public private(set) var refreshingFeeds = false
     /// Advances whenever the search index changes, so searches can be rerun.
     public private(set) var searchRevision = 0
     public let container: ModelContainer
@@ -45,6 +52,12 @@ public final class Library {
                let page = try? JSONDecoder().decode(FrontPage.self, from: data) {
                 frontPages[source] = page
             }
+        }
+        if let data = try? Data(contentsOf: Self.feedsURL(root: root)),
+           let store = try? JSONDecoder().decode(FeedStore.self, from: data) {
+            feeds = store.feeds
+            feedItems = Self.river(of: feeds)
+            feedsVisitedAt = store.visitedAt
         }
         let entries = articles.map(searchEntry)
         Task { [weak self, searchIndex] in
@@ -83,6 +96,125 @@ public final class Library {
     static func frontPageURL(root: URL, source: ExternalSource) -> URL {
         root.appendingPathComponent("FrontPages", isDirectory: true).appendingPathComponent(source.key + ".json")
     }
+
+    /// The feeds at `input`: the address itself if it is a feed, otherwise the feeds the page links to.
+    public func findFeeds(at input: String) async throws -> [FeedCandidate] {
+        let url = try ArticleURL.parse(input)
+        guard case .fetched(let data, let finalURL, _, _) = try await downloader.feed(at: url) else { throw ReedError.noFeed }
+        if let parsed = await Self.parse(data, from: finalURL) {
+            return [FeedCandidate(url: finalURL, title: parsed.title ?? finalURL.host() ?? finalURL.absoluteString)]
+        }
+        guard let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .windowsCP1252) else { throw ReedError.noFeed }
+        let found = FeedParser.discover(in: html, base: finalURL)
+        if found.isEmpty { throw ReedError.noFeed }
+        return found
+    }
+
+    @discardableResult public func subscribe(to url: URL) async throws -> Feed {
+        if let existing = feed(at: url) { return existing }
+        guard case .fetched(let data, let finalURL, let etag, let lastModified) = try await downloader.feed(at: url),
+              let parsed = await Self.parse(data, from: finalURL) else { throw ReedError.noFeed }
+        if let existing = feed(at: url) ?? feed(at: finalURL) { return existing }
+        let feed = Feed(url: finalURL, parsed: parsed, fetchedAt: .now, etag: etag, lastModified: lastModified)
+        feeds.append(feed)
+        do { try saveFeeds() } catch { feeds.removeAll { $0.id == feed.id }; throw error }
+        return feed
+    }
+
+    public func feed(at url: URL) -> Feed? { feeds.first { $0.url == url } }
+
+    public func unsubscribe(_ feed: Feed) {
+        let previous = feeds
+        feeds.removeAll { $0.id == feed.id }
+        do { try saveFeeds() } catch { feeds = previous; errorMessage = error.localizedDescription }
+    }
+
+    /// Fetches every feed again. A feed that fails keeps its earlier entries and records why.
+    public func refreshFeeds() async {
+        guard !refreshingFeeds, !feeds.isEmpty else { return }
+        refreshingFeeds = true
+        defer { refreshingFeeds = false }
+        let results = await Self.fetch(feeds.map { FeedRequest(id: $0.id, url: $0.url, etag: $0.etag, lastModified: $0.lastModified) },
+                                       using: downloader)
+        let now = Date.now
+        // Applied by identity, so feeds added or removed during the refresh stay that way.
+        feeds = feeds.map { feed in
+            var feed = feed
+            switch results[feed.id] {
+            case nil, .failure(is CancellationError): break
+            case .success(nil): feed.fetchedAt = now; feed.failure = nil
+            case .success(let fetched?):
+                feed.update(with: fetched.feed, at: now)
+                feed.etag = fetched.etag
+                feed.lastModified = fetched.lastModified
+            case .failure(let error): feed.failure = error.localizedDescription
+            }
+            return feed
+        }
+        // Subscriptions are unchanged by a refresh, so failing to write only loses the cache.
+        try? saveFeeds()
+    }
+
+    /// Records a visit to the feeds, returning when they were visited before.
+    public func visitFeeds() -> Date? {
+        let previous = feedsVisitedAt
+        feedsVisitedAt = .now
+        try? saveFeeds()
+        return previous
+    }
+
+    private struct FeedStore: Codable {
+        var feeds: [Feed]
+        var visitedAt: Date?
+    }
+
+    private struct FeedRequest: Sendable {
+        let id: UUID, url: URL, etag: String?, lastModified: String?
+    }
+
+    private struct FetchedFeed: Sendable {
+        let feed: ParsedFeed, etag: String?, lastModified: String?
+    }
+
+    /// Each feed's new contents, or nil where it hasn't changed.
+    private nonisolated static func fetch(_ requests: [FeedRequest], using downloader: ArticleDownloader) async -> [UUID: Result<FetchedFeed?, any Error>] {
+        await withTaskGroup(of: (UUID, Result<FetchedFeed?, any Error>).self) { group in
+            for request in requests {
+                group.addTask {
+                    do {
+                        switch try await downloader.feed(at: request.url, etag: request.etag, lastModified: request.lastModified) {
+                        case .unchanged: return (request.id, .success(nil))
+                        case .fetched(let data, let url, let etag, let lastModified):
+                            guard let parsed = FeedParser.parse(data, from: url) else { throw ReedError.unreadableFeed }
+                            return (request.id, .success(FetchedFeed(feed: parsed, etag: etag, lastModified: lastModified)))
+                        }
+                    } catch { return (request.id, .failure(error)) }
+                }
+            }
+            var results: [UUID: Result<FetchedFeed?, any Error>] = [:]
+            for await (id, result) in group { results[id] = result }
+            return results
+        }
+    }
+
+    private nonisolated static func parse(_ data: Data, from url: URL) async -> ParsedFeed? {
+        FeedParser.parse(data, from: url)
+    }
+
+    nonisolated static func river(of feeds: [Feed]) -> [SourceItem] {
+        var seen = Set<URL>()
+        return feeds.flatMap(\.items)
+            .sorted { ($0.postedAt ?? .distantPast) > ($1.postedAt ?? .distantPast) }
+            .filter { seen.insert($0.url).inserted }
+            .prefix(300)
+            .map { $0 }
+    }
+
+    private func saveFeeds() throws {
+        try JSONEncoder().encode(FeedStore(feeds: feeds, visitedAt: feedsVisitedAt)).write(to: Self.feedsURL(root: storage.root), options: .atomic)
+    }
+
+    static func feedsURL(root: URL) -> URL { root.appendingPathComponent("Feeds.json") }
 
     public func addShared(from inbox: ShareInbox) {
         do {
