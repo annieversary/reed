@@ -27,6 +27,9 @@ enum CollectionFilter: String, CaseIterable, Identifiable {
 struct LibraryView: View {
     @Bindable var library: Library
     @Environment(Narrator.self) private var narrator
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     @State private var filter: CollectionFilter? = .all
     @State private var selectedID: UUID?
     @State private var query = ""
@@ -84,20 +87,20 @@ struct LibraryView: View {
         NavigationSplitView(columnVisibility: $visibility) {
             sidebar
                 .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
+                .safeAreaInset(edge: .bottom, spacing: 0) { narrationBar(when: columnsStack) }
         } content: {
             articleList
                 .navigationSplitViewColumnWidth(min: 270, ideal: 340, max: 430)
+                .safeAreaInset(edge: .bottom, spacing: 0) { narrationBar(when: columnsStack) }
         } detail: {
-            if let article = selectedArticle {
-                ArticleDetailView(library: library, article: article)
-            } else {
-                readerPlaceholder
+            Group {
+                if let article = selectedArticle {
+                    ArticleDetailView(library: library, article: article)
+                } else {
+                    readerPlaceholder
+                }
             }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if narrator.articleID != nil {
-                NarrationBar(narrator: narrator) { selectedID = narrator.articleID }
-            }
+            .safeAreaInset(edge: .bottom, spacing: 0) { narrationBar(when: true) }
         }
         .sheet(isPresented: $showingAdd) {
             AddArticleView { url in
@@ -126,6 +129,23 @@ struct LibraryView: View {
                 articleToDelete = nil
             }
         } message: { Text("Its offline copy will be removed from this device.") }
+    }
+
+    /// Whether the columns are shown one at a time, as on iPhone, rather than side by side.
+    private var columnsStack: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
+
+    /// Narration controls, attached to each column's own content: an inset around the whole split view
+    /// doesn't reach into the columns on iOS, which would leave the reader running underneath it.
+    @ViewBuilder private func narrationBar(when shown: Bool) -> some View {
+        if shown, narrator.articleID != nil {
+            NarrationBar(narrator: narrator) { selectedID = narrator.articleID }
+        }
     }
 
     private var sidebar: some View {
