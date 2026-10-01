@@ -143,7 +143,7 @@ struct LibraryView: View {
             #endif
             List(selection: $selectedID) {
                 #if os(iOS)
-                if searchVisible {
+                if !pullRevealsSearch {
                     searchField
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
@@ -190,13 +190,12 @@ struct LibraryView: View {
             .listStyle(.plain)
             #if os(iOS)
             .environment(\.defaultMinListRowHeight, 0)
-            .onPullDown {
-                withAnimation { searchRevealed = true }
-                searchFocused = true
+            .pullToReveal(revealed: $searchRevealed, keepRevealed: searchFocused || !query.isEmpty) {
+                searchField.padding(.horizontal, 20).padding(.bottom, 8)
             }
-            .onChange(of: searchFocused) { _, focused in
-                if !focused && query.isEmpty { withAnimation { searchRevealed = false } }
-            }
+            // The list stays alive under a pushed article, so its field would keep the keyboard up.
+            .onChange(of: selectedID) { searchFocused = false }
+            .onDisappear { searchFocused = false }
             #endif
             .overlay {
                 if visibleArticles.isEmpty {
@@ -231,9 +230,10 @@ struct LibraryView: View {
     }
 
     #if os(iOS)
-    /// Search hides until a pull-down reveals it; without scroll geometry (before iOS 18) it always shows.
-    private var searchVisible: Bool {
-        if #available(iOS 18.0, *) { searchRevealed || !query.isEmpty } else { true }
+    /// Search hides above the list until a pull-down reveals it; without scroll geometry (before iOS 18)
+    /// it is an ordinary row that always shows.
+    private var pullRevealsSearch: Bool {
+        if #available(iOS 18.0, *) { true } else { false }
     }
     #endif
 
@@ -278,15 +278,47 @@ struct LibraryView: View {
 
 #if os(iOS)
 private extension View {
-    /// Runs `action` when the user drags the scroll view past its top edge. Does nothing before iOS 18.
-    @ViewBuilder func onPullDown(perform action: @escaping () -> Void) -> some View {
+    /// Keeps `field` just above the scroll view's content, so pulling down uncovers it. Letting go
+    /// once it is fully uncovered sets `revealed`; scrolling it back out of view clears it again
+    /// unless `keepRevealed`. Does nothing before iOS 18.
+    @ViewBuilder func pullToReveal<Field: View>(revealed: Binding<Bool>, keepRevealed: Bool, @ViewBuilder field: () -> Field) -> some View {
         if #available(iOS 18.0, *) {
-            onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top < -60 } action: { _, pulled in
-                if pulled { action() }
-            }
+            modifier(PullToReveal(revealed: revealed, keepRevealed: keepRevealed, field: field()))
         } else {
             self
         }
+    }
+}
+
+/// Revealing widens the top content margin rather than inserting a row, so the content stays
+/// where the finger left it and settles below the field without a re-layout. Hiding narrows it
+/// only once the field is out of view, where the change can't be seen.
+@available(iOS 18.0, *)
+private struct PullToReveal<Field: View>: ViewModifier {
+    @Binding var revealed: Bool
+    let keepRevealed: Bool
+    let field: Field
+    /// How far the content sits below its resting position; negative once scrolled down.
+    @State private var pull: CGFloat = 0
+    @State private var fieldHeight: CGFloat = 52
+
+    func body(content: Content) -> some View {
+        content
+            .contentMargins(.top, revealed ? fieldHeight : 0, for: .scrollContent)
+            .onScrollGeometryChange(for: CGFloat.self) { -($0.contentOffset.y + $0.contentInsets.top) } action: { _, new in
+                pull = new
+                if revealed && !keepRevealed && pull <= -fieldHeight { revealed = false }
+            }
+            .onScrollPhaseChange { old, _ in
+                if old == .interacting && !revealed && pull >= fieldHeight { revealed = true }
+            }
+            .overlay(alignment: .top) {
+                field
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fieldHeight = $0 }
+                    .offset(y: pull - (revealed ? 0 : fieldHeight))
+                    .opacity(revealed ? 1 : min(1, max(0, pull / fieldHeight)))
+                    .allowsHitTesting(revealed)
+            }
     }
 }
 #endif
