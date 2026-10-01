@@ -35,6 +35,7 @@ struct LibraryView: View {
     @State private var query = ""
     @State private var matches: [SearchIndex.Match] = []
     @State private var showingAdd = false
+    @State private var showingSettings = false
     @State private var articleToDelete: Article?
     @State private var visibility = NavigationSplitViewVisibility.all
     @State private var searchRevealed = false
@@ -111,6 +112,9 @@ struct LibraryView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .reedAddArticle)) { _ in showingAdd = true }
+        #if os(iOS)
+        .sheet(isPresented: $showingSettings) { NavigationStack { SettingsView() } }
+        #endif
         #if DEBUG && os(macOS)
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("reed.smokeSelectArticle"))) { notification in
             selectedID = notification.object as? UUID
@@ -155,6 +159,10 @@ struct LibraryView: View {
                     .foregroundStyle(ReedStyle.accent)
                 Text("reed").font(.system(size: 34, weight: .regular, design: .serif)).tracking(-1.8)
                 Spacer()
+                #if os(iOS)
+                Button("Settings", systemImage: "gearshape") { showingSettings = true }
+                    .labelStyle(.iconOnly).font(.title3).foregroundStyle(.secondary)
+                #endif
             }
             .padding(.horizontal, 22).padding(.top, 24).padding(.bottom, 30)
             List(selection: $filter) {

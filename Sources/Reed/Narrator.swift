@@ -14,8 +14,6 @@ import ReedCore
 /// so replaying or skipping back never waits.
 @MainActor @Observable
 final class Narrator {
-    static let voice = KokoroAneConstants.defaultVoice
-
     private(set) var articleID: UUID?
     private(set) var title = ""
     private(set) var domain = ""
@@ -37,6 +35,25 @@ final class Narrator {
         }
     }
     static let rates: [Float] = [0.8, 1, 1.2, 1.4, 1.6, 1.8, 2]
+    /// The Kokoro voice reading. Each voice keeps its own cached audio, so switching back is instant.
+    var voice: String = UserDefaults.standard.string(forKey: "narrationVoice").flatMap { Voice($0) }?.id
+        ?? KokoroAneConstants.defaultVoice {
+        didSet {
+            guard voice != oldValue else { return }
+            UserDefaults.standard.set(voice, forKey: "narrationVoice")
+            guard let article, let library, let version = article.contentVersion else { return }
+            directory = library.storage.audioDirectory(article.id, version: version, voice: voice)
+            durations = [:]
+            let wasPlaying = isPlaying
+            start(at: current)
+            if !wasPlaying { pause() }
+        }
+    }
+
+    /// The voice whose sample is being prepared or played.
+    private(set) var previewVoice: String?
+    private(set) var isPreviewPlaying = false
+    private(set) var previewError: String?
 
     /// Playback has reached a passage that isn't synthesized yet.
     var isWaiting: Bool { articleID != nil && scheduled < current && errorMessage == nil }
@@ -61,7 +78,10 @@ final class Narrator {
     /// Lengths of synthesized passages, in seconds.
     @ObservationIgnored private var durations: [Int: Double] = [:]
     @ObservationIgnored private var artwork: MPMediaItemArtwork?
+    @ObservationIgnored private var previewPlayer: AVAudioPlayer?
+    @ObservationIgnored private var previewTask: Task<Void, Never>?
 
+    private static let sample = "This is how articles will sound when Reed reads them aloud."
     private static let lookahead = 3
     nonisolated private static let sampleRate = Double(KokoroAneConstants.sampleRate)
     /// A beat of silence after each passage, so paragraphs don't run together.
@@ -107,7 +127,7 @@ final class Narrator {
         domain = article.domain
         self.passages = passages
         passageCount = passages.count
-        directory = library.storage.audioDirectory(article.id, version: version, voice: Self.voice)
+        directory = library.storage.audioDirectory(article.id, version: version, voice: voice)
         artwork = Self.artwork(from: library.leadImage(for: article))
         start(at: min(max(passage ?? article.narrationPassage ?? 0, 0), passages.count - 1))
     }
@@ -188,6 +208,52 @@ final class Narrator {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif
         updateNowPlaying()
+    }
+
+    /// Plays a short sample in `voice`, pausing narration. Samples are kept in the caches, so each is only made once.
+    func preview(_ voice: String) {
+        stopPreview()
+        pause()
+        previewVoice = voice
+        previewError = nil
+        previewTask = Task { [weak self] in
+            do {
+                let directory = URL.cachesDirectory.appendingPathComponent("VoiceSamples", isDirectory: true)
+                let url = directory.appendingPathComponent("\(voice).m4a")
+                if !FileManager.default.fileExists(atPath: url.path) {
+                    guard let kokoro = try await self?.loadKokoro() else { return }
+                    let samples = try await kokoro.synthesizeDetailed(text: Self.sample, voice: voice).samples
+                    try Task.checkCancellation()
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    try await Self.write(samples, to: url)
+                }
+                try Task.checkCancellation()
+                guard let self else { return }
+                #if os(iOS)
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio)
+                try session.setActive(true)
+                #endif
+                let player = try AVAudioPlayer(contentsOf: url)
+                previewPlayer = player
+                player.play()
+                isPreviewPlaying = true
+                try await Task.sleep(for: .seconds(player.duration))
+                stopPreview()
+            } catch where !Task.isCancelled {
+                self?.stopPreview()
+                self?.previewError = "Couldn't play a sample: \(error.localizedDescription)"
+            } catch {}
+        }
+    }
+
+    func stopPreview() {
+        previewTask?.cancel()
+        previewTask = nil
+        previewPlayer?.stop()
+        previewPlayer = nil
+        previewVoice = nil
+        isPreviewPlaying = false
     }
 
     private func start(at index: Int, offset: Double = 0) {
@@ -289,7 +355,7 @@ final class Narrator {
     private func generate(from start: Int) {
         generator?.cancel()
         guard let directory else { return }
-        let passages = passages
+        let passages = passages, voice = voice
         errorMessage = nil
         generator = Task { [weak self] in
             do {
@@ -298,7 +364,7 @@ final class Narrator {
                     let url = Self.audioURL(index, in: directory)
                     guard !FileManager.default.fileExists(atPath: url.path) else { continue }
                     guard let kokoro = try await self?.loadKokoro() else { return }
-                    let samples = try await kokoro.synthesizeDetailed(text: passages[index], voice: Self.voice).samples
+                    let samples = try await kokoro.synthesizeDetailed(text: passages[index], voice: voice).samples
                     try Task.checkCancellation()
                     try await Self.write(samples, to: url)
                     self?.scheduleReady()
@@ -455,5 +521,29 @@ final class Narrator {
         #if os(macOS)
         center.playbackState = isPlaying ? .playing : .paused
         #endif
+    }
+}
+
+extension Narrator {
+    /// A Kokoro English voice. Its pack is a small download the first time it reads.
+    struct Voice: Identifiable, Hashable {
+        enum Accent: String, CaseIterable { case american = "American", british = "British" }
+
+        let id: String
+        let accent: Accent
+        let isFeminine: Bool
+
+        /// Only American and British voices: the others speak English with their own language's accent.
+        init?(_ id: String) {
+            let prefix = id.prefix(3)
+            guard KokoroAneConstants.englishVoices.contains(id), id.count > 3, ["af_", "am_", "bf_", "bm_"].contains(prefix) else { return nil }
+            self.id = id
+            accent = prefix.first == "a" ? .american : .british
+            isFeminine = prefix.dropFirst().first == "f"
+        }
+
+        var name: String { id.dropFirst(3).capitalized }
+
+        static let all = KokoroAneConstants.englishVoices.compactMap(Voice.init)
     }
 }

@@ -37,6 +37,7 @@ import ReedCore
     private var library: Library?
     private let narrator = Narrator()
     private var window: NSWindow?
+    private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMenus()
@@ -91,6 +92,19 @@ import ReedCore
     func applicationDidResignActive(_ notification: Notification) { library?.save() }
     func applicationWillTerminate(_ notification: Notification) { library?.save() }
 
+    @objc private func showSettings() {
+        if settingsWindow == nil {
+            let window = NSWindow(contentViewController: NSHostingController(
+                rootView: SettingsView().environment(narrator).tint(ReedStyle.accent)))
+            window.title = "Settings"
+            window.styleMask = [.titled, .closable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            settingsWindow = window
+        }
+        settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
     @objc private func saveArticle() {
         window?.makeKeyAndOrderFront(nil)
         NotificationCenter.default.post(name: .reedAddArticle, object: nil)
@@ -101,6 +115,8 @@ import ReedCore
         let appItem = NSMenuItem()
         let appMenu = NSMenu(title: "Reed")
         appMenu.addItem(withTitle: "About Reed", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit Reed", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
