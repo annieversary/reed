@@ -5,6 +5,14 @@ public enum ExternalSource: String, CaseIterable, Identifiable, Sendable {
     case hackerNews = "Hacker News", lobsters = "Lobste.rs"
     public var id: Self { self }
 
+    /// A stable name for files kept about this source.
+    var key: String {
+        switch self {
+        case .hackerNews: "hacker-news"
+        case .lobsters: "lobsters"
+        }
+    }
+
     /// The front page, in the site's own order.
     public func frontPage(using downloader: ArticleDownloader) async throws -> [SourceItem] {
         switch self {
@@ -74,7 +82,12 @@ public enum ExternalSource: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-public struct SourceItem: Identifiable, Hashable, Sendable {
+public struct FrontPage: Codable, Sendable {
+    public let items: [SourceItem]
+    public let fetchedAt: Date
+}
+
+public struct SourceItem: Identifiable, Hashable, Codable, Sendable {
     public let id: String
     public let title: String
     public let url: URL

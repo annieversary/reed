@@ -226,3 +226,17 @@ import Testing
     #expect(items[0].postedAt == Date(timeIntervalSince1970: 1_790_844_470.12))
     #expect(items[1].url.absoluteString == "https://lobste.rs/s/abc123/text_post")
 }
+
+@MainActor @Test func frontPagesAreKeptBetweenLaunches() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let item = SourceItem(id: "1", title: "A story", url: URL(string: "https://example.com/a")!,
+                          discussionURL: URL(string: "https://lobste.rs/s/1")!, author: nil, points: 3, comments: nil, postedAt: nil)
+    let url = Library.frontPageURL(root: root, source: .lobsters)
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try JSONEncoder().encode(FrontPage(items: [item], fetchedAt: Date(timeIntervalSince1970: 100))).write(to: url)
+    let library = try Library(root: root)
+    #expect(library.frontPages[.lobsters]?.items == [item])
+    #expect(library.frontPages[.lobsters]?.fetchedAt == Date(timeIntervalSince1970: 100))
+    #expect(library.frontPages[.hackerNews] == nil)
+}

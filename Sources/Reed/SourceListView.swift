@@ -12,12 +12,11 @@ extension ExternalSource {
     }
 }
 
-/// A source's front page. Choosing a link saves it and opens it; swiping saves it for later, or removes it again.
+/// A source's front page, as last fetched; it is fetched again only when asked. Choosing a link saves
+/// it and opens it; swiping saves it for later, or removes it again.
 struct SourceListView: View {
     let library: Library
     let source: ExternalSource
-    /// The last front page fetched, kept by the caller so coming back shows it while it refreshes.
-    @Binding var items: [SourceItem]?
     let open: (Article) -> Void
     let remove: (Article) -> Void
     @State private var openedID: String?
@@ -30,7 +29,7 @@ struct SourceListView: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(source.rawValue).font(.system(size: 26, design: .serif))
-                    Text(storyCount).font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(summary).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button { Task { await load() } } label: {
@@ -44,6 +43,13 @@ struct SourceListView: View {
             Divider()
             #endif
             List(selection: Binding(get: { openedID }, set: choose)) {
+                #if os(iOS)
+                if page != nil {
+                    Text(summary).font(.system(size: 11)).foregroundStyle(.secondary)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+                }
+                #endif
                 ForEach(items ?? []) { item in
                     let saved = library.article(at: item.url)
                     SourceRow(item: item, saved: saved != nil)
@@ -86,7 +92,7 @@ struct SourceListView: View {
                 }
             }
         }
-        .task { await load() }
+        .task { if page == nil { await load() } }
         .navigationTitle(source.rawValue)
         #if os(macOS)
         .toolbar(removing: .title)
@@ -100,9 +106,14 @@ struct SourceListView: View {
         #endif
     }
 
-    private var storyCount: String {
-        guard let items else { return loading ? "Loading…" : " " }
-        return "\(items.count) \(items.count == 1 ? "story" : "stories")"
+    private var page: FrontPage? { library.frontPages[source] }
+    private var items: [SourceItem]? { page?.items }
+
+    private var summary: String {
+        guard let page else { return loading ? "Loading…" : " " }
+        if loading { return "Refreshing…" }
+        if failure != nil { return "Couldn't refresh" }
+        return "Updated \(page.fetchedAt.formatted(.relative(presentation: .named)))"
     }
 
     private func load() async {
@@ -110,7 +121,7 @@ struct SourceListView: View {
         loading = true
         defer { loading = false }
         do {
-            items = try await library.frontPage(of: source)
+            try await library.refreshFrontPage(of: source)
             failure = nil
         } catch is CancellationError {
         } catch {

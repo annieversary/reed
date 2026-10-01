@@ -34,8 +34,8 @@ struct LibraryView: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
-    @State private var selection: SidebarItem? = .collection(.all)
-    @State private var frontPages: [ExternalSource: [SourceItem]] = [:]
+    /// Set once the layout is known: on iPhone a selection would open straight past the sidebar.
+    @State private var selection: SidebarItem?
     @State private var selectedID: UUID?
     @State private var query = ""
     @State private var matches: [SearchIndex.Match] = []
@@ -101,9 +101,7 @@ struct LibraryView: View {
         } content: {
             Group {
                 if case .source(let source) = selection {
-                    SourceListView(library: library, source: source,
-                                   items: Binding(get: { frontPages[source] }, set: { frontPages[source] = $0 }),
-                                   open: { selectedID = $0.id }) { article in
+                    SourceListView(library: library, source: source, open: { selectedID = $0.id }) { article in
                         if selectedID == article.id { selectedID = nil }
                         if narrator.articleID == article.id { narrator.stop() }
                         library.discard(article)
@@ -134,6 +132,7 @@ struct LibraryView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .reedAddArticle)) { _ in showingAdd = true }
+        .onAppear { if !columnsStack { selection = .collection(.all) } }
         #if os(iOS)
         .sheet(isPresented: $showingSettings) { NavigationStack { SettingsView() } }
         #endif

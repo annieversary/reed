@@ -7,6 +7,8 @@ public final class Library {
     public private(set) var articles: [Article] = []
     public var errorMessage: String?
     public private(set) var activity: String?
+    /// The front page last fetched from each source, kept between launches.
+    public private(set) var frontPages: [ExternalSource: FrontPage] = [:]
     /// Advances whenever the search index changes, so searches can be rerun.
     public private(set) var searchRevision = 0
     public let container: ModelContainer
@@ -36,6 +38,12 @@ public final class Library {
             }
         }
         try container.mainContext.save()
+        for source in ExternalSource.allCases {
+            if let data = try? Data(contentsOf: Self.frontPageURL(root: root, source: source)),
+               let page = try? JSONDecoder().decode(FrontPage.self, from: data) {
+                frontPages[source] = page
+            }
+        }
         let entries = articles.map(searchEntry)
         Task { [weak self, searchIndex] in
             try? await searchIndex.sync(entries)
@@ -61,8 +69,17 @@ public final class Library {
         articles.first { $0.originalURL == url.absoluteString || $0.resolvedURL == url.absoluteString }
     }
 
-    public func frontPage(of source: ExternalSource) async throws -> [SourceItem] {
-        try await source.frontPage(using: downloader)
+    public func refreshFrontPage(of source: ExternalSource) async throws {
+        let page = FrontPage(items: try await source.frontPage(using: downloader), fetchedAt: .now)
+        frontPages[source] = page
+        // The cache only spares a fetch at launch, so failing to write it isn't worth reporting.
+        let url = Self.frontPageURL(root: storage.root, source: source)
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? JSONEncoder().encode(page).write(to: url, options: .atomic)
+    }
+
+    static func frontPageURL(root: URL, source: ExternalSource) -> URL {
+        root.appendingPathComponent("FrontPages", isDirectory: true).appendingPathComponent(source.key + ".json")
     }
 
     public func addShared(from inbox: ShareInbox) {
