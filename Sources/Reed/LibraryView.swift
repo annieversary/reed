@@ -34,14 +34,37 @@ struct LibraryView: View {
     @State private var visibility = NavigationSplitViewVisibility.all
     @State private var searchRevealed = false
     @FocusState private var searchFocused: Bool
+    /// Articles that just stopped matching the filter, kept briefly so the change shows before the row goes.
+    @State private var lingering: Set<UUID> = []
 
     private var visibleArticles: [Article] {
         library.articles.filter {
-            (filter ?? .all).includes($0) && (query.isEmpty ||
+            ((filter ?? .all).includes($0) || lingering.contains($0.id)) && (query.isEmpty ||
                 [$0.title, $0.domain, $0.author ?? "", $0.excerpt].contains { $0.localizedCaseInsensitiveContains(query) })
         }
     }
     private var selectedArticle: Article? { library.articles.first { $0.id == selectedID } }
+
+    private struct Membership: Equatable {
+        let filter: CollectionFilter
+        let ids: [UUID]
+    }
+    private var membership: Membership {
+        let filter = filter ?? .all
+        return Membership(filter: filter, ids: library.articles.filter { filter.includes($0) }.map(\.id))
+    }
+
+    private func lingerOnRemoval(from old: Membership, to new: Membership) {
+        guard old.filter == new.filter else { lingering = []; return }
+        let remaining = Set(library.articles.map(\.id))
+        let left = Set(old.ids).subtracting(new.ids).intersection(remaining)
+        guard !left.isEmpty else { return }
+        lingering.formUnion(left)
+        Task {
+            try? await Task.sleep(for: .milliseconds(900))
+            withAnimation { lingering.subtract(left) }
+        }
+    }
 
     var body: some View {
         NavigationSplitView(columnVisibility: $visibility) {
@@ -188,6 +211,7 @@ struct LibraryView: View {
                 }
             }
             .listStyle(.plain)
+            .onChange(of: membership, lingerOnRemoval)
             #if os(iOS)
             .environment(\.defaultMinListRowHeight, 0)
             .pullToReveal(revealed: $searchRevealed, keepRevealed: searchFocused || !query.isEmpty) {
