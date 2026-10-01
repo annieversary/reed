@@ -33,8 +33,8 @@ smoke: ## end-to-end offline check against the built Mac app
 	python3 scripts/smoke_test.py
 
 ios: ## check it still compiles for iOS (no device or signing needed)
-	xcodebuild -project Reed.xcodeproj -target Reed \
-	  -sdk iphoneos -configuration Debug CODE_SIGNING_ALLOWED=NO build
+	xcodebuild -project Reed.xcodeproj -scheme Reed -configuration Debug \
+	  -destination 'generic/platform=iOS' -derivedDataPath $(DERIVED) CODE_SIGNING_ALLOWED=NO build
 
 device: check-device device-build ## build, install and launch on an attached iPhone (DEVICE="name" to pick one)
 	xcrun devicectl device install app --device $(device_id) $(DEVICE_APP)

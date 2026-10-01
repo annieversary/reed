@@ -146,6 +146,17 @@ import Testing
     #expect(ArticleText.plain(document) == "Café Fish & chips' at noon — fresh")
 }
 
+@Test func narrationReadsBlocksButSkipsCodeAndFigures() {
+    let document = ArticleHTML.document(title: "Ignored <title>", author: "Byline", domain: "example.com", minutes: 4, body: """
+        <h2>Fish &amp; chips</h2><p>First line
+        continues here.</p><figure><img src="image-0"><figcaption>A caption</figcaption></figure>
+        <pre><code>let x = 1</code></pre><ul><li>One</li><li>Two<br>lines</li></ul>
+        <p><span class="missing-image">[Image unavailable: chart]</span></p><blockquote><p>Quoted</p></blockquote><p> — </p>
+        """)
+    #expect(ArticleSpeech.passages(title: "A Title", html: document)
+            == ["A Title", "Fish & chips", "First line continues here.", "One", "Two", "lines", "Quoted"])
+}
+
 @Test func searchMatchesBodiesByPrefixIgnoringAccents() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

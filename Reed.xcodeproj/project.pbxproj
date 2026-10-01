@@ -82,6 +82,24 @@
 			<key>fileRef</key>
 			<string>7FFB9C3824D5D12742BB27B3</string>
 		</dict>
+		<key>2A88CBB9E73D0A0E48B9C71C</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/Narrator.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>E0E7870EA5D095C9234442AA</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>2A88CBB9E73D0A0E48B9C71C</string>
+		</dict>
 		<key>EA6A37D30699070A655CB24E</key>
 		<dict>
 			<key>isa</key>
@@ -189,6 +207,24 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>AC56CDA6B28E18E3CF2AFE6C</string>
+		</dict>
+		<key>0F00F9E6EFCE07893391938D</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/ArticleSpeech.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>E1ABA6BD0D809094C5E6E816</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>0F00F9E6EFCE07893391938D</string>
 		</dict>
 		<key>98CED4B3A5C97EFC85BEB56A</key>
 		<dict>
@@ -423,12 +459,14 @@
 				<string>CD30CCE4A34F006D70CC05E8</string>
 				<string>58082E44E6C06764D52E1DD7</string>
 				<string>7FFB9C3824D5D12742BB27B3</string>
+				<string>2A88CBB9E73D0A0E48B9C71C</string>
 				<string>EA6A37D30699070A655CB24E</string>
 				<string>E9837CD9914E91D5750B82BD</string>
 				<string>B71B90F4906B3A73F8C70F6A</string>
 				<string>0D05B48E6BF1CF037AF4F282</string>
 				<string>24D87A3D58399F91B70B69B5</string>
 				<string>AC56CDA6B28E18E3CF2AFE6C</string>
+				<string>0F00F9E6EFCE07893391938D</string>
 				<string>98CED4B3A5C97EFC85BEB56A</string>
 				<string>709F77BB5F9974865AC45CF4</string>
 				<string>62F2B30EADC9532F27B629D9</string>
@@ -444,6 +482,36 @@
 			<key>sourceTree</key>
 			<string>&lt;group&gt;</string>
 		</dict>
+		<key>7428EDC488CC538A03E06DF6</key>
+		<dict>
+			<key>isa</key>
+			<string>XCRemoteSwiftPackageReference</string>
+			<key>repositoryURL</key>
+			<string>https://github.com/FluidInference/FluidAudio.git</string>
+			<key>requirement</key>
+			<dict>
+				<key>kind</key>
+				<string>exactVersion</string>
+				<key>version</key>
+				<string>0.17.5</string>
+			</dict>
+		</dict>
+		<key>9F57A8BC237D0231D96EA1AA</key>
+		<dict>
+			<key>isa</key>
+			<string>XCSwiftPackageProductDependency</string>
+			<key>package</key>
+			<string>7428EDC488CC538A03E06DF6</string>
+			<key>productName</key>
+			<string>FluidAudio</string>
+		</dict>
+		<key>ADF4474D9E0825770413346F</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>productRef</key>
+			<string>9F57A8BC237D0231D96EA1AA</string>
+		</dict>
 		<key>BCE16DD0260827ECF338C787</key>
 		<dict>
 			<key>isa</key>
@@ -455,12 +523,14 @@
 				<string>6028FB5DE9020B01ED4401D3</string>
 				<string>87E1C50AE6666844D88732DE</string>
 				<string>23C4BE1CC27D3C948AF14841</string>
+				<string>E0E7870EA5D095C9234442AA</string>
 				<string>4258CB1E66946A2A57F938EC</string>
 				<string>CD546E1A338CABB67FC83DE5</string>
 				<string>6BF7FEFFFD817D6E50733FDA</string>
 				<string>7861EDA4ED9D7A92471A8A1D</string>
 				<string>86B08DB1E682A9773DFC9F34</string>
 				<string>749B8CD50EA225F8B99ED603</string>
+				<string>E1ABA6BD0D809094C5E6E816</string>
 				<string>3483221D2BB5C1A5B6A79D8D</string>
 				<string>E990D3D09BB177A7DFFE6EEE</string>
 				<string>6679307645738DA919E28E26</string>
@@ -494,7 +564,9 @@
 			<key>buildActionMask</key>
 			<integer>2147483647</integer>
 			<key>files</key>
-			<array/>
+			<array>
+				<string>ADF4474D9E0825770413346F</string>
+			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
 			<integer>0</integer>
 		</dict>
@@ -592,6 +664,8 @@
 				<key>SWIFT_ACTIVE_COMPILATION_CONDITIONS</key>
 				<string>DEBUG</string>
 				<key>ENABLE_TESTABILITY</key>
+				<string>YES</string>
+				<key>ONLY_ACTIVE_ARCH</key>
 				<string>YES</string>
 				<key>DEBUG_INFORMATION_FORMAT</key>
 				<string>dwarf</string>
@@ -712,6 +786,8 @@
 				<key>SWIFT_ACTIVE_COMPILATION_CONDITIONS</key>
 				<string></string>
 				<key>ENABLE_TESTABILITY</key>
+				<string>NO</string>
+				<key>ONLY_ACTIVE_ARCH</key>
 				<string>NO</string>
 				<key>DEBUG_INFORMATION_FORMAT</key>
 				<string>dwarf-with-dsym</string>
@@ -923,6 +999,10 @@
 			<array>
 				<string>6E216A8892C8919C80266DBE</string>
 			</array>
+			<key>packageProductDependencies</key>
+			<array>
+				<string>9F57A8BC237D0231D96EA1AA</string>
+			</array>
 		</dict>
 		<key>98F54143AB4E86B28C3AFEE0</key>
 		<dict>
@@ -952,6 +1032,10 @@
 			<string>B28B7AF69320201D1CF206EB</string>
 			<key>productRefGroup</key>
 			<string>FBDC4F23F93125BBEEAE800C</string>
+			<key>packageReferences</key>
+			<array>
+				<string>7428EDC488CC538A03E06DF6</string>
+			</array>
 			<key>projectDirPath</key>
 			<string></string>
 			<key>projectRoot</key>

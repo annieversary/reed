@@ -33,6 +33,7 @@ Builds for `generic/platform=iOS`, then installs and launches over `devicectl`. 
 - Read saved articles in a local WebKit reader with light/dark appearance and adjustable type.
 - Search titles, authors, websites, and excerpts; favorite articles and mark them finished.
 - Save reading position and restore it when reopening an article.
+- Listen to saved articles, read aloud on device by Kokoro (see below).
 - Distinguish queued, downloading, saved, partially saved, and failed downloads.
 - Retry failures, recover interrupted downloads on launch, and delete saved articles.
 - Deduplicate normalized URLs without stripping meaningful query parameters.
@@ -45,6 +46,14 @@ The `ReedShare` extension (`Sources/ReedShare`) appears in the share sheet for a
 
 On macOS, enable the extension once under System Settings → General → Login Items & Extensions → Sharing (or `pluginkit -e use -i town.versary.reed.share`). On iOS it shows in the share sheet's app row, or under More.
 
+## Listening
+
+The headphones button in the reader reads the article aloud with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M), run on the Neural Engine through [FluidAudio](https://github.com/FluidInference/FluidAudio). The first time, FluidAudio downloads the model (about 120 MB) from Hugging Face into Application Support (`~/.cache/fluidaudio` on macOS); after that, narration works offline.
+
+`ArticleSpeech` splits the saved article into passages: the title, then one per paragraph, heading or list item, leaving out code, tables and figures. `Narrator` synthesizes them in order, ahead of playback, and queues each on an `AVAudioPlayerNode` as soon as it's ready, so listening starts after the first paragraph. Each passage is cached as AAC beside the article, so replaying or skipping back is instant. Playback continues in the background and from the lock screen, where the track buttons skip by paragraph.
+
+FluidAudio documents an intermittent Core ML crash in Kokoro on iOS 26.6 and 27 during long sessions ([#889](https://github.com/FluidInference/FluidAudio/issues/889)). Cached passages survive it; reopen the article and press play to carry on. Synthesis can also stop while Reed is in the background; it picks up again when Reed becomes active.
+
 ## Storage and architecture
 
 `Sources/Reed` contains the shared SwiftUI interface and platform-specific WebKit wrappers. On Mac, an AppKit window hosts these screens and handles launch, reopening, and standard keyboard menus; iOS uses a SwiftUI app scene. `Sources/ReedCore` contains the SwiftData model, persistent queue, downloader, extractor, and file storage. Swift Package Manager exposes `ReedCore` for unit tests; the Xcode app compiles the same sources directly.
@@ -56,6 +65,8 @@ Library.store                   SwiftData metadata and download states
 Articles/<id>/<version>/
   index.html                    Sanitized article and Reed's reader stylesheet
   image-0                       Downloaded image, referenced locally
+Articles/<id>/Audio/<version>/<voice>/
+  0.m4a, 1.m4a, …               Narration, one file per passage
 Staging/                        Incomplete downloads, cleaned after restart
 ```
 
@@ -74,7 +85,7 @@ python3 scripts/smoke_test.py
 
 The integration script requires a built Debug Mac app. It starts a temporary local website, launches Reed with an isolated library, verifies extraction, sanitization, redirects, image downloads and failure handling, then stops the website and relaunches Reed to verify actual offline rendering of text and images. It writes JSON reports and a reader screenshot into a temporary directory. It does not launch a simulator or alter the normal library.
 
-After adding source or resource files, run `python3 scripts/generate_project.py` to regenerate the checked-in Xcode project. There are no external Swift package dependencies or build-time network downloads.
+After adding source or resource files, run `python3 scripts/generate_project.py` to regenerate the checked-in Xcode project. FluidAudio is the only Swift package dependency, pinned to an exact version in both `Package.swift` and the generator.
 
 ## Prototype boundaries
 
@@ -90,3 +101,5 @@ After adding source or resource files, run `python3 scripts/generate_project.py`
 - DOMPurify **3.4.15**, Apache-2.0 OR MPL-2.0: `Sources/ReedCore/Resources/purify.min.js` and `DOMPurify-LICENSE`.
 
 Both libraries and their licenses are bundled for reproducible offline operation.
+
+- FluidAudio **0.17.5**, Apache-2.0, as a Swift package. The Kokoro-82M weights (Apache-2.0) are downloaded at runtime.

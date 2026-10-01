@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate the small, dependency-free Xcode project after adding source files."""
+"""Regenerate the small Xcode project after adding source files."""
 from pathlib import Path
 import hashlib
 import plistlib
@@ -43,9 +43,16 @@ product = put("product", isa="PBXFileReference", explicitFileType="wrapper.appli
 share_product = put("share-product", isa="PBXFileReference", explicitFileType="wrapper.app-extension", path="ReedShare.appex", sourceTree="BUILT_PRODUCTS_DIR")
 products = put("products", isa="PBXGroup", children=[product, share_product], name="Products", sourceTree="<group>")
 main = put("main", isa="PBXGroup", children=children + [products], sourceTree="<group>")
+# FluidAudio runs Kokoro for narration. Keep the version in step with Package.swift.
+fluid_package = put("package:FluidAudio", isa="XCRemoteSwiftPackageReference",
+                    repositoryURL="https://github.com/FluidInference/FluidAudio.git",
+                    requirement={"kind": "exactVersion", "version": "0.17.5"})
+fluid_product = put("product:FluidAudio", isa="XCSwiftPackageProductDependency", package=fluid_package, productName="FluidAudio")
+fluid_build = put("build:FluidAudio", isa="PBXBuildFile", productRef=fluid_product)
+
 source_phase = phase("sources", "PBXSourcesBuildPhase", source_builds)
 resource_phase = phase("resources", "PBXResourcesBuildPhase", resource_builds)
-framework_phase = phase("frameworks", "PBXFrameworksBuildPhase", [])
+framework_phase = phase("frameworks", "PBXFrameworksBuildPhase", [fluid_build])
 embed_build = put("build:ReedShare.appex", isa="PBXBuildFile", fileRef=share_product, settings={"ATTRIBUTES": ["RemoveHeadersOnCopy"]})
 embed_phase = put("embed", isa="PBXCopyFilesBuildPhase", buildActionMask=2147483647, dstPath="", dstSubfolderSpec=13,
                   files=[embed_build], name="Embed Foundation Extensions", runOnlyForDeploymentPostprocessing=0)
@@ -69,6 +76,7 @@ for mode in ["Debug", "Release"]:
         "SWIFT_OPTIMIZATION_LEVEL": "-Onone" if mode == "Debug" else "-O",
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "DEBUG" if mode == "Debug" else "",
         "ENABLE_TESTABILITY": "YES" if mode == "Debug" else "NO",
+        "ONLY_ACTIVE_ARCH": "YES" if mode == "Debug" else "NO",
         "DEBUG_INFORMATION_FORMAT": "dwarf" if mode == "Debug" else "dwarf-with-dsym",
     }
     target_settings = {
@@ -108,10 +116,12 @@ share_proxy = put("share-proxy", isa="PBXContainerItemProxy", containerPortal=re
 share_dependency = put("share-dependency", isa="PBXTargetDependency", target=share_target, targetProxy=share_proxy)
 target = put("target", isa="PBXNativeTarget", name="Reed", productName="Reed", productReference=product,
              productType="com.apple.product-type.application", buildConfigurationList=config_list("targetConfigs", target_configs),
-             buildPhases=[source_phase, framework_phase, resource_phase, embed_phase], buildRules=[], dependencies=[share_dependency])
+             buildPhases=[source_phase, framework_phase, resource_phase, embed_phase], buildRules=[], dependencies=[share_dependency],
+             packageProductDependencies=[fluid_product])
 project = put("project", isa="PBXProject", attributes={"LastUpgradeCheck": "2700", "BuildIndependentTargetsInParallel": "YES"},
               buildConfigurationList=project_list, compatibilityVersion="Xcode 14.0", developmentRegion="en",
               hasScannedForEncodings=0, knownRegions=["en", "Base"], mainGroup=main, productRefGroup=products,
+              packageReferences=[fluid_package],
               projectDirPath="", projectRoot="", targets=[target, share_target])
 PROJECT.mkdir(exist_ok=True)
 (PROJECT / "project.pbxproj").write_bytes(plistlib.dumps({"archiveVersion": "1", "classes": {}, "objectVersion": "56", "objects": objects, "rootObject": project}, sort_keys=False))
@@ -129,7 +139,7 @@ scheme_dir.mkdir(parents=True, exist_ok=True)
 print("Generated Reed.xcodeproj")
 
 mac_info = plistlib.loads((ROOT / "Info.plist").read_bytes())
-for key in ["UIApplicationSceneManifest", "UILaunchScreen", "UISupportedInterfaceOrientations"]:
+for key in ["UIApplicationSceneManifest", "UILaunchScreen", "UISupportedInterfaceOrientations", "UIBackgroundModes"]:
     mac_info.pop(key, None)
 mac_info["NSPrincipalClass"] = "NSApplication"
 (ROOT / "Info-macOS.plist").write_bytes(plistlib.dumps(mac_info, sort_keys=False))

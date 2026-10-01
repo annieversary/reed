@@ -26,6 +26,7 @@ enum CollectionFilter: String, CaseIterable, Identifiable {
 
 struct LibraryView: View {
     @Bindable var library: Library
+    @Environment(Narrator.self) private var narrator
     @State private var filter: CollectionFilter? = .all
     @State private var selectedID: UUID?
     @State private var query = ""
@@ -114,6 +115,7 @@ struct LibraryView: View {
             Button("Delete Article", role: .destructive) {
                 if let article = articleToDelete {
                     if selectedID == article.id { selectedID = nil }
+                    if narrator.articleID == article.id { narrator.stop() }
                     library.delete(article)
                 }
                 articleToDelete = nil

@@ -21,6 +21,12 @@ public struct ArticleStorage: Sendable {
         articleDirectory(id).appendingPathComponent(version, isDirectory: true).appendingPathComponent("index.html")
     }
 
+    /// Narration of one saved version in one voice. It sits beside the versions, so deleting the article removes it.
+    public func audioDirectory(_ id: UUID, version: String, voice: String) -> URL {
+        articleDirectory(id).appendingPathComponent("Audio", isDirectory: true)
+            .appendingPathComponent(version, isDirectory: true).appendingPathComponent(voice, isDirectory: true)
+    }
+
     public func createStagingDirectory() throws -> URL {
         let url = root.appendingPathComponent("Staging", isDirectory: true).appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

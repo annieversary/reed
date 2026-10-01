@@ -35,6 +35,7 @@ import ReedCore
 
 @MainActor final class ReedDesktopDelegate: NSObject, NSApplicationDelegate {
     private var library: Library?
+    private let narrator = Narrator()
     private var window: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -42,7 +43,7 @@ import ReedCore
         do {
             let library = try openLibrary()
             self.library = library
-            present(LibraryView(library: library).tint(ReedStyle.accent))
+            present(LibraryView(library: library).environment(narrator).tint(ReedStyle.accent))
             Task { @MainActor in
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--smoke-test") {
@@ -125,6 +126,7 @@ import ReedCore
 @main struct ReedApp: App {
     @State private var library: Library?
     @State private var startupError: String?
+    @State private var narrator = Narrator()
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -145,10 +147,12 @@ import ReedCore
                                            description: Text(startupError ?? "An unknown storage error occurred."))
                 }
             }
+            .environment(narrator)
             .tint(ReedStyle.accent)
             .onChange(of: scenePhase) { _, phase in
                 guard let library else { return }
-                if phase == .active { addShared(to: library); library.resumeDownloads() }
+                // Synthesis can fail in the background, so it's picked up again on return.
+                if phase == .active { addShared(to: library); library.resumeDownloads(); narrator.retry() }
                 else { library.save() }
             }
         }
