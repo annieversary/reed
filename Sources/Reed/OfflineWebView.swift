@@ -1,10 +1,17 @@
 import SwiftUI
 import WebKit
 
+/// The passage being read aloud, so the reader can show and follow it.
+struct NarratedPassage: Equatable {
+    let index: Int
+    let text: String
+}
+
 @MainActor struct OfflineWebView {
     let url: URL
     let fontSize: Double
     let progress: Double
+    var narrated: NarratedPassage?
     var onProgress: (Double) -> Void
     var onAddLink: (URL) -> Void
 
@@ -37,6 +44,8 @@ import WebKit
         document.head.appendChild(style);
         """, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient)
         configuration.userContentController.addUserScript(darkPaper)
+        configuration.userContentController.addUserScript(WKUserScript(source: Self.narrationScript, injectionTime: .atDocumentEnd,
+                                                                       forMainFrameOnly: true, in: .defaultClient))
         #if os(macOS)
         // AppKit's menu hook doesn't say which link was clicked, so the page reports it first.
         configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: "contextLink")
@@ -68,13 +77,71 @@ import WebKit
         coordinator.parent = self
         guard coordinator.loaded else { return }
         coordinator.applyFont(webView)
+        coordinator.applyNarration(webView)
     }
+
+    /// Finds the element holding each narrated passage by its text, tints it, and scrolls it into view
+    /// unless the reader has scrolled recently. Passages arrive in order, so the search resumes after the last match.
+    private static let narrationScript = #"""
+    window.reedNarration = (() => {
+        const blocks = 'p,h1,h2,h3,h4,h5,h6,li,dt,dd,blockquote,div,section,article,header,footer,aside,main';
+        const squash = text => text.replace(/\s+/g, '');
+        const style = document.createElement('style');
+        style.textContent = `
+            :root { --narrating: color-mix(in srgb, var(--accent) 9%, transparent); }
+            @media (prefers-color-scheme: dark) { :root { --narrating: color-mix(in srgb, var(--accent) 15%, transparent); } }
+            :where(${blocks}) { transition: background-color .5s, box-shadow .5s; }
+            .reed-narrating { background-color: var(--narrating); box-shadow: 0 0 0 .4em var(--narrating); border-radius: .25em; }`;
+        document.head.appendChild(style);
+        const imagesLoaded = Promise.all(Array.from(document.images).map(img => img.complete ? null
+            : new Promise(resolve => { img.addEventListener('load', resolve); img.addEventListener('error', resolve); })));
+        let lastInteraction = 0;
+        for (const type of ['wheel', 'touchmove', 'keydown']) {
+            window.addEventListener(type, () => { lastInteraction = Date.now(); }, {passive: true});
+        }
+        const located = new Map();
+        let cursor = 0, current = null;
+        const locate = (index, text) => {
+            if (located.has(index)) return located.get(index);
+            const target = squash(text);
+            const all = Array.from(document.body.querySelectorAll(blocks));
+            const contains = element => squash(element.textContent).includes(target);
+            let found = all.slice(cursor).find(contains) ?? all.find(contains);
+            if (!found) return null;
+            for (let child; (child = Array.from(found.children).find(c => c.matches(blocks) && contains(c)));) found = child;
+            cursor = all.indexOf(found);
+            located.set(index, found);
+            return found;
+        };
+        return {
+            show(index, text) {
+                const element = locate(index, text);
+                if (element === current) return;
+                current?.classList.remove('reed-narrating');
+                current = element;
+                if (!element) return;
+                element.classList.add('reed-narrating');
+                imagesLoaded.then(() => {
+                    if (element !== current || Date.now() - lastInteraction < 8000) return;
+                    const box = element.getBoundingClientRect();
+                    if (box.top >= 0 && box.bottom <= innerHeight * 0.75) return;
+                    window.scrollTo({top: scrollY + box.top - innerHeight * 0.2, behavior: 'smooth'});
+                });
+            },
+            clear() {
+                current?.classList.remove('reed-narrating');
+                current = null;
+            },
+        };
+    })();
+    """#
 
     @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         var parent: OfflineWebView
         var loaded = false
         var contextLink: URL?
         private var currentFontSize: Double?
+        private var shownNarration: NarratedPassage?
         init(parent: OfflineWebView) { self.parent = parent }
 
         func applyFont(_ webView: WKWebView) {
@@ -83,9 +150,22 @@ import WebKit
             webView.evaluateJavaScript("document.documentElement.style.setProperty('--font-size', '\(parent.fontSize)px')", in: nil, in: .defaultClient) { _ in }
         }
 
+        func applyNarration(_ webView: WKWebView) {
+            guard shownNarration != parent.narrated else { return }
+            shownNarration = parent.narrated
+            if let passage = parent.narrated {
+                webView.callAsyncJavaScript("reedNarration.show(index, text)", arguments: ["index": passage.index, "text": passage.text],
+                                            in: nil, in: .defaultClient) { _ in }
+            } else {
+                webView.evaluateJavaScript("reedNarration.clear()", in: nil, in: .defaultClient) { _ in }
+            }
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             loaded = true
             applyFont(webView)
+            // While narrating, the reader follows the narration rather than returning to where it was left.
+            guard parent.narrated == nil else { applyNarration(webView); return }
             let fraction = min(max(parent.progress, 0), 1)
             webView.evaluateJavaScript("""
             const restore = () => window.scrollTo(0, \(fraction) * Math.max(0, document.documentElement.scrollHeight - window.innerHeight));

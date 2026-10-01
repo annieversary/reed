@@ -11,6 +11,10 @@ struct ArticleDetailView: View {
     @Environment(Narrator.self) private var narrator
 
     private var isNarrating: Bool { narrator.articleID == article.id }
+    private var narrated: NarratedPassage? {
+        guard isNarrating, let text = narrator.currentPassage else { return nil }
+        return NarratedPassage(index: narrator.current, text: text)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,7 +41,7 @@ struct ArticleDetailView: View {
                     }
                     .font(.caption).padding(12).background(.yellow.opacity(0.08))
                 }
-                OfflineWebView(url: url, fontSize: fontSize, progress: article.progress) { value in
+                OfflineWebView(url: url, fontSize: fontSize, progress: article.progress, narrated: narrated) { value in
                     library.updateProgress(article, value: value)
                 } onAddLink: { link in
                     do { try library.add(link.absoluteString) }

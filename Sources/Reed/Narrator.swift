@@ -28,6 +28,9 @@ final class Narrator {
     /// Why synthesis stopped. Passages already made keep playing.
     private(set) var errorMessage: String?
 
+    /// The text of the passage being heard.
+    var currentPassage: String? { articleID != nil && passages.indices.contains(current) ? passages[current] : nil }
+
     /// Playback has reached a passage that isn't synthesized yet.
     var isWaiting: Bool { articleID != nil && scheduled < current && errorMessage == nil }
 
