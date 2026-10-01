@@ -29,6 +29,7 @@ struct LibraryView: View {
     @State private var filter: CollectionFilter? = .all
     @State private var selectedID: UUID?
     @State private var query = ""
+    @State private var matches: [SearchIndex.Match] = []
     @State private var showingAdd = false
     @State private var articleToDelete: Article?
     @State private var visibility = NavigationSplitViewVisibility.all
@@ -38,10 +39,22 @@ struct LibraryView: View {
     @State private var lingering: Set<UUID> = []
 
     private var visibleArticles: [Article] {
-        library.articles.filter {
-            ((filter ?? .all).includes($0) || lingering.contains($0.id)) && (query.isEmpty ||
-                [$0.title, $0.domain, $0.author ?? "", $0.excerpt].contains { $0.localizedCaseInsensitiveContains(query) })
+        let candidates: [Article]
+        if query.isEmpty {
+            candidates = library.articles
+        } else {
+            let byID = Dictionary(uniqueKeysWithValues: library.articles.map { ($0.id, $0) })
+            candidates = matches.compactMap { byID[$0.id] }
         }
+        return candidates.filter { (filter ?? .all).includes($0) || lingering.contains($0.id) }
+    }
+    private var snippets: [UUID: String] {
+        query.isEmpty ? [:] : Dictionary(matches.compactMap { match in match.snippet.map { (match.id, $0) } }) { first, _ in first }
+    }
+
+    private struct Search: Equatable {
+        let query: String
+        let revision: Int
     }
     private var selectedArticle: Article? { library.articles.first { $0.id == selectedID } }
 
@@ -175,9 +188,10 @@ struct LibraryView: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
                 #endif
+                let snippets = snippets
                 ForEach(visibleArticles) { article in
                     // A hidden link keeps row navigation without the disclosure chevron.
-                    ArticleRow(article: article)
+                    ArticleRow(article: article, snippet: snippets[article.id])
                         .background(NavigationLink(value: article.id) { EmptyView() }.opacity(0))
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
@@ -212,6 +226,10 @@ struct LibraryView: View {
             }
             .listStyle(.plain)
             .onChange(of: membership, lingerOnRemoval)
+            .task(id: Search(query: query, revision: library.searchRevision)) {
+                let found = await library.search(query)
+                if !Task.isCancelled { matches = found }
+            }
             #if os(iOS)
             .environment(\.defaultMinListRowHeight, 0)
             .pullToReveal(revealed: $searchRevealed, keepRevealed: searchFocused || !query.isEmpty) {
@@ -360,6 +378,8 @@ private struct PullToReveal<Field: View>: ViewModifier {
 
 private struct ArticleRow: View {
     let article: Article
+    /// The passage that matched a search, shown in place of the excerpt.
+    let snippet: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
@@ -373,7 +393,9 @@ private struct ArticleRow: View {
                     Text(byline).font(.system(size: 12, design: .serif).italic()).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
-            if !article.excerpt.isEmpty {
+            if let snippet {
+                Text(Self.highlighted(snippet)).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(3).lineSpacing(3)
+            } else if !article.excerpt.isEmpty {
                 Text(article.excerpt).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2).lineSpacing(3)
             }
             HStack(spacing: 5) {
@@ -399,6 +421,19 @@ private struct ArticleRow: View {
     private var byline: String? {
         let parts = [article.author, article.publishedAt.map(Self.formatPublished)].compactMap { $0 }.filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private static func highlighted(_ snippet: String) -> AttributedString {
+        var result = AttributedString()
+        for (index, part) in snippet.components(separatedBy: SearchIndex.highlightStart).enumerated() {
+            let pieces = part.components(separatedBy: SearchIndex.highlightEnd)
+            guard index > 0, pieces.count > 1 else { result += AttributedString(part); continue }
+            var term = AttributedString(pieces[0])
+            term.foregroundColor = .primary
+            term.inlinePresentationIntent = .stronglyEmphasized
+            result += term + AttributedString(pieces.dropFirst().joined())
+        }
+        return result
     }
 
     private static func formatPublished(_ date: Date) -> String {

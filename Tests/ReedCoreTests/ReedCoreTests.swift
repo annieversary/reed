@@ -139,3 +139,50 @@ import Testing
     try inbox.drain { saved.append($0) }
     #expect(saved == ["https://example.com/a"])
 }
+
+@Test func readerDocumentsBecomePlainText() {
+    let document = ArticleHTML.document(title: "Ignored <title>", author: nil, domain: "example.com", minutes: 1,
+                                        body: "<h2>Café</h2><p>Fish &amp; chips&#39;<br>at&nbsp;noon &#x2014; <em>fresh</em></p>")
+    #expect(ArticleText.plain(document) == "Café Fish & chips' at noon — fresh")
+}
+
+@Test func searchMatchesBodiesByPrefixIgnoringAccents() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    func entry(_ title: String, body: String, version: String = "v1") throws -> SearchIndex.Entry {
+        let file = root.appendingPathComponent(UUID().uuidString + ".html")
+        try ArticleHTML.document(title: title, author: nil, domain: "example.com", minutes: 1, body: "<p>\(body)</p>")
+            .write(to: file, atomically: true, encoding: .utf8)
+        return SearchIndex.Entry(id: UUID(), version: version, title: title, author: nil, domain: "example.com", content: file)
+    }
+    let index = try SearchIndex(url: root.appendingPathComponent("Search.sqlite"))
+    let reeds = try entry("Rivers", body: "The reeds bent along the riverbank at the café.")
+    let reedTitle = try entry("Reeds of the marsh", body: "Nothing about it here.")
+    let other = try entry("Mountains", body: "Granite and snow.")
+    try await index.sync([reeds, reedTitle, other])
+
+    let found = try await index.search("REED")
+    #expect(found.map(\.id) == [reedTitle.id, reeds.id])
+    #expect(found[0].snippet == nil)
+    #expect(found[1].snippet?.contains("\(SearchIndex.highlightStart)reeds\(SearchIndex.highlightEnd)") == true)
+    #expect(try await index.search("cafe river").map(\.id) == [reeds.id])
+    #expect(try await index.search("\"unbalanced OR -").isEmpty)
+    #expect(try await index.search("   ").isEmpty)
+
+    try await index.sync([other])
+    #expect(try await index.search("reed").isEmpty)
+    let reopened = try SearchIndex(url: root.appendingPathComponent("Search.sqlite"))
+    #expect(try await reopened.search("granite").map(\.id) == [other.id])
+}
+
+@Test func damagedSearchIndexIsRebuilt() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let url = root.appendingPathComponent("Search.sqlite")
+    try Data(repeating: 7, count: 4096).write(to: url)
+    let index = try SearchIndex(url: url)
+    try await index.index(SearchIndex.Entry(id: UUID(), version: nil, title: "Queued", author: nil, domain: "example.com", content: nil))
+    #expect(try await index.search("example").count == 1)
+}

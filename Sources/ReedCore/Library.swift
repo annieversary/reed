@@ -7,10 +7,13 @@ public final class Library {
     public private(set) var articles: [Article] = []
     public var errorMessage: String?
     public private(set) var activity: String?
+    /// Advances whenever the search index changes, so searches can be rerun.
+    public private(set) var searchRevision = 0
     public let container: ModelContainer
     public let storage: ArticleStorage
     private let downloader: ArticleDownloader
     private let extractor = ArticleExtractor()
+    private let searchIndex: SearchIndex
     private var worker: Task<Void, Never>?
     private var progressSave: Task<Void, Never>?
 
@@ -20,6 +23,7 @@ public final class Library {
         self.downloader = downloader
         let configuration = ModelConfiguration(url: root.appendingPathComponent("Library.store"))
         container = try ModelContainer(for: Article.self, configurations: configuration)
+        searchIndex = try SearchIndex(url: root.appendingPathComponent("Search.sqlite"))
         articles = try container.mainContext.fetch(FetchDescriptor<Article>(sortBy: [SortDescriptor(\.savedAt, order: .reverse)]))
         try storage.cleanStaging()
         for article in articles {
@@ -30,6 +34,11 @@ public final class Library {
             }
         }
         try container.mainContext.save()
+        let entries = articles.map(searchEntry)
+        Task { [weak self, searchIndex] in
+            try? await searchIndex.sync(entries)
+            self?.searchRevision += 1
+        }
     }
 
     @discardableResult public func add(_ input: String) throws -> Article {
@@ -42,6 +51,7 @@ public final class Library {
         do { try container.mainContext.save() }
         catch { container.mainContext.delete(article); throw error }
         articles.insert(article, at: 0)
+        reindex(article)
         resumeDownloads()
         return article
     }
@@ -85,6 +95,7 @@ public final class Library {
             try container.mainContext.save()
             articles.remove(at: index)
             try storage.removeArticle(id)
+            Task { [searchIndex] in try? await searchIndex.remove(id) }
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -110,6 +121,24 @@ public final class Library {
         guard let version = article.contentVersion else { return nil }
         let url = storage.contentURL(article.id, version: version)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    public func search(_ text: String) async -> [SearchIndex.Match] {
+        (try? await searchIndex.search(text)) ?? []
+    }
+
+    // Index failures aren't surfaced: the index is brought up to date again at every launch.
+    private func reindex(_ article: Article) {
+        let entry = searchEntry(for: article)
+        Task { [weak self, searchIndex] in
+            try? await searchIndex.index(entry)
+            self?.searchRevision += 1
+        }
+    }
+
+    private func searchEntry(for article: Article) -> SearchIndex.Entry {
+        SearchIndex.Entry(id: article.id, version: article.contentVersion, title: article.title, author: article.author,
+                          domain: article.domain, content: contentURL(for: article))
     }
 
     private func download(_ article: Article) async {
@@ -168,6 +197,7 @@ public final class Library {
             article.state = missing > 0 ? .partial : .ready
             article.failureMessage = nil
             try container.mainContext.save()
+            reindex(article)
         } catch {
             article.state = .failed
             article.failureMessage = error.localizedDescription
