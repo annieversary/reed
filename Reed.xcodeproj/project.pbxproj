@@ -441,7 +441,7 @@
 				<key>PRODUCT_NAME</key>
 				<string>Reed</string>
 				<key>PRODUCT_BUNDLE_IDENTIFIER</key>
-				<string>app.reed.reader</string>
+				<string>town.versary.reed</string>
 				<key>INFOPLIST_FILE</key>
 				<string>Info.plist</string>
 				<key>GENERATE_INFOPLIST_FILE</key>
@@ -452,6 +452,8 @@
 				<string>Automatic</string>
 				<key>CODE_SIGN_IDENTITY[sdk=macosx*]</key>
 				<string>-</string>
+				<key>DEVELOPMENT_TEAM[sdk=iphoneos*]</key>
+				<string>KR4TU3GTWZ</string>
 				<key>TARGETED_DEVICE_FAMILY</key>
 				<string>1,2</string>
 				<key>CURRENT_PROJECT_VERSION</key>
@@ -507,7 +509,7 @@
 				<key>PRODUCT_NAME</key>
 				<string>Reed</string>
 				<key>PRODUCT_BUNDLE_IDENTIFIER</key>
-				<string>app.reed.reader</string>
+				<string>town.versary.reed</string>
 				<key>INFOPLIST_FILE</key>
 				<string>Info.plist</string>
 				<key>GENERATE_INFOPLIST_FILE</key>
@@ -518,6 +520,8 @@
 				<string>Automatic</string>
 				<key>CODE_SIGN_IDENTITY[sdk=macosx*]</key>
 				<string>-</string>
+				<key>DEVELOPMENT_TEAM[sdk=iphoneos*]</key>
+				<string>KR4TU3GTWZ</string>
 				<key>TARGETED_DEVICE_FAMILY</key>
 				<string>1,2</string>
 				<key>CURRENT_PROJECT_VERSION</key>

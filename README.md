@@ -14,7 +14,16 @@ xcodebuild -project Reed.xcodeproj -scheme Reed -configuration Debug \
 open build/Build/Products/Debug/Reed.app
 ```
 
-Requires macOS 15 or later and a Swift 6 toolchain. The same Xcode target supports iOS 17 or later; select your signing team before running on a physical iPhone. iOS simulator testing is intentionally deferred.
+Requires macOS 15 or later and a Swift 6 toolchain. The same Xcode target supports iOS 17 or later. iOS simulator testing is intentionally deferred.
+
+## Run on an iPhone
+
+```sh
+make device                  # the only paired phone
+make device DEVICE="dahlia"  # by name, when more than one is around
+```
+
+Builds for `generic/platform=iOS`, then installs and launches over `devicectl`. The signing team is set in `scripts/generate_project.py`, so Xcode needn't be open, but the phone must be unlocked, paired with this Mac, and have Developer Mode on (Settings → Privacy & Security). If the launch fails with "profile has not been explicitly trusted", trust the developer under Settings → General → VPN & Device Management, then run `make device` again. `make` lists the other targets.
 
 ## What works
 

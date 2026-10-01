@@ -49,10 +49,11 @@ for mode in ["Debug", "Release"]:
         "DEBUG_INFORMATION_FORMAT": "dwarf" if mode == "Debug" else "dwarf-with-dsym",
     }
     target_settings = {
-        "PRODUCT_NAME": "Reed", "PRODUCT_BUNDLE_IDENTIFIER": "app.reed.reader",
+        "PRODUCT_NAME": "Reed", "PRODUCT_BUNDLE_IDENTIFIER": "town.versary.reed",
         "INFOPLIST_FILE": "Info.plist", "GENERATE_INFOPLIST_FILE": "NO",
         "INFOPLIST_FILE[sdk=macosx*]": "Info-macOS.plist",
         "CODE_SIGN_STYLE": "Automatic", "CODE_SIGN_IDENTITY[sdk=macosx*]": "-",
+        "DEVELOPMENT_TEAM[sdk=iphoneos*]": "KR4TU3GTWZ",
         "TARGETED_DEVICE_FAMILY": "1,2", "CURRENT_PROJECT_VERSION": "1",
         "MARKETING_VERSION": "0.1.0", "ENABLE_APP_SANDBOX": "NO",
         "COMBINE_HIDPI_IMAGES": "YES", "LD_RUNPATH_SEARCH_PATHS": "$(inherited) @executable_path/../Frameworks @executable_path/Frameworks",
