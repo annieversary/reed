@@ -82,6 +82,24 @@
 			<key>fileRef</key>
 			<string>7FFB9C3824D5D12742BB27B3</string>
 		</dict>
+		<key>26ECBB57E0E465EB30EFF084</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/NarrationBar.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>E1FE09D28E34B5F60D61E9C1</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>26ECBB57E0E465EB30EFF084</string>
+		</dict>
 		<key>2A88CBB9E73D0A0E48B9C71C</key>
 		<dict>
 			<key>isa</key>
@@ -459,6 +477,7 @@
 				<string>CD30CCE4A34F006D70CC05E8</string>
 				<string>58082E44E6C06764D52E1DD7</string>
 				<string>7FFB9C3824D5D12742BB27B3</string>
+				<string>26ECBB57E0E465EB30EFF084</string>
 				<string>2A88CBB9E73D0A0E48B9C71C</string>
 				<string>EA6A37D30699070A655CB24E</string>
 				<string>E9837CD9914E91D5750B82BD</string>
@@ -523,6 +542,7 @@
 				<string>6028FB5DE9020B01ED4401D3</string>
 				<string>87E1C50AE6666844D88732DE</string>
 				<string>23C4BE1CC27D3C948AF14841</string>
+				<string>E1FE09D28E34B5F60D61E9C1</string>
 				<string>E0E7870EA5D095C9234442AA</string>
 				<string>4258CB1E66946A2A57F938EC</string>
 				<string>CD546E1A338CABB67FC83DE5</string>

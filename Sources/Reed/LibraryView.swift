@@ -94,6 +94,11 @@ struct LibraryView: View {
                 readerPlaceholder
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if narrator.articleID != nil {
+                NarrationBar(narrator: narrator) { selectedID = narrator.articleID }
+            }
+        }
         .sheet(isPresented: $showingAdd) {
             AddArticleView { url in
                 let article = try library.add(url)

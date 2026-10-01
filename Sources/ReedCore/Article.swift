@@ -37,6 +37,8 @@ public final class Article {
     public var isRead: Bool
     public var isFavorite: Bool
     public var contentVersion: String?
+    /// The passage narration last reached, to resume from.
+    public var narrationPassage: Int?
 
     public init(url: URL, id: UUID = UUID()) {
         self.id = id
@@ -51,6 +53,7 @@ public final class Article {
         progress = 0
         isRead = false
         isFavorite = false
+        narrationPassage = nil
     }
 
     public var state: DownloadState {

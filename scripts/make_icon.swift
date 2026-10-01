@@ -239,3 +239,9 @@ for scale in [1, 2, 3] {
     markImages.append(["filename": name, "idiom": "universal", "scale": "\(scale)x"])
 }
 try writeContents(markImages, in: markFolder)
+
+/// Square artwork for the lock screen when an article has no image of its own.
+let artworkFolder = catalog.appendingPathComponent("NowPlayingArtwork.imageset")
+try FileManager.default.createDirectory(at: artworkFolder, withIntermediateDirectories: true)
+write(renderIOS(600), to: "now-playing.png", in: artworkFolder)
+try writeContents([["filename": "now-playing.png", "idiom": "universal"]], in: artworkFolder)

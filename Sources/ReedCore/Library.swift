@@ -123,6 +123,20 @@ public final class Library {
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
+    /// The saved article's text to read aloud, or nil if it isn't saved.
+    public func passages(for article: Article) -> [String]? {
+        guard let url = contentURL(for: article), let html = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        return ArticleSpeech.passages(title: article.title, html: html)
+    }
+
+    /// The first image saved with the article, if any.
+    public func leadImage(for article: Article) -> URL? {
+        guard let url = contentURL(for: article), let html = try? String(contentsOf: url, encoding: .utf8),
+              let source = ArticleHTML.firstImage(in: html) else { return nil }
+        let image = url.deletingLastPathComponent().appendingPathComponent(source)
+        return FileManager.default.fileExists(atPath: image.path) ? image : nil
+    }
+
     public func search(_ text: String) async -> [SearchIndex.Match] {
         (try? await searchIndex.search(text)) ?? []
     }

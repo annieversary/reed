@@ -1,19 +1,40 @@
 import SwiftUI
 import WebKit
 
-/// The passage being read aloud, so the reader can show and follow it.
-struct NarratedPassage: Equatable {
-    let index: Int
-    let text: String
+/// Lets the reader's owner ask the page about narration.
+@MainActor final class ReaderProxy {
+    fileprivate weak var webView: WKWebView?
+
+    /// The first passage at least partly on screen.
+    func visiblePassage() async -> Int? {
+        let value = try? await webView?.callAsyncJavaScript("return reedNarration.visible()", contentWorld: .defaultClient)
+        return (value as? NSNumber)?.intValue
+    }
+
+    /// Scrolls back to the passage being read and keeps following it.
+    func followNarration() {
+        webView?.evaluateJavaScript("reedNarration.follow()", in: nil, in: .defaultClient) { _ in }
+    }
+}
+
+/// Where the passage being read is, once you've scrolled away from it.
+enum NarrationDirection: String {
+    case up, down
 }
 
 @MainActor struct OfflineWebView {
     let url: URL
     let fontSize: Double
     let progress: Double
-    var narrated: NarratedPassage?
+    /// The article's text as narration reads it, so passages can be found on the page.
+    var passages: [String]?
+    /// The passage being read aloud, if this article is being narrated.
+    var narrating: Int?
+    var proxy: ReaderProxy?
     var onProgress: (Double) -> Void
     var onAddLink: (URL) -> Void
+    var onNarrateFrom: (Int) -> Void = { _ in }
+    var onNarrationAway: (NarrationDirection?) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -46,6 +67,8 @@ struct NarratedPassage: Equatable {
         configuration.userContentController.addUserScript(darkPaper)
         configuration.userContentController.addUserScript(WKUserScript(source: Self.narrationScript, injectionTime: .atDocumentEnd,
                                                                        forMainFrameOnly: true, in: .defaultClient))
+        configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: "narrationJump")
+        configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: "narrationAway")
         #if os(macOS)
         // AppKit's menu hook doesn't say which link was clicked, so the page reports it first.
         configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: "contextLink")
@@ -70,6 +93,7 @@ struct NarratedPassage: Equatable {
         webView.backgroundColor = .clear
         #endif
         webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        proxy?.webView = webView
         return webView
     }
 
@@ -77,11 +101,13 @@ struct NarratedPassage: Equatable {
         coordinator.parent = self
         guard coordinator.loaded else { return }
         coordinator.applyFont(webView)
+        coordinator.applyPassages(webView)
         coordinator.applyNarration(webView)
     }
 
-    /// Finds the element holding each narrated passage by its text, tints it, and scrolls it into view
-    /// unless the reader has scrolled recently. Passages arrive in order, so the search resumes after the last match.
+    /// Matches each passage read aloud to the element holding it, by text and in reading order. While narrating,
+    /// the current one is tinted and kept in view; scrolling away stops that and reports which way it went.
+    /// Tapping a paragraph asks to read from there.
     private static let narrationScript = #"""
     window.reedNarration = (() => {
         const blocks = 'p,h1,h2,h3,h4,h5,h6,li,dt,dd,blockquote,div,section,article,header,footer,aside,main';
@@ -91,46 +117,112 @@ struct NarratedPassage: Equatable {
             :root { --narrating: color-mix(in srgb, var(--accent) 9%, transparent); }
             @media (prefers-color-scheme: dark) { :root { --narrating: color-mix(in srgb, var(--accent) 15%, transparent); } }
             :where(${blocks}) { transition: background-color .5s, box-shadow .5s; }
-            .reed-narrating { background-color: var(--narrating); box-shadow: 0 0 0 .4em var(--narrating); border-radius: .25em; }`;
+            .reed-narrating { background-color: var(--narrating); box-shadow: 0 0 0 .4em var(--narrating); border-radius: .25em; }
+            .reed-narration-active .reed-passage { cursor: pointer; }`;
         document.head.appendChild(style);
         const imagesLoaded = Promise.all(Array.from(document.images).map(img => img.complete ? null
             : new Promise(resolve => { img.addEventListener('load', resolve); img.addEventListener('error', resolve); })));
-        let lastInteraction = 0;
-        for (const type of ['wheel', 'touchmove', 'keydown']) {
-            window.addEventListener(type, () => { lastInteraction = Date.now(); }, {passive: true});
-        }
-        const located = new Map();
-        let cursor = 0, current = null;
-        const locate = (index, text) => {
-            if (located.has(index)) return located.get(index);
-            const target = squash(text);
+
+        let elements = [], firstPassage = new Map();
+        let current = null, currentIndex = null, following = true, leftView = false, reportedAway = '';
+
+        const locate = passages => {
             const all = Array.from(document.body.querySelectorAll(blocks));
-            const contains = element => squash(element.textContent).includes(target);
-            let found = all.slice(cursor).find(contains) ?? all.find(contains);
-            if (!found) return null;
-            for (let child; (child = Array.from(found.children).find(c => c.matches(blocks) && contains(c)));) found = child;
-            cursor = all.indexOf(found);
-            located.set(index, found);
-            return found;
+            const texts = new Map(all.map(element => [element, squash(element.textContent)]));
+            let cursor = 0;
+            return passages.map(text => {
+                const target = squash(text);
+                const contains = element => texts.get(element).includes(target);
+                let at = all.findIndex((element, index) => index >= cursor && contains(element));
+                if (at < 0) at = all.findIndex(contains);
+                if (at < 0) return null;
+                let found = all[at];
+                for (let child; (child = Array.from(found.children).find(c => texts.has(c) && contains(c)));) found = child;
+                cursor = all.indexOf(found);
+                return found;
+            });
         };
+        const inView = element => {
+            const box = element.getBoundingClientRect();
+            return box.bottom > 0 && box.top < innerHeight;
+        };
+        const scrollToCurrent = always => imagesLoaded.then(() => {
+            if (!current) return;
+            const box = current.getBoundingClientRect();
+            if (!always && box.top >= 0 && box.bottom <= innerHeight * 0.75) return;
+            window.scrollTo({top: scrollY + box.top - innerHeight * 0.2, behavior: 'smooth'});
+        });
+        // Tells the app whether the paragraph being read is above or below the screen, or '' when it's in view.
+        const reportAway = () => {
+            let away = '';
+            if (!following && current && !inView(current)) {
+                leftView = true;
+                away = current.getBoundingClientRect().top < 0 ? 'up' : 'down';
+            }
+            if (away === reportedAway) return;
+            reportedAway = away;
+            window.webkit.messageHandlers.narrationAway.postMessage(away);
+        };
+
+        for (const type of ['wheel', 'touchmove', 'keydown']) {
+            window.addEventListener(type, () => { if (currentIndex !== null) { following = false; leftView = false; } }, {passive: true});
+        }
+        window.addEventListener('scroll', () => {
+            if (following || !current) return;
+            // Scrolling back to the paragraph being read picks following up again.
+            if (leftView && inView(current)) following = true;
+            reportAway();
+        }, {passive: true});
+        document.addEventListener('click', event => {
+            if (currentIndex === null || event.target.closest('a, button') || !getSelection().isCollapsed) return;
+            for (let element = event.target; element; element = element.parentElement) {
+                if (!firstPassage.has(element)) continue;
+                const index = firstPassage.get(element);
+                if (index !== currentIndex) window.webkit.messageHandlers.narrationJump.postMessage(index);
+                return;
+            }
+        });
+
         return {
-            show(index, text) {
-                const element = locate(index, text);
-                if (element === current) return;
-                current?.classList.remove('reed-narrating');
-                current = element;
-                if (!element) return;
-                element.classList.add('reed-narrating');
-                imagesLoaded.then(() => {
-                    if (element !== current || Date.now() - lastInteraction < 8000) return;
-                    const box = element.getBoundingClientRect();
-                    if (box.top >= 0 && box.bottom <= innerHeight * 0.75) return;
-                    window.scrollTo({top: scrollY + box.top - innerHeight * 0.2, behavior: 'smooth'});
+            setPassages(passages) {
+                elements = locate(passages);
+                firstPassage = new Map();
+                elements.forEach((element, index) => {
+                    if (!element || firstPassage.has(element)) return;
+                    firstPassage.set(element, index);
+                    element.classList.add('reed-passage');
                 });
             },
+            // The first passage at least partly on screen.
+            visible() {
+                const index = elements.findIndex(element => element && element.getBoundingClientRect().bottom > 4);
+                return index < 0 ? null : index;
+            },
+            show(index) {
+                document.documentElement.classList.add('reed-narration-active');
+                currentIndex = index;
+                const element = elements[index] ?? null;
+                if (element !== current) {
+                    current?.classList.remove('reed-narrating');
+                    current = element;
+                    current?.classList.add('reed-narrating');
+                }
+                if (following) scrollToCurrent(false);
+                reportAway();
+            },
+            // Back to the paragraph being read, following it again.
+            follow() {
+                following = true;
+                reportAway();
+                scrollToCurrent(true);
+            },
             clear() {
+                document.documentElement.classList.remove('reed-narration-active');
                 current?.classList.remove('reed-narrating');
                 current = null;
+                currentIndex = null;
+                following = true;
+                reportAway();
             },
         };
     })();
@@ -141,7 +233,8 @@ struct NarratedPassage: Equatable {
         var loaded = false
         var contextLink: URL?
         private var currentFontSize: Double?
-        private var shownNarration: NarratedPassage?
+        private var sentPassages: [String]?
+        private var shownNarration: Int?
         init(parent: OfflineWebView) { self.parent = parent }
 
         func applyFont(_ webView: WKWebView) {
@@ -150,12 +243,19 @@ struct NarratedPassage: Equatable {
             webView.evaluateJavaScript("document.documentElement.style.setProperty('--font-size', '\(parent.fontSize)px')", in: nil, in: .defaultClient) { _ in }
         }
 
+        func applyPassages(_ webView: WKWebView) {
+            guard let passages = parent.passages, passages != sentPassages else { return }
+            sentPassages = passages
+            shownNarration = nil
+            webView.callAsyncJavaScript("reedNarration.setPassages(passages)", arguments: ["passages": passages],
+                                        in: nil, in: .defaultClient) { _ in }
+        }
+
         func applyNarration(_ webView: WKWebView) {
-            guard shownNarration != parent.narrated else { return }
-            shownNarration = parent.narrated
-            if let passage = parent.narrated {
-                webView.callAsyncJavaScript("reedNarration.show(index, text)", arguments: ["index": passage.index, "text": passage.text],
-                                            in: nil, in: .defaultClient) { _ in }
+            guard sentPassages != nil, shownNarration != parent.narrating else { return }
+            shownNarration = parent.narrating
+            if let index = parent.narrating {
+                webView.callAsyncJavaScript("reedNarration.show(index)", arguments: ["index": index], in: nil, in: .defaultClient) { _ in }
             } else {
                 webView.evaluateJavaScript("reedNarration.clear()", in: nil, in: .defaultClient) { _ in }
             }
@@ -164,8 +264,9 @@ struct NarratedPassage: Equatable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             loaded = true
             applyFont(webView)
+            applyPassages(webView)
             // While narrating, the reader follows the narration rather than returning to where it was left.
-            guard parent.narrated == nil else { applyNarration(webView); return }
+            guard parent.narrating == nil else { applyNarration(webView); return }
             let fraction = min(max(parent.progress, 0), 1)
             webView.evaluateJavaScript("""
             const restore = () => window.scrollTo(0, \(fraction) * Math.max(0, document.documentElement.scrollHeight - window.innerHeight));
@@ -176,6 +277,14 @@ struct NarratedPassage: Equatable {
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             if message.name == "contextLink" {
                 contextLink = (message.body as? String).flatMap(URL.init(string:)).flatMap { Self.isWeb($0) ? $0 : nil }
+                return
+            }
+            if message.name == "narrationJump" {
+                if let index = message.body as? Int { parent.onNarrateFrom(index) }
+                return
+            }
+            if message.name == "narrationAway" {
+                parent.onNarrationAway((message.body as? String).flatMap(NarrationDirection.init(rawValue:)))
                 return
             }
             guard loaded, let number = message.body as? Double else { return }
@@ -238,6 +347,8 @@ extension OfflineWebView: NSViewRepresentable {
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
         nsView.configuration.userContentController.removeScriptMessageHandler(forName: "readingProgress", contentWorld: .defaultClient)
         nsView.configuration.userContentController.removeScriptMessageHandler(forName: "contextLink", contentWorld: .defaultClient)
+        nsView.configuration.userContentController.removeScriptMessageHandler(forName: "narrationJump", contentWorld: .defaultClient)
+        nsView.configuration.userContentController.removeScriptMessageHandler(forName: "narrationAway", contentWorld: .defaultClient)
         nsView.navigationDelegate = nil
     }
 }
@@ -247,6 +358,8 @@ extension OfflineWebView: UIViewRepresentable {
     func updateUIView(_ uiView: WKWebView, context: Context) { update(uiView, coordinator: context.coordinator) }
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
         uiView.configuration.userContentController.removeScriptMessageHandler(forName: "readingProgress", contentWorld: .defaultClient)
+        uiView.configuration.userContentController.removeScriptMessageHandler(forName: "narrationJump", contentWorld: .defaultClient)
+        uiView.configuration.userContentController.removeScriptMessageHandler(forName: "narrationAway", contentWorld: .defaultClient)
         uiView.navigationDelegate = nil
         uiView.uiDelegate = nil
     }

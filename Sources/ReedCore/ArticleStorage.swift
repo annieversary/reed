@@ -60,6 +60,13 @@ public enum ArticleHTML {
             .replacingOccurrences(of: "'", with: "&#39;")
     }
 
+    /// The file name of the first image in a saved reader document. Saved images are referenced by
+    /// bare file names beside the document; anything else isn't one of ours.
+    public static func firstImage(in html: String) -> String? {
+        guard let match = html.firstMatch(of: #/<img\b[^>]*\bsrc="([^"/:]+)"/#.ignoresCase()) else { return nil }
+        return String(match.output.1)
+    }
+
     public static func document(title: String, author: String?, domain: String, minutes: Int, body: String) -> String {
         let byline = [author, "\(minutes) min read"].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         return """

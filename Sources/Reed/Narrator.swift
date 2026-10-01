@@ -2,6 +2,7 @@ import AVFoundation
 import FluidAudio
 import MediaPlayer
 import Observation
+import SwiftUI
 #if SWIFT_PACKAGE
 import ReedCore
 #endif
@@ -27,49 +28,88 @@ final class Narrator {
     private(set) var isLoadingVoice = false
     /// Why synthesis stopped. Passages already made keep playing.
     private(set) var errorMessage: String?
-
-    /// The text of the passage being heard.
-    var currentPassage: String? { articleID != nil && passages.indices.contains(current) ? passages[current] : nil }
+    /// Playback speed. Speech is stretched without changing pitch, so cached passages are reused at any speed.
+    var rate: Float = UserDefaults.standard.object(forKey: "narrationRate") as? Float ?? 1 {
+        didSet {
+            UserDefaults.standard.set(rate, forKey: "narrationRate")
+            timePitch.rate = rate
+            updateNowPlaying()
+        }
+    }
+    static let rates: [Float] = [0.8, 1, 1.2, 1.4, 1.6, 1.8, 2]
 
     /// Playback has reached a passage that isn't synthesized yet.
     var isWaiting: Bool { articleID != nil && scheduled < current && errorMessage == nil }
 
     @ObservationIgnored private var passages: [String] = []
+    @ObservationIgnored private var article: Article?
+    @ObservationIgnored private var library: Library?
     @ObservationIgnored private var directory: URL?
     @ObservationIgnored private var kokoro: KokoroAneManager?
     @ObservationIgnored private var loadingKokoro: Task<KokoroAneManager, any Error>?
     @ObservationIgnored private var generator: Task<Void, Never>?
     @ObservationIgnored private let engine = AVAudioEngine()
     @ObservationIgnored private let player = AVAudioPlayerNode()
+    @ObservationIgnored private let timePitch = AVAudioUnitTimePitch()
     /// Bumped whenever the player is flushed, so callbacks from discarded buffers are ignored.
     @ObservationIgnored private var epoch = 0
+    /// Where each queued passage starts on the player's timeline, which restarts whenever the player is flushed.
+    @ObservationIgnored private var startFrames: [Int: AVAudioFramePosition] = [:]
+    @ObservationIgnored private var nextFrame: AVAudioFramePosition = 0
+    /// How far into the current passage playback began, after seeking.
+    @ObservationIgnored private var startOffset: AVAudioFramePosition = 0
+    /// Lengths of synthesized passages, in seconds.
+    @ObservationIgnored private var durations: [Int: Double] = [:]
+    @ObservationIgnored private var artwork: MPMediaItemArtwork?
 
     private static let lookahead = 3
     nonisolated private static let sampleRate = Double(KokoroAneConstants.sampleRate)
     /// A beat of silence after each passage, so paragraphs don't run together.
     nonisolated private static let pause = 0.35
     nonisolated private static let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
+    /// Kokoro reads at roughly this pace, to estimate passages not synthesized yet.
+    private static let wordsPerSecond = 2.8
+    /// "Previous" restarts the passage rather than going back once it's this far in.
+    private static let restartThreshold = 3.0
+    #if os(iOS)
+    /// iOS aborts apps that use the GPU in the background, so synthesis stays on the Neural Engine and CPU,
+    /// letting it continue while the phone is locked.
+    private static let computeUnits = KokoroAneComputeUnits.aneTailCpu
+    #else
+    private static let computeUnits = KokoroAneComputeUnits.default
+    #endif
 
     init() {
         engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: Self.format)
+        engine.attach(timePitch)
+        engine.connect(player, to: timePitch, format: Self.format)
+        engine.connect(timePitch, to: engine.mainMixerNode, format: Self.format)
+        timePitch.rate = rate
         observeAudioChanges()
         installRemoteCommands()
     }
 
-    func play(_ article: Article, in library: Library) {
-        if article.id == articleID { resume(); return }
-        guard let version = article.contentVersion, let url = library.contentURL(for: article) else { return }
-        let html: String
-        do { html = try String(contentsOf: url, encoding: .utf8) } catch { library.errorMessage = error.localizedDescription; return }
+    /// Reads `article` from `passage`, or from where it was last left off.
+    func play(_ article: Article, from passage: Int? = nil, in library: Library) {
+        if article.id == articleID {
+            if let passage, passage != current { start(at: min(max(passage, 0), passageCount - 1)) } else { resume() }
+            return
+        }
+        guard let version = article.contentVersion, let passages = library.passages(for: article), !passages.isEmpty else {
+            library.errorMessage = ReedError.damagedArticle.localizedDescription
+            return
+        }
         stop()
+        self.article = article
+        self.library = library
         articleID = article.id
         title = article.title
         domain = article.domain
-        passages = ArticleSpeech.passages(title: article.title, html: html)
+        self.passages = passages
         passageCount = passages.count
         directory = library.storage.audioDirectory(article.id, version: version, voice: Self.voice)
-        start(at: 0)
+        artwork = Self.artwork(from: library.leadImage(for: article))
+        start(at: min(max(passage ?? article.narrationPassage ?? 0, 0), passages.count - 1))
     }
 
     func pause() {
@@ -98,6 +138,26 @@ final class Narrator {
         start(at: min(max(current + offset, 0), passageCount - 1))
     }
 
+    /// Back to the start of the passage, or to the one before if it has only just begun.
+    func previous() {
+        guard articleID != nil else { return }
+        if elapsedInPassage > Self.restartThreshold || current == 0 { start(at: current) } else { skip(by: -1) }
+    }
+
+    /// Jumps to a point in the whole article, as when scrubbing on the lock screen.
+    func seek(to time: Double) {
+        guard articleID != nil else { return }
+        var remaining = max(time, 0)
+        for index in 0..<passageCount {
+            let length = duration(of: index)
+            if remaining < length || index == passageCount - 1 {
+                start(at: index, offset: min(remaining, length))
+                return
+            }
+            remaining -= length
+        }
+    }
+
     /// Picks synthesis up again after it stopped, from the passage being heard.
     func retry() {
         guard articleID != nil else { return }
@@ -119,17 +179,26 @@ final class Narrator {
         isPlaying = false
         errorMessage = nil
         directory = nil
+        article = nil
+        library = nil
+        artwork = nil
+        durations = [:]
+        startFrames = [:]
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif
         updateNowPlaying()
     }
 
-    private func start(at index: Int) {
+    private func start(at index: Int, offset: Double = 0) {
         epoch += 1
         player.stop()
         current = index
         scheduled = index - 1
+        startFrames = [:]
+        nextFrame = 0
+        startOffset = AVAudioFramePosition(offset * Self.sampleRate)
+        rememberPosition()
         do {
             #if os(iOS)
             let session = AVAudioSession.sharedInstance()
@@ -153,20 +222,68 @@ final class Narrator {
     private func scheduleReady() {
         guard let directory else { return }
         while scheduled + 1 < passageCount, scheduled + 1 < current + Self.lookahead,
-              let buffer = Self.buffer(at: Self.audioURL(scheduled + 1, in: directory)) {
+              var buffer = Self.buffer(at: Self.audioURL(scheduled + 1, in: directory)) {
             scheduled += 1
             let index = scheduled, epoch = epoch
+            durations[index] = Double(buffer.frameLength) / Self.sampleRate
+            var skipped: AVAudioFramePosition = 0
+            if index == current, startOffset > 0, let rest = Self.slice(buffer, from: AVAudioFrameCount(startOffset)) {
+                buffer = rest
+                skipped = startOffset
+            }
+            // The passage being waited for plays as soon as it's queued, wherever the player's clock has got to.
+            let begins = index == current ? max(nextFrame, playerFrame ?? 0) : nextFrame
+            startFrames[index] = begins - skipped
+            nextFrame = begins + AVAudioFramePosition(buffer.frameLength)
             player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
                 Task { @MainActor in self?.finished(index, epoch: epoch) }
             }
+            if index == current { updateNowPlaying() }
         }
+    }
+
+    private var playerFrame: AVAudioFramePosition? {
+        guard let nodeTime = player.lastRenderTime, let time = player.playerTime(forNodeTime: nodeTime) else { return nil }
+        return time.sampleTime
+    }
+
+    private var elapsedInPassage: Double {
+        guard let begins = startFrames[current], let now = playerFrame else { return Double(startOffset) / Self.sampleRate }
+        return max(0, Double(now - begins) / Self.sampleRate)
+    }
+
+    /// Exact once a passage is synthesized, estimated from its words until then.
+    private func duration(of index: Int) -> Double {
+        if let known = durations[index] { return known }
+        if let directory, let file = try? AVAudioFile(forReading: Self.audioURL(index, in: directory)) {
+            durations[index] = Double(file.length) / file.fileFormat.sampleRate
+            return durations[index]!
+        }
+        return Double(passages[index].split(whereSeparator: \.isWhitespace).count) / Self.wordsPerSecond + Self.pause
     }
 
     private func finished(_ index: Int, epoch: Int) {
         guard epoch == self.epoch, index == current else { return }
-        if current + 1 >= passageCount { stop(); return }
+        guard current + 1 < passageCount else {
+            if let article, let library {
+                article.narrationPassage = nil
+                library.updateProgress(article, value: 1)
+            }
+            stop()
+            return
+        }
         current += 1
+        startOffset = 0
+        rememberPosition()
         scheduleReady()
+        updateNowPlaying()
+    }
+
+    /// Kept on the article, so listening resumes there next time, even after relaunching.
+    private func rememberPosition() {
+        guard let article, let library else { return }
+        article.narrationPassage = current
+        library.save()
     }
 
     private func generate(from start: Int) {
@@ -198,7 +315,7 @@ final class Narrator {
     private func loadKokoro() async throws -> KokoroAneManager {
         if let kokoro { return kokoro }
         let loading = loadingKokoro ?? Task {
-            let manager = KokoroAneManager()
+            let manager = KokoroAneManager(computeUnits: Self.computeUnits)
             try await manager.initialize()
             return manager
         }
@@ -245,6 +362,26 @@ final class Narrator {
         }
     }
 
+    nonisolated private static func slice(_ buffer: AVAudioPCMBuffer, from start: AVAudioFrameCount) -> AVAudioPCMBuffer? {
+        guard start < buffer.frameLength,
+              let rest = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameLength - start) else { return nil }
+        rest.frameLength = rest.frameCapacity
+        rest.floatChannelData![0].update(from: buffer.floatChannelData![0] + Int(start), count: Int(rest.frameLength))
+        return rest
+    }
+
+    /// The article's first image, or Reed's own artwork. Built outside the main actor, since the system
+    /// asks for the image from a background queue.
+    nonisolated private static func artwork(from image: URL?) -> MPMediaItemArtwork? {
+        #if os(iOS)
+        guard let image = image.flatMap({ UIImage(contentsOfFile: $0.path) }) ?? UIImage(named: "NowPlayingArtwork") else { return nil }
+        #else
+        guard let image = image.flatMap(NSImage.init(contentsOf:)) ?? NSImage(named: "NowPlayingArtwork") else { return nil }
+        #endif
+        nonisolated(unsafe) let artwork = image
+        return MPMediaItemArtwork(boundsSize: image.size) { _ in artwork }
+    }
+
     private func observeAudioChanges() {
         let center = NotificationCenter.default
         // The engine stops itself when the output device changes; carry on from the same passage.
@@ -282,13 +419,18 @@ final class Narrator {
             (commands.pauseCommand, { $0.pause() }),
             (commands.togglePlayPauseCommand, { $0.togglePlayback() }),
             (commands.nextTrackCommand, { $0.skip(by: 1) }),
-            (commands.previousTrackCommand, { $0.skip(by: -1) }),
+            (commands.previousTrackCommand, { $0.previous() }),
         ]
         for (command, action) in actions {
             command.addTarget { [weak self] _ in
                 Task { @MainActor in if let self { action(self) } }
                 return .success
             }
+        }
+        commands.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let time = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime else { return .commandFailed }
+            Task { @MainActor in self?.seek(to: time) }
+            return .success
         }
     }
 
@@ -301,8 +443,15 @@ final class Narrator {
             #endif
             return
         }
-        center.nowPlayingInfo = [MPMediaItemPropertyTitle: title, MPMediaItemPropertyArtist: domain,
-                                 MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0]
+        let elapsed = (0..<current).reduce(0) { $0 + duration(of: $1) } + elapsedInPassage
+        let total = (0..<passageCount).reduce(0) { $0 + duration(of: $1) }
+        var info: [String: Any] = [MPMediaItemPropertyTitle: title, MPMediaItemPropertyArtist: domain,
+                                   MPMediaItemPropertyPlaybackDuration: total,
+                                   MPNowPlayingInfoPropertyElapsedPlaybackTime: min(elapsed, total),
+                                   MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? Double(rate) : 0.0,
+                                   MPNowPlayingInfoPropertyDefaultPlaybackRate: Double(rate)]
+        if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
+        center.nowPlayingInfo = info
         #if os(macOS)
         center.playbackState = isPlaying ? .playing : .paused
         #endif

@@ -157,6 +157,12 @@ import Testing
             == ["A Title", "Fish & chips", "First line continues here.", "One", "Two", "lines", "Quoted"])
 }
 
+@Test func leadImageIsTheFirstSavedImage() {
+    #expect(ArticleHTML.firstImage(in: #"<p>Text</p><figure><IMG alt="a" src="image-2"></figure><img src="image-0">"#) == "image-2")
+    #expect(ArticleHTML.firstImage(in: #"<img src="https://example.com/x.png"><img src="../etc/passwd">"#) == nil)
+    #expect(ArticleHTML.firstImage(in: "<p>No images</p>") == nil)
+}
+
 @Test func searchMatchesBodiesByPrefixIgnoringAccents() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
