@@ -32,6 +32,8 @@ struct LibraryView: View {
     @State private var showingAdd = false
     @State private var articleToDelete: Article?
     @State private var visibility = NavigationSplitViewVisibility.all
+    @State private var searchRevealed = false
+    @FocusState private var searchFocused: Bool
 
     private var visibleArticles: [Article] {
         library.articles.filter {
@@ -108,30 +110,23 @@ struct LibraryView: View {
                 } header: { Text("LIBRARY").font(.system(size: 10, weight: .medium)).tracking(1.7) }
             }
             .listStyle(.sidebar)
-            Spacer(minLength: 0)
-            VStack(alignment: .leading, spacing: 7) {
-                Label("A little less online.", systemImage: "sun.horizon")
-                    .font(.system(size: 11, weight: .medium))
-                Text("Good things, saved for later.")
-                    .font(.system(size: 10)).foregroundStyle(.tertiary)
-            }
-            .foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-            .padding(22)
         }
         .navigationTitle("Reed")
         #if os(macOS)
-        .hideMacTitle()
+        .toolbar(removing: .title)
+        #else
+        .toolbar(.hidden, for: .navigationBar)
         #endif
     }
 
     private var articleList: some View {
         VStack(spacing: 0) {
+            #if os(macOS)
             VStack(alignment: .leading, spacing: 17) {
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text((filter ?? .all).rawValue).font(.system(size: 26, design: .serif))
-                        Text("\(visibleArticles.count) \(visibleArticles.count == 1 ? "article" : "articles") · your own pace")
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                        Text(articleCount).font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button { showingAdd = true } label: {
@@ -140,67 +135,103 @@ struct LibraryView: View {
                     .buttonStyle(.bordered).clipShape(RoundedRectangle(cornerRadius: 9))
                     .help("Save an article (⌘N)").accessibilityLabel("Save an article")
                 }
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.tertiary)
-                    TextField("Search your library", text: $query).textFieldStyle(.plain)
-                        .font(.system(size: 12))
-                    if !query.isEmpty {
-                        Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                            .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Clear search")
-                    }
-                }
-                .padding(10).background(ReedStyle.warm, in: RoundedRectangle(cornerRadius: 8))
+                searchField
             }
             .padding(20)
             Divider()
-            if visibleArticles.isEmpty {
-                VStack(spacing: 14) {
-                    Image(systemName: query.isEmpty ? "tray" : "magnifyingglass").font(.system(size: 30, weight: .ultraLight))
-                    Text(query.isEmpty ? "Room for a good read." : "No articles found.").font(.system(size: 18, design: .serif))
-                    Text(query.isEmpty ? "Save something you'd like to\ncome back to." : "Try another title, author, or website.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    if query.isEmpty {
-                        Button("Save an article") { showingAdd = true }.buttonStyle(.bordered)
-                    }
+            #endif
+            List(selection: $selectedID) {
+                #if os(iOS)
+                if searchVisible {
+                    searchField
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
                 }
-                .foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(selection: $selectedID) {
-                    ForEach(visibleArticles) { article in
-                        NavigationLink(value: article.id) { ArticleRow(article: article) }
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
-                            .contextMenu {
-                                Button(article.isFavorite ? "Remove Favorite" : "Favorite", systemImage: "star") { library.toggleFavorite(article) }
-                                Button(article.isRead ? "Mark Unread" : "Mark Finished", systemImage: "checkmark.circle") { library.toggleRead(article) }
-                                if article.state == .failed || article.state == .partial {
-                                    Button("Retry Download", systemImage: "arrow.clockwise") { library.retry(article) }
-                                }
-                                Divider()
-                                Button("Delete", systemImage: "trash", role: .destructive) { articleToDelete = article }
-                                    .disabled(article.state == .downloading)
+                Text(articleCount).font(.system(size: 11)).foregroundStyle(.secondary)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+                #endif
+                ForEach(visibleArticles) { article in
+                    NavigationLink(value: article.id) { ArticleRow(article: article) }
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                        .contextMenu {
+                            Button(article.isFavorite ? "Remove Favorite" : "Favorite", systemImage: "star") { library.toggleFavorite(article) }
+                            Button(article.isRead ? "Mark Unread" : "Mark Finished", systemImage: "checkmark.circle") { library.toggleRead(article) }
+                            if article.state == .failed || article.state == .partial {
+                                Button("Retry Download", systemImage: "arrow.clockwise") { library.retry(article) }
                             }
-                    }
+                            Divider()
+                            Button("Delete", systemImage: "trash", role: .destructive) { articleToDelete = article }
+                                .disabled(article.state == .downloading)
+                        }
                 }
-                .listStyle(.plain)
             }
-            Divider()
-            HStack(spacing: 7) {
-                if let activity = library.activity {
+            .listStyle(.plain)
+            #if os(iOS)
+            .environment(\.defaultMinListRowHeight, 0)
+            .onPullDown {
+                withAnimation { searchRevealed = true }
+                searchFocused = true
+            }
+            .onChange(of: searchFocused) { _, focused in
+                if !focused && query.isEmpty { withAnimation { searchRevealed = false } }
+            }
+            #endif
+            .overlay {
+                if visibleArticles.isEmpty {
+                    Text(query.isEmpty ? "No articles saved." : "No articles found.").font(.system(size: 18, design: .serif))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let activity = library.activity {
+                Divider()
+                HStack(spacing: 7) {
                     ProgressView().controlSize(.mini)
                     Text(activity).lineLimit(1)
-                } else {
-                    Image(systemName: "internaldrive")
-                    Text("\(library.articles.filter { $0.state.isReadable }.count) available offline")
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+                .font(.system(size: 10)).foregroundStyle(.secondary).padding(14)
             }
-            .font(.system(size: 10)).foregroundStyle(.secondary).padding(14)
         }
         .navigationTitle((filter ?? .all).rawValue)
         #if os(macOS)
-        .hideMacTitle()
+        .toolbar(removing: .title)
+        #else
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text((filter ?? .all).rawValue).font(.system(size: 19, design: .serif))
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button("Save an article", systemImage: "plus") { showingAdd = true }
+            }
+        }
         #endif
+    }
+
+    #if os(iOS)
+    /// Search hides until a pull-down reveals it; without scroll geometry (before iOS 18) it always shows.
+    private var searchVisible: Bool {
+        if #available(iOS 18.0, *) { searchRevealed || !query.isEmpty } else { true }
+    }
+    #endif
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.tertiary)
+            TextField("Search", text: $query).textFieldStyle(.plain)
+                .font(.system(size: 12)).focused($searchFocused)
+            if !query.isEmpty {
+                Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Clear search")
+            }
+        }
+        .padding(10).background(ReedStyle.warm, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var articleCount: String {
+        "\(visibleArticles.count) \(visibleArticles.count == 1 ? "article" : "articles")"
     }
 
     private var readerPlaceholder: some View {
@@ -225,11 +256,17 @@ struct LibraryView: View {
     }
 }
 
-#if os(macOS)
+#if os(iOS)
 private extension View {
-    @ViewBuilder func hideMacTitle() -> some View {
-        if #available(macOS 15.0, *) { toolbar(removing: .title) }
-        else { self }
+    /// Runs `action` when the user drags the scroll view past its top edge. Does nothing before iOS 18.
+    @ViewBuilder func onPullDown(perform action: @escaping () -> Void) -> some View {
+        if #available(iOS 18.0, *) {
+            onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top < -60 } action: { _, pulled in
+                if pulled { action() }
+            }
+        } else {
+            self
+        }
     }
 }
 #endif
@@ -239,7 +276,7 @@ private struct ArticleRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
-                Text(article.domain.uppercased()).font(.system(size: 9, weight: .semibold)).tracking(1.1)
+                Text(article.domain.lowercased()).font(.system(size: 9, weight: .semibold)).tracking(1.1)
                 Spacer()
                 if article.isFavorite { Image(systemName: "star.fill").font(.system(size: 9)) }
             }.foregroundStyle(ReedStyle.accent)

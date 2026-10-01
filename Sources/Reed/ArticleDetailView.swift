@@ -15,9 +15,10 @@ struct ArticleDetailView: View {
             HStack(spacing: 16) {
                 Text(article.domain).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 Spacer()
-                readerControls
+                if library.contentURL(for: article) != nil { progressLabel }
+                readerMenu
             }
-            .buttonStyle(.plain).padding(.horizontal, 22).padding(.vertical, 15)
+            .padding(.horizontal, 22).padding(.vertical, 15)
             Divider()
             #endif
             if let url = library.contentURL(for: article) {
@@ -34,13 +35,7 @@ struct ArticleDetailView: View {
                     library.updateProgress(article, value: value)
                 }
                 .id(article.id.uuidString + (article.contentVersion ?? ""))
-                HStack(spacing: 12) {
-                    Label("Saved on this device", systemImage: "checkmark.shield")
-                    Spacer()
-                    Text(article.isRead ? "Finished" : "\(Int(article.progress * 100))% read").monospacedDigit()
-                }
-                .font(.system(size: 10)).foregroundStyle(.secondary).padding(.horizontal, 22).padding(.vertical, 11)
-                .background(ReedStyle.warm)
+                .ignoresSafeArea(edges: .bottom)
             } else {
                 VStack(spacing: 18) {
                     if article.state == .downloading || article.state == .queued {
@@ -63,25 +58,47 @@ struct ArticleDetailView: View {
         }
         .navigationTitle("")
         #if os(iOS)
-        .toolbar { ToolbarItemGroup(placement: .primaryAction) { readerControls } }
+        .toolbar {
+            if library.contentURL(for: article) != nil { ToolbarItem(placement: .principal) { progressLabel } }
+            ToolbarItem(placement: .primaryAction) { readerMenu }
+        }
         #endif
         .onDisappear { library.save() }
     }
 
-    @ViewBuilder private var readerControls: some View {
+    private var progressLabel: some View {
+        Text(article.isRead ? "Finished" : "\(Int(article.progress * 100))%")
+            .font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+    }
+
+    private var readerMenu: some View {
         Menu {
-            Button("Larger text", systemImage: "textformat.size.larger") { fontSize = min(28, fontSize + 1) }
-            Button("Smaller text", systemImage: "textformat.size.smaller") { fontSize = max(14, fontSize - 1) }
-            Button("Reset text size") { fontSize = 19 }
-        } label: { Image(systemName: "textformat.size") }
-        .help("Reader text size").accessibilityLabel("Reader text size")
-        Button { library.toggleFavorite(article) } label: { Image(systemName: article.isFavorite ? "star.fill" : "star") }
-            .help(article.isFavorite ? "Remove favorite" : "Favorite").accessibilityLabel("Toggle favorite")
-        Button { library.toggleRead(article) } label: { Image(systemName: article.isRead ? "checkmark.circle.fill" : "checkmark.circle") }
-            .help(article.isRead ? "Mark unread" : "Mark finished").accessibilityLabel("Toggle finished")
-        if let url = article.sourceURL {
-            Button { openURL(url) } label: { Image(systemName: "arrow.up.right.square") }
-                .help("Open original in your browser").accessibilityLabel("Open original")
-        }
+            Button(article.isFavorite ? "Remove Favorite" : "Favorite", systemImage: article.isFavorite ? "star.slash" : "star") {
+                library.toggleFavorite(article)
+            }
+            Button(article.isRead ? "Mark Unread" : "Mark Finished", systemImage: article.isRead ? "circle" : "checkmark.circle") {
+                library.toggleRead(article)
+            }
+            #if os(iOS)
+            ControlGroup { textSizeButtons }.menuActionDismissBehavior(.disabled)
+            #else
+            Menu("Text Size", systemImage: "textformat.size") { textSizeButtons }
+            #endif
+            if let url = article.sourceURL {
+                Divider()
+                Button("Open Original", systemImage: "safari") { openURL(url) }
+            }
+        } label: { Label("More", systemImage: "ellipsis") }
+        .labelStyle(.iconOnly)
+        #if os(macOS)
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        #endif
+        .help("More")
+    }
+
+    @ViewBuilder private var textSizeButtons: some View {
+        Button("Smaller", systemImage: "textformat.size.smaller") { fontSize = max(14, fontSize - 1) }
+        Button("Reset", systemImage: "textformat.size") { fontSize = 19 }
+        Button("Larger", systemImage: "textformat.size.larger") { fontSize = min(28, fontSize + 1) }
     }
 }

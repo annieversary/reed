@@ -15,13 +15,17 @@ import WebKit
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: "readingProgress")
         let script = WKUserScript(source: """
-        let timer;
+        // Throttled rather than debounced, so progress keeps updating during one long scroll.
+        let lastReport = 0, trailing;
+        const report = () => {
+            lastReport = Date.now();
+            const distance = document.documentElement.scrollHeight - window.innerHeight;
+            if (distance > 0) window.webkit.messageHandlers.readingProgress.postMessage(window.scrollY / distance);
+        };
         window.addEventListener('scroll', () => {
-            clearTimeout(timer);
-            timer = setTimeout(() => {
-                const distance = document.documentElement.scrollHeight - window.innerHeight;
-                if (distance > 0) window.webkit.messageHandlers.readingProgress.postMessage(window.scrollY / distance);
-            }, 180);
+            clearTimeout(trailing);
+            if (Date.now() - lastReport >= 150) report();
+            else trailing = setTimeout(report, 150);
         }, {passive:true});
         """, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient)
         configuration.userContentController.addUserScript(script)

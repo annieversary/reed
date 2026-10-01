@@ -78,11 +78,10 @@ public enum ArticleHTML {
         code { font:0.85em ui-monospace,monospace; } table { display:block; max-width:100%; overflow:auto; border-collapse:collapse; }
         th,td { border:1px solid var(--muted); padding:8px; } hr { border:0; border-top:1px solid var(--muted); margin:2em 0; }
         .missing-image { color:var(--muted); font:13px -apple-system,sans-serif; }
-        footer { margin-top:60px; color:var(--muted); font:11px -apple-system,sans-serif; letter-spacing:1.4px; text-transform:uppercase; }
         @media(max-width:500px) { body { padding:32px 24px 100px; } h1 { font-size:1.85em; } }
         </style></head><body><header><div class="source">\(escape(domain))</div>
         <h1>\(escape(title))</h1><div class="byline">\(escape(byline))</div></header>
-        <main>\(body)</main><footer>Saved in Reed · Yours to read offline</footer></body></html>
+        <main>\(body)</main></body></html>
         """
     }
 }
