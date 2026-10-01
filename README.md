@@ -14,7 +14,7 @@ xcodebuild -project Reed.xcodeproj -scheme Reed -configuration Debug \
 open build/Build/Products/Debug/Reed.app
 ```
 
-Requires macOS 15 or later and a Swift 6 toolchain. The same Xcode target supports iOS 17 or later. iOS simulator testing is intentionally deferred.
+Requires macOS 15 or later, a Swift 6 toolchain, and an Apple Development certificate for team `KR4TU3GTWZ` in the keychain (the App Group needs team signing; no provisioning profile or network is involved). The same Xcode target supports iOS 17 or later. iOS simulator testing is intentionally deferred.
 
 ## Run on an iPhone
 
@@ -28,6 +28,7 @@ Builds for `generic/platform=iOS`, then installs and launches over `devicectl`. 
 ## What works
 
 - Paste a URL, or press Command-N on Mac to save an article.
+- Share a link to Reed from Safari or any other app's share sheet.
 - Extract readable HTML using bundled Mozilla Readability, sanitize with DOMPurify, and download images.
 - Read saved articles in a local WebKit reader with light/dark appearance and adjustable type.
 - Search titles, authors, websites, and excerpts; favorite articles and mark them finished.
@@ -37,6 +38,12 @@ Builds for `generic/platform=iOS`, then installs and launches over `devicectl`. 
 - Deduplicate normalized URLs without stripping meaningful query parameters.
 
 The library starts empty. Test fixtures are kept separate from the user's library.
+
+## Sharing to Reed
+
+The `ReedShare` extension (`Sources/ReedShare`) appears in the share sheet for a single web link. It doesn't download anything, since extensions are short-lived and memory-capped. It writes the link as a file into an inbox in the App Group container (`group.town.versary.reed` on iOS, `KR4TU3GTWZ.town.versary.reed` on macOS) and posts a Darwin notification. Reed adds inbox links to the library on launch, when it becomes active, and immediately on that notification if it's running. Downloads then proceed as usual, so a shared article is saved the next time Reed is open.
+
+On macOS, enable the extension once under System Settings → General → Login Items & Extensions → Sharing (or `pluginkit -e use -i town.versary.reed.share`). On iOS it shows in the share sheet's app row, or under More.
 
 ## Storage and architecture
 
@@ -71,10 +78,10 @@ After adding source or resource files, run `python3 scripts/generate_project.py`
 
 ## Prototype boundaries
 
-- Keep the app open while saving. The queue is persistent, but this version does not implement iOS background transfers or a Share Extension.
+- Keep the app open while saving. The queue is persistent, but this version does not implement iOS background transfers, so shared links wait until Reed is opened.
 - Public HTML articles are supported. Pages that require JavaScript rendering, login, or a paywall may fail extraction or only expose a preview; Reed does not bypass those restrictions.
 - PDFs, video, audio, multi-page articles, accounts, cloud sync, tags, and full-text search are not implemented.
-- The Mac development target is not sandboxed or notarized. App Store packaging, app icons, distribution signing, and iPhone interaction testing are follow-up work.
+- The Mac app is not sandboxed or notarized; only its share extension is sandboxed. App Store packaging, app icons, distribution signing, and iPhone interaction testing are follow-up work.
 - HTTP URLs are allowed for user-selected article sources. The reader itself blocks remote loading.
 
 ## Third-party code

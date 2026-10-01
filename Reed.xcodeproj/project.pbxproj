@@ -298,6 +298,49 @@
 			<key>fileRef</key>
 			<string>169F6D550C9F9B8572CBBC11</string>
 		</dict>
+		<key>D6B3E48F2D5F9A78B16590C0</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/ShareInbox.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>E02CFC5074F0F3AE2CC43C5B</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>D6B3E48F2D5F9A78B16590C0</string>
+		</dict>
+		<key>7C8C097A086CE180CD14C39A</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>D6B3E48F2D5F9A78B16590C0</string>
+		</dict>
+		<key>F1EEAC1AABD95DE2505EEBCD</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedShare/ShareViewController.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>E07B610C7FEFA21A0F18221D</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>F1EEAC1AABD95DE2505EEBCD</string>
+		</dict>
 		<key>38A007151ABE87CC01A5B6E9</key>
 		<dict>
 			<key>isa</key>
@@ -309,6 +352,17 @@
 			<key>sourceTree</key>
 			<string>BUILT_PRODUCTS_DIR</string>
 		</dict>
+		<key>69AC8403E38E6A43010E8F91</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>explicitFileType</key>
+			<string>wrapper.app-extension</string>
+			<key>path</key>
+			<string>ReedShare.appex</string>
+			<key>sourceTree</key>
+			<string>BUILT_PRODUCTS_DIR</string>
+		</dict>
 		<key>FBDC4F23F93125BBEEAE800C</key>
 		<dict>
 			<key>isa</key>
@@ -316,6 +370,7 @@
 			<key>children</key>
 			<array>
 				<string>38A007151ABE87CC01A5B6E9</string>
+				<string>69AC8403E38E6A43010E8F91</string>
 			</array>
 			<key>name</key>
 			<string>Products</string>
@@ -344,6 +399,8 @@
 				<string>F0BA769FF6C009D39AF6272F</string>
 				<string>794BE653DD175AFB4AD9B138</string>
 				<string>169F6D550C9F9B8572CBBC11</string>
+				<string>D6B3E48F2D5F9A78B16590C0</string>
+				<string>F1EEAC1AABD95DE2505EEBCD</string>
 				<string>FBDC4F23F93125BBEEAE800C</string>
 			</array>
 			<key>sourceTree</key>
@@ -368,6 +425,7 @@
 				<string>749B8CD50EA225F8B99ED603</string>
 				<string>3483221D2BB5C1A5B6A79D8D</string>
 				<string>E990D3D09BB177A7DFFE6EEE</string>
+				<string>E02CFC5074F0F3AE2CC43C5B</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
 			<integer>0</integer>
@@ -393,6 +451,75 @@
 		<dict>
 			<key>isa</key>
 			<string>PBXFrameworksBuildPhase</string>
+			<key>buildActionMask</key>
+			<integer>2147483647</integer>
+			<key>files</key>
+			<array/>
+			<key>runOnlyForDeploymentPostprocessing</key>
+			<integer>0</integer>
+		</dict>
+		<key>153B6796E54958E7F63CC60D</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>69AC8403E38E6A43010E8F91</string>
+			<key>settings</key>
+			<dict>
+				<key>ATTRIBUTES</key>
+				<array>
+					<string>RemoveHeadersOnCopy</string>
+				</array>
+			</dict>
+		</dict>
+		<key>CFFF27C96089B93150F3553B</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXCopyFilesBuildPhase</string>
+			<key>buildActionMask</key>
+			<integer>2147483647</integer>
+			<key>dstPath</key>
+			<string></string>
+			<key>dstSubfolderSpec</key>
+			<integer>13</integer>
+			<key>files</key>
+			<array>
+				<string>153B6796E54958E7F63CC60D</string>
+			</array>
+			<key>name</key>
+			<string>Embed Foundation Extensions</string>
+			<key>runOnlyForDeploymentPostprocessing</key>
+			<integer>0</integer>
+		</dict>
+		<key>E6E919EC4BB99E5DDFF7892C</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXSourcesBuildPhase</string>
+			<key>buildActionMask</key>
+			<integer>2147483647</integer>
+			<key>files</key>
+			<array>
+				<string>7C8C097A086CE180CD14C39A</string>
+				<string>E07B610C7FEFA21A0F18221D</string>
+			</array>
+			<key>runOnlyForDeploymentPostprocessing</key>
+			<integer>0</integer>
+		</dict>
+		<key>3C982B01884B80A03489D212</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFrameworksBuildPhase</string>
+			<key>buildActionMask</key>
+			<integer>2147483647</integer>
+			<key>files</key>
+			<array/>
+			<key>runOnlyForDeploymentPostprocessing</key>
+			<integer>0</integer>
+		</dict>
+		<key>C6D1DB24FEF5A86EBDB66EAB</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXResourcesBuildPhase</string>
 			<key>buildActionMask</key>
 			<integer>2147483647</integer>
 			<key>files</key>
@@ -448,12 +575,18 @@
 				<string>NO</string>
 				<key>INFOPLIST_FILE[sdk=macosx*]</key>
 				<string>Info-macOS.plist</string>
+				<key>CODE_SIGN_ENTITLEMENTS</key>
+				<string>Reed-iOS.entitlements</string>
+				<key>CODE_SIGN_ENTITLEMENTS[sdk=macosx*]</key>
+				<string>Reed-macOS.entitlements</string>
 				<key>CODE_SIGN_STYLE</key>
 				<string>Automatic</string>
-				<key>CODE_SIGN_IDENTITY[sdk=macosx*]</key>
-				<string>-</string>
-				<key>DEVELOPMENT_TEAM[sdk=iphoneos*]</key>
+				<key>DEVELOPMENT_TEAM</key>
 				<string>KR4TU3GTWZ</string>
+				<key>CODE_SIGN_STYLE[sdk=macosx*]</key>
+				<string>Manual</string>
+				<key>CODE_SIGN_IDENTITY[sdk=macosx*]</key>
+				<string>Apple Development</string>
 				<key>TARGETED_DEVICE_FAMILY</key>
 				<string>1,2</string>
 				<key>CURRENT_PROJECT_VERSION</key>
@@ -466,6 +599,50 @@
 				<string>YES</string>
 				<key>LD_RUNPATH_SEARCH_PATHS</key>
 				<string>$(inherited) @executable_path/../Frameworks @executable_path/Frameworks</string>
+			</dict>
+		</dict>
+		<key>0D8C2B4F542FF57BC4D485A4</key>
+		<dict>
+			<key>isa</key>
+			<string>XCBuildConfiguration</string>
+			<key>name</key>
+			<string>Debug</string>
+			<key>buildSettings</key>
+			<dict>
+				<key>PRODUCT_NAME</key>
+				<string>ReedShare</string>
+				<key>PRODUCT_BUNDLE_IDENTIFIER</key>
+				<string>town.versary.reed.share</string>
+				<key>INFOPLIST_FILE</key>
+				<string>Sources/ReedShare/Info.plist</string>
+				<key>GENERATE_INFOPLIST_FILE</key>
+				<string>NO</string>
+				<key>CODE_SIGN_ENTITLEMENTS</key>
+				<string>Reed-iOS.entitlements</string>
+				<key>CODE_SIGN_ENTITLEMENTS[sdk=macosx*]</key>
+				<string>Sources/ReedShare/ReedShare-macOS.entitlements</string>
+				<key>CODE_SIGN_STYLE</key>
+				<string>Automatic</string>
+				<key>DEVELOPMENT_TEAM</key>
+				<string>KR4TU3GTWZ</string>
+				<key>CODE_SIGN_STYLE[sdk=macosx*]</key>
+				<string>Manual</string>
+				<key>CODE_SIGN_IDENTITY[sdk=macosx*]</key>
+				<string>Apple Development</string>
+				<key>TARGETED_DEVICE_FAMILY</key>
+				<string>1,2</string>
+				<key>CURRENT_PROJECT_VERSION</key>
+				<string>1</string>
+				<key>MARKETING_VERSION</key>
+				<string>0.1.0</string>
+				<key>APPLICATION_EXTENSION_API_ONLY</key>
+				<string>YES</string>
+				<key>SKIP_INSTALL</key>
+				<string>YES</string>
+				<key>LD_RUNPATH_SEARCH_PATHS</key>
+				<string>$(inherited) @executable_path/../Frameworks @executable_path/../../Frameworks</string>
+				<key>LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]</key>
+				<string>$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks</string>
 			</dict>
 		</dict>
 		<key>5283471FF90C511CFE244FFF</key>
@@ -516,12 +693,18 @@
 				<string>NO</string>
 				<key>INFOPLIST_FILE[sdk=macosx*]</key>
 				<string>Info-macOS.plist</string>
+				<key>CODE_SIGN_ENTITLEMENTS</key>
+				<string>Reed-iOS.entitlements</string>
+				<key>CODE_SIGN_ENTITLEMENTS[sdk=macosx*]</key>
+				<string>Reed-macOS.entitlements</string>
 				<key>CODE_SIGN_STYLE</key>
 				<string>Automatic</string>
-				<key>CODE_SIGN_IDENTITY[sdk=macosx*]</key>
-				<string>-</string>
-				<key>DEVELOPMENT_TEAM[sdk=iphoneos*]</key>
+				<key>DEVELOPMENT_TEAM</key>
 				<string>KR4TU3GTWZ</string>
+				<key>CODE_SIGN_STYLE[sdk=macosx*]</key>
+				<string>Manual</string>
+				<key>CODE_SIGN_IDENTITY[sdk=macosx*]</key>
+				<string>Apple Development</string>
 				<key>TARGETED_DEVICE_FAMILY</key>
 				<string>1,2</string>
 				<key>CURRENT_PROJECT_VERSION</key>
@@ -534,6 +717,50 @@
 				<string>YES</string>
 				<key>LD_RUNPATH_SEARCH_PATHS</key>
 				<string>$(inherited) @executable_path/../Frameworks @executable_path/Frameworks</string>
+			</dict>
+		</dict>
+		<key>BEF7C00F2B758A84B5C079A5</key>
+		<dict>
+			<key>isa</key>
+			<string>XCBuildConfiguration</string>
+			<key>name</key>
+			<string>Release</string>
+			<key>buildSettings</key>
+			<dict>
+				<key>PRODUCT_NAME</key>
+				<string>ReedShare</string>
+				<key>PRODUCT_BUNDLE_IDENTIFIER</key>
+				<string>town.versary.reed.share</string>
+				<key>INFOPLIST_FILE</key>
+				<string>Sources/ReedShare/Info.plist</string>
+				<key>GENERATE_INFOPLIST_FILE</key>
+				<string>NO</string>
+				<key>CODE_SIGN_ENTITLEMENTS</key>
+				<string>Reed-iOS.entitlements</string>
+				<key>CODE_SIGN_ENTITLEMENTS[sdk=macosx*]</key>
+				<string>Sources/ReedShare/ReedShare-macOS.entitlements</string>
+				<key>CODE_SIGN_STYLE</key>
+				<string>Automatic</string>
+				<key>DEVELOPMENT_TEAM</key>
+				<string>KR4TU3GTWZ</string>
+				<key>CODE_SIGN_STYLE[sdk=macosx*]</key>
+				<string>Manual</string>
+				<key>CODE_SIGN_IDENTITY[sdk=macosx*]</key>
+				<string>Apple Development</string>
+				<key>TARGETED_DEVICE_FAMILY</key>
+				<string>1,2</string>
+				<key>CURRENT_PROJECT_VERSION</key>
+				<string>1</string>
+				<key>MARKETING_VERSION</key>
+				<string>0.1.0</string>
+				<key>APPLICATION_EXTENSION_API_ONLY</key>
+				<string>YES</string>
+				<key>SKIP_INSTALL</key>
+				<string>YES</string>
+				<key>LD_RUNPATH_SEARCH_PATHS</key>
+				<string>$(inherited) @executable_path/../Frameworks @executable_path/../../Frameworks</string>
+				<key>LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]</key>
+				<string>$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks</string>
 			</dict>
 		</dict>
 		<key>49EA05A46B1A86EA7E413B43</key>
@@ -549,6 +776,67 @@
 			<integer>0</integer>
 			<key>defaultConfigurationName</key>
 			<string>Release</string>
+		</dict>
+		<key>DB9606606D1AA769499B50CC</key>
+		<dict>
+			<key>isa</key>
+			<string>XCConfigurationList</string>
+			<key>buildConfigurations</key>
+			<array>
+				<string>0D8C2B4F542FF57BC4D485A4</string>
+				<string>BEF7C00F2B758A84B5C079A5</string>
+			</array>
+			<key>defaultConfigurationIsVisible</key>
+			<integer>0</integer>
+			<key>defaultConfigurationName</key>
+			<string>Release</string>
+		</dict>
+		<key>21D05182542AE501D736062C</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXNativeTarget</string>
+			<key>name</key>
+			<string>ReedShare</string>
+			<key>productName</key>
+			<string>ReedShare</string>
+			<key>productReference</key>
+			<string>69AC8403E38E6A43010E8F91</string>
+			<key>productType</key>
+			<string>com.apple.product-type.app-extension</string>
+			<key>buildConfigurationList</key>
+			<string>DB9606606D1AA769499B50CC</string>
+			<key>buildPhases</key>
+			<array>
+				<string>E6E919EC4BB99E5DDFF7892C</string>
+				<string>3C982B01884B80A03489D212</string>
+				<string>C6D1DB24FEF5A86EBDB66EAB</string>
+			</array>
+			<key>buildRules</key>
+			<array/>
+			<key>dependencies</key>
+			<array/>
+		</dict>
+		<key>21A142AFC885FA9F74239221</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXContainerItemProxy</string>
+			<key>containerPortal</key>
+			<string>98F54143AB4E86B28C3AFEE0</string>
+			<key>proxyType</key>
+			<string>1</string>
+			<key>remoteGlobalIDString</key>
+			<string>21D05182542AE501D736062C</string>
+			<key>remoteInfo</key>
+			<string>ReedShare</string>
+		</dict>
+		<key>6E216A8892C8919C80266DBE</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXTargetDependency</string>
+			<key>target</key>
+			<string>21D05182542AE501D736062C</string>
+			<key>targetProxy</key>
+			<string>21A142AFC885FA9F74239221</string>
 		</dict>
 		<key>F497FD0CF9CA1625C4A860DE</key>
 		<dict>
@@ -583,11 +871,14 @@
 				<string>BCE16DD0260827ECF338C787</string>
 				<string>7561BFB015D8F536760CB671</string>
 				<string>0189424A5A60FED329FA868E</string>
+				<string>CFFF27C96089B93150F3553B</string>
 			</array>
 			<key>buildRules</key>
 			<array/>
 			<key>dependencies</key>
-			<array/>
+			<array>
+				<string>6E216A8892C8919C80266DBE</string>
+			</array>
 		</dict>
 		<key>98F54143AB4E86B28C3AFEE0</key>
 		<dict>
@@ -624,6 +915,7 @@
 			<key>targets</key>
 			<array>
 				<string>0E8A3AD980EC179856012B7E</string>
+				<string>21D05182542AE501D736062C</string>
 			</array>
 		</dict>
 	</dict>

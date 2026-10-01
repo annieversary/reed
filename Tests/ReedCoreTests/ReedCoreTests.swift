@@ -113,3 +113,29 @@ import Testing
     let reopened = try Library(root: root)
     #expect(reopened.articles.isEmpty)
 }
+
+@Test @MainActor func sharedLinksAreAddedOnceInTheOrderShared() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let inbox = ShareInbox(directory: root.appendingPathComponent("Inbox"))
+    for link in ["https://reed.invalid/first", "https://reed.invalid/second", "https://reed.invalid/first"] {
+        try inbox.deposit(URL(string: link)!)
+    }
+    // Written by hand, since `deposit` only takes URLs.
+    try Data("not a url".utf8).write(to: inbox.directory.appendingPathComponent("9999999999999-bad.link"))
+    let library = try Library(root: root.appendingPathComponent("Library"))
+    library.addShared(from: inbox)
+    #expect(library.errorMessage == nil)
+    #expect(library.articles.map(\.originalURL) == ["https://reed.invalid/second", "https://reed.invalid/first"])
+    #expect(try FileManager.default.contentsOfDirectory(atPath: inbox.directory.path).isEmpty)
+}
+
+@Test func inboxKeepsLinksThatFailToSave() throws {
+    let inbox = ShareInbox(directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+    defer { try? FileManager.default.removeItem(at: inbox.directory) }
+    try inbox.deposit(URL(string: "https://example.com/a")!)
+    #expect(throws: CocoaError.self) { try inbox.drain { _ in throw CocoaError(.fileWriteOutOfSpace) } }
+    var saved: [String] = []
+    try inbox.drain { saved.append($0) }
+    #expect(saved == ["https://example.com/a"])
+}

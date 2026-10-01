@@ -13,6 +13,13 @@ import ReedCore
     return try Library(root: root)
 }
 
+/// An isolated library (smoke tests) never takes links shared to the real one.
+@MainActor private let shareInbox = ProcessInfo.processInfo.arguments.contains("--library-root") ? nil : ShareInbox.shared
+
+@MainActor private func addShared(to library: Library) {
+    if let shareInbox { library.addShared(from: shareInbox) }
+}
+
 #if os(macOS)
 // An explicit AppKit window gives the desktop prototype deterministic launch/reopen behavior.
 // Its entire content is the same SwiftUI LibraryView used on iOS.
@@ -43,7 +50,12 @@ import ReedCore
                     return
                 }
                 #endif
+                addShared(to: library)
                 library.resumeDownloads()
+            }
+            ShareInbox.forwardDeposits()
+            NotificationCenter.default.addObserver(forName: ShareInbox.didDeposit, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { addShared(to: library) }
             }
         } catch {
             present(ContentUnavailableView("Couldn't open your library", systemImage: "externaldrive.badge.exclamationmark",
@@ -70,7 +82,11 @@ import ReedCore
         return true
     }
 
-    func applicationDidBecomeActive(_ notification: Notification) { library?.resumeDownloads() }
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard let library else { return }
+        addShared(to: library)
+        library.resumeDownloads()
+    }
     func applicationDidResignActive(_ notification: Notification) { library?.save() }
     func applicationWillTerminate(_ notification: Notification) { library?.save() }
 
@@ -114,13 +130,16 @@ import ReedCore
     init() {
         do { _library = State(initialValue: try openLibrary()) }
         catch { _startupError = State(initialValue: error.localizedDescription) }
+        ShareInbox.forwardDeposits()
     }
 
     var body: some Scene {
         WindowGroup {
             Group {
                 if let library {
-                    LibraryView(library: library).task { library.resumeDownloads() }
+                    LibraryView(library: library)
+                        .task { addShared(to: library); library.resumeDownloads() }
+                        .onReceive(NotificationCenter.default.publisher(for: ShareInbox.didDeposit)) { _ in addShared(to: library) }
                 } else {
                     ContentUnavailableView("Couldn't open your library", systemImage: "externaldrive.badge.exclamationmark",
                                            description: Text(startupError ?? "An unknown storage error occurred."))
@@ -128,8 +147,9 @@ import ReedCore
             }
             .tint(ReedStyle.accent)
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { library?.resumeDownloads() }
-                else { library?.save() }
+                guard let library else { return }
+                if phase == .active { addShared(to: library); library.resumeDownloads() }
+                else { library.save() }
             }
         }
     }

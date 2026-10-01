@@ -46,6 +46,15 @@ public final class Library {
         return article
     }
 
+    public func addShared(from inbox: ShareInbox) {
+        do {
+            try inbox.drain { input in
+                // Links that can never be saved are dropped rather than retried forever.
+                do { try add(input) } catch ReedError.invalidURL {}
+            }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
     public func resumeDownloads() {
         guard worker == nil else { return }
         worker = Task { [weak self] in
