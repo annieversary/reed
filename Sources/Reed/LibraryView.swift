@@ -223,7 +223,7 @@ struct LibraryView: View {
             #endif
             .overlay {
                 if visibleArticles.isEmpty {
-                    Text(query.isEmpty ? "No articles saved." : "No articles found.").font(.system(size: 18, design: .serif))
+                    Text(emptyMessage).font(.system(size: 18, design: .serif))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -272,6 +272,17 @@ struct LibraryView: View {
             }
         }
         .padding(10).background(ReedStyle.warm, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var emptyMessage: String {
+        if !query.isEmpty { return "No articles found." }
+        if library.articles.isEmpty { return "No articles saved." }
+        return switch filter ?? .all {
+        case .all: "No articles saved."
+        case .unread: "Nothing left to read."
+        case .favorites: "No favorites yet."
+        case .read: "Nothing finished yet."
+        }
     }
 
     private var articleCount: String {
