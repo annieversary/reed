@@ -74,7 +74,8 @@ enum FeedParser {
     static func parse(_ data: Data, from url: URL) -> ParsedFeed? {
         if let json = parseJSON(data, from: url) { return json }
         let delegate = XMLFeedDelegate(base: url)
-        let parser = XMLParser(data: data)
+        // Many feeds are served with blank lines before the XML declaration, which XMLParser rejects.
+        let parser = XMLParser(data: Data(data.drop(while: \.isSkippedBeforeContent)))
         parser.delegate = delegate
         parser.shouldProcessNamespaces = false
         // Entries read before a malformed tail are still worth showing.
@@ -104,7 +105,7 @@ enum FeedParser {
             let items: [Item]
             let authors: [Author]?
         }
-        guard data.first(where: { !$0.isSkippedBeforeJSON }) == UInt8(ascii: "{"),
+        guard data.first(where: { !$0.isSkippedBeforeContent }) == UInt8(ascii: "{"),
               let feed = try? JSONDecoder().decode(JSONFeed.self, from: data),
               feed.version.contains("jsonfeed.org") else { return nil }
         let feedAuthor = feed.authors?.first?.name
@@ -334,5 +335,5 @@ private final class XMLFeedDelegate: NSObject, XMLParserDelegate {
 
 private extension UInt8 {
     /// Whitespace, or a byte of a UTF-8 byte order mark.
-    var isSkippedBeforeJSON: Bool { self == 0x20 || self == 0x09 || self == 0x0A || self == 0x0D || self == 0xEF || self == 0xBB || self == 0xBF }
+    var isSkippedBeforeContent: Bool { self == 0x20 || self == 0x09 || self == 0x0A || self == 0x0D || self == 0xEF || self == 0xBB || self == 0xBF }
 }

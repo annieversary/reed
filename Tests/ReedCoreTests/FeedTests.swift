@@ -43,6 +43,18 @@ private let base = URL(string: "https://example.com/feed.xml")!
     #expect(feed.entries[1].postedAt == Date(timeIntervalSince1970: 1_790_755_200))
 }
 
+@Test func blankLinesBeforeTheXMLDeclarationAreIgnored() throws {
+    let feed = try #require(FeedParser.parse(Data("""
+
+
+    <?xml version="1.0" encoding="UTF-8"?>
+    <rss version="2.0"><channel><title><![CDATA[London Review of Books]]></title>
+    <item><title>Essay</title><link>https://www.lrb.co.uk/the-paper/essay</link></item></channel></rss>
+    """.utf8), from: base))
+    #expect(feed.title == "London Review of Books")
+    #expect(feed.entries.count == 1)
+}
+
 @Test func atomEntriesUseTheirAlternateLink() throws {
     let feed = try #require(FeedParser.parse(Data("""
     <feed xmlns="http://www.w3.org/2005/Atom">
