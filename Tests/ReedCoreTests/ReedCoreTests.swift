@@ -203,3 +203,26 @@ import Testing
     try await index.index(SearchIndex.Entry(id: UUID(), version: nil, title: "Queued", author: nil, domain: "example.com", content: nil))
     #expect(try await index.search("example").count == 1)
 }
+
+@Test func hackerNewsStoriesLinkToTheirDiscussionWhenTheyHaveNoURL() throws {
+    let link = try #require(try ExternalSource.hackerNewsItem(from: Data("""
+    {"by":"dhouston","descendants":71,"id":8863,"score":104,"time":1175714200,"title":"My YC app","type":"story","url":"http://www.getdropbox.com/u/2/screencast.html"}
+    """.utf8)))
+    #expect(link.url.absoluteString == "http://www.getdropbox.com/u/2/screencast.html")
+    #expect(link.domain == "getdropbox.com")
+    #expect(link.points == 104 && link.comments == 71 && link.author == "dhouston")
+    let ask = try #require(try ExternalSource.hackerNewsItem(from: Data(#"{"id":121003,"title":"Ask HN: Anything?","type":"story","text":"..."}"#.utf8)))
+    #expect(ask.url.absoluteString == "https://news.ycombinator.com/item?id=121003")
+    #expect(try ExternalSource.hackerNewsItem(from: Data(#"{"id":1,"dead":true,"title":"Gone"}"#.utf8)) == nil)
+}
+
+@Test func lobstersStoriesKeepTheirOrder() throws {
+    let items = try ExternalSource.lobstersItems(from: Data("""
+    [{"short_id":"qgd17n","created_at":"2026-10-01T03:47:50.120-05:00","title":"First","url":"https://www.oliverdunk.com/2026/09/30/iana-reply","score":99,"comment_count":38,"submitter_user":"videah","comments_url":"https://lobste.rs/s/qgd17n/first"},
+     {"short_id":"abc123","created_at":"2026-10-01T01:00:00.000-05:00","title":"Text post","url":"","score":5,"comment_count":2,"submitter_user":"someone","comments_url":"https://lobste.rs/s/abc123/text_post"}]
+    """.utf8))
+    #expect(items.map(\.id) == ["qgd17n", "abc123"])
+    #expect(items[0].domain == "oliverdunk.com")
+    #expect(items[0].postedAt == Date(timeIntervalSince1970: 1_790_844_470.12))
+    #expect(items[1].url.absoluteString == "https://lobste.rs/s/abc123/text_post")
+}

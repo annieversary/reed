@@ -24,13 +24,18 @@ enum CollectionFilter: String, CaseIterable, Identifiable {
     }
 }
 
+enum SidebarItem: Hashable {
+    case collection(CollectionFilter), source(ExternalSource)
+}
+
 struct LibraryView: View {
     @Bindable var library: Library
     @Environment(Narrator.self) private var narrator
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
-    @State private var filter: CollectionFilter? = .all
+    @State private var selection: SidebarItem? = .collection(.all)
+    @State private var frontPages: [ExternalSource: [SourceItem]] = [:]
     @State private var selectedID: UUID?
     @State private var query = ""
     @State private var matches: [SearchIndex.Match] = []
@@ -42,6 +47,10 @@ struct LibraryView: View {
     @FocusState private var searchFocused: Bool
     /// Articles that just stopped matching the filter, kept briefly so the change shows before the row goes.
     @State private var lingering: Set<UUID> = []
+
+    private var filter: CollectionFilter? {
+        if case .collection(let filter) = selection { filter } else { nil }
+    }
 
     private var visibleArticles: [Article] {
         let candidates: [Article]
@@ -90,9 +99,22 @@ struct LibraryView: View {
                 .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
                 .safeAreaInset(edge: .bottom, spacing: 0) { narrationBar(when: columnsStack) }
         } content: {
-            articleList
-                .navigationSplitViewColumnWidth(min: 270, ideal: 340, max: 430)
-                .safeAreaInset(edge: .bottom, spacing: 0) { narrationBar(when: columnsStack) }
+            Group {
+                if case .source(let source) = selection {
+                    SourceListView(library: library, source: source,
+                                   items: Binding(get: { frontPages[source] }, set: { frontPages[source] = $0 }),
+                                   open: { selectedID = $0.id }) { article in
+                        if selectedID == article.id { selectedID = nil }
+                        if narrator.articleID == article.id { narrator.stop() }
+                        library.discard(article)
+                    }
+                    .id(source)
+                } else {
+                    articleList
+                }
+            }
+            .navigationSplitViewColumnWidth(min: 270, ideal: 340, max: 430)
+            .safeAreaInset(edge: .bottom, spacing: 0) { narrationBar(when: columnsStack) }
         } detail: {
             Group {
                 if let article = selectedArticle {
@@ -106,7 +128,7 @@ struct LibraryView: View {
         .sheet(isPresented: $showingAdd) {
             AddArticleView { url in
                 let article = try library.add(url)
-                filter = .all
+                selection = .collection(.all)
                 query = ""
                 selectedID = article.id
             }
@@ -165,10 +187,10 @@ struct LibraryView: View {
                 #endif
             }
             .padding(.horizontal, 22).padding(.top, 24).padding(.bottom, 30)
-            List(selection: $filter) {
+            List(selection: $selection) {
                 Section {
                     ForEach(CollectionFilter.allCases) { item in
-                        NavigationLink(value: item) {
+                        NavigationLink(value: SidebarItem.collection(item)) {
                             HStack(spacing: 10) {
                                 Image(systemName: item.symbol).frame(width: 18)
                                 Text(item.rawValue)
@@ -180,6 +202,17 @@ struct LibraryView: View {
                         }
                     }
                 } header: { Text("LIBRARY").font(.system(size: 10, weight: .medium)).tracking(1.7) }
+                Section {
+                    ForEach(ExternalSource.allCases) { source in
+                        NavigationLink(value: SidebarItem.source(source)) {
+                            HStack(spacing: 10) {
+                                Image(systemName: source.symbol).frame(width: 18)
+                                Text(source.rawValue)
+                            }
+                            .padding(.vertical, 5)
+                        }
+                    }
+                } header: { Text("DISCOVER").font(.system(size: 10, weight: .medium)).tracking(1.7) }
             }
             .listStyle(.sidebar)
         }

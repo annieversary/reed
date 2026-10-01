@@ -190,6 +190,24 @@
 			<key>fileRef</key>
 			<string>B71B90F4906B3A73F8C70F6A</string>
 		</dict>
+		<key>E0D1E03E3838001C7278D202</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/SourceListView.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>97B769EE3A4FECEA35AF013F</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>E0D1E03E3838001C7278D202</string>
+		</dict>
 		<key>0D05B48E6BF1CF037AF4F282</key>
 		<dict>
 			<key>isa</key>
@@ -279,6 +297,24 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>98CED4B3A5C97EFC85BEB56A</string>
+		</dict>
+		<key>E54706938FEB6E4E3EB76450</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/ExternalSource.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>AE024CFD9B7E72C3CD28BCD8</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>E54706938FEB6E4E3EB76450</string>
 		</dict>
 		<key>709F77BB5F9974865AC45CF4</key>
 		<dict>
@@ -501,11 +537,13 @@
 				<string>E9837CD9914E91D5750B82BD</string>
 				<string>5819C39293FCA9B70AE93D0E</string>
 				<string>B71B90F4906B3A73F8C70F6A</string>
+				<string>E0D1E03E3838001C7278D202</string>
 				<string>0D05B48E6BF1CF037AF4F282</string>
 				<string>24D87A3D58399F91B70B69B5</string>
 				<string>AC56CDA6B28E18E3CF2AFE6C</string>
 				<string>0F00F9E6EFCE07893391938D</string>
 				<string>98CED4B3A5C97EFC85BEB56A</string>
+				<string>E54706938FEB6E4E3EB76450</string>
 				<string>709F77BB5F9974865AC45CF4</string>
 				<string>62F2B30EADC9532F27B629D9</string>
 				<string>CEFEDFD4E31E49F4A1E14286</string>
@@ -567,11 +605,13 @@
 				<string>CD546E1A338CABB67FC83DE5</string>
 				<string>41EC7785CCE9D09B2D4FA7B1</string>
 				<string>6BF7FEFFFD817D6E50733FDA</string>
+				<string>97B769EE3A4FECEA35AF013F</string>
 				<string>7861EDA4ED9D7A92471A8A1D</string>
 				<string>86B08DB1E682A9773DFC9F34</string>
 				<string>749B8CD50EA225F8B99ED603</string>
 				<string>E1ABA6BD0D809094C5E6E816</string>
 				<string>3483221D2BB5C1A5B6A79D8D</string>
+				<string>AE024CFD9B7E72C3CD28BCD8</string>
 				<string>E990D3D09BB177A7DFFE6EEE</string>
 				<string>6679307645738DA919E28E26</string>
 				<string>E02CFC5074F0F3AE2CC43C5B</string>

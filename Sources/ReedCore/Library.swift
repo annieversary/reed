@@ -16,6 +16,8 @@ public final class Library {
     private let searchIndex: SearchIndex
     private var worker: Task<Void, Never>?
     private var progressSave: Task<Void, Never>?
+    /// Articles removed while downloading, deleted once their download settles.
+    private var discarded: Set<UUID> = []
 
     public init(root: URL? = nil, downloader: ArticleDownloader = ArticleDownloader()) throws {
         let root = try root ?? ArticleStorage.defaultRoot()
@@ -43,9 +45,7 @@ public final class Library {
 
     @discardableResult public func add(_ input: String) throws -> Article {
         let url = try ArticleURL.parse(input)
-        if let existing = articles.first(where: { $0.originalURL == url.absoluteString || $0.resolvedURL == url.absoluteString }) {
-            return existing
-        }
+        if let existing = article(at: url) { return existing }
         let article = Article(url: url)
         container.mainContext.insert(article)
         do { try container.mainContext.save() }
@@ -54,6 +54,15 @@ public final class Library {
         reindex(article)
         resumeDownloads()
         return article
+    }
+
+    /// The saved article for `url`, whether saved from that link or redirected to it.
+    public func article(at url: URL) -> Article? {
+        articles.first { $0.originalURL == url.absoluteString || $0.resolvedURL == url.absoluteString }
+    }
+
+    public func frontPage(of source: ExternalSource) async throws -> [SourceItem] {
+        try await source.frontPage(using: downloader)
     }
 
     public func addShared(from inbox: ShareInbox) {
@@ -90,13 +99,24 @@ public final class Library {
         guard article.state != .downloading else { return }
         let id = article.id
         guard let index = articles.firstIndex(where: { $0.id == id }) else { return }
+        if erase(article) { articles.remove(at: index) }
+    }
+
+    /// Removes the article from the library straight away, even mid-download.
+    public func discard(_ article: Article) {
+        guard article.state == .downloading else { delete(article); return }
+        articles.removeAll { $0.id == article.id }
+        discarded.insert(article.id)
+    }
+
+    /// Whether the article's metadata is gone; leftover files are reported but don't count against it.
+    @discardableResult private func erase(_ article: Article) -> Bool {
+        let id = article.id
         container.mainContext.delete(article)
-        do {
-            try container.mainContext.save()
-            articles.remove(at: index)
-            try storage.removeArticle(id)
-            Task { [searchIndex] in try? await searchIndex.remove(id) }
-        } catch { errorMessage = error.localizedDescription }
+        do { try container.mainContext.save() } catch { errorMessage = error.localizedDescription; return false }
+        Task { [searchIndex] in try? await searchIndex.remove(id) }
+        do { try storage.removeArticle(id) } catch { errorMessage = error.localizedDescription }
+        return true
     }
 
     public func toggleFavorite(_ article: Article) { article.isFavorite.toggle(); save() }
@@ -217,5 +237,6 @@ public final class Library {
             article.failureMessage = error.localizedDescription
             save()
         }
+        if discarded.remove(article.id) != nil { erase(article) }
     }
 }

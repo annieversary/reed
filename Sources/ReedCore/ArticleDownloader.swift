@@ -34,7 +34,11 @@ public actor ArticleDownloader {
         try await fetch(url, limit: 12 * 1024 * 1024, kind: .image).0
     }
 
-    private enum Kind { case html, image }
+    public func json(at url: URL) async throws -> Data {
+        try await fetch(url, limit: 2 * 1024 * 1024, kind: .json).0
+    }
+
+    private enum Kind { case html, image, json }
 
     private func fetch(_ url: URL, limit: Int, kind: Kind) async throws -> (Data, HTTPURLResponse) {
         _ = try ArticleURL.parse(url.absoluteString)
@@ -45,6 +49,8 @@ public actor ArticleDownloader {
         switch kind {
         case .html:
             guard ["text/html", "application/xhtml+xml"].contains(mime) else { throw ReedError.unsupportedContent }
+        case .json:
+            guard mime == "application/json" else { throw ReedError.unsupportedContent }
         case .image:
             guard ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif", "image/heic", "image/bmp", "image/tiff"].contains(mime) else { throw ReedError.unsupportedContent }
         }
