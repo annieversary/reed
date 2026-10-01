@@ -26,6 +26,7 @@ public final class Article {
     public var author: String?
     public var excerpt: String
     public var savedAt: Date
+    public var publishedAt: Date?
     public var downloadedAt: Date?
     public var stateRaw: String
     public var failureMessage: String?

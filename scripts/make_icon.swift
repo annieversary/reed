@@ -1,5 +1,5 @@
 // Renders the app icon into Sources/Reed/Assets.xcassets/AppIcon.appiconset,
-// and the same artwork as the ReedMark image shown beside the library title.
+// and the reeds alone as the ReedMark image shown beside the library title.
 // Run via `make icon` (or `swift scripts/make_icon.swift`) — an icon you
 // can regenerate beats a binary blob nobody can edit.
 //
@@ -107,34 +107,37 @@ let ripples = [
     CGRect(x: 410, y: ground - 74, width: 220, height: 28),
 ]
 
-func drawArtwork(in context: CGContext) {
-    let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: [sage, sageLight] as CFArray, locations: [0, 1])!
-    context.drawLinearGradient(gradient, start: CGPoint(x: 0, y: 0), end: CGPoint(x: 0, y: side), options: [])
-
-    for blade in blades {
-        context.setFillColor(creamDim)
-        context.addPath(ribbon(blade, width: bladeWidth(46, at: 0.3)))
-        context.fillPath()
-    }
-
-    context.setFillColor(cream)
+/// The reeds' outlines, back to front; `dim` marks the blades behind them.
+func shapes() -> [(path: CGPath, dim: Bool)] {
+    var result = blades.map { (path: ribbon($0, width: bladeWidth(46, at: 0.3)), dim: true) }
     for ripple in ripples {
-        context.addPath(CGPath(roundedRect: ripple, cornerWidth: ripple.height / 2, cornerHeight: ripple.height / 2, transform: nil))
-        context.fillPath()
+        result.append((CGPath(roundedRect: ripple, cornerWidth: ripple.height / 2, cornerHeight: ripple.height / 2, transform: nil), false))
     }
-
     for reed in reeds {
         // The stalk stops inside the plume, so its tip never pokes out.
-        context.addPath(ribbon(reed.stalk, upTo: reed.plumeStart + 0.05, width: stalkWidth(reed.width)))
-        context.fillPath()
+        result.append((ribbon(reed.stalk, upTo: reed.plumeStart + 0.05, width: stalkWidth(reed.width)), false))
 
         // The plume carries on along the stalk's line from where it starts.
         let from = reed.stalk.point(reed.plumeStart), along = reed.stalk.tangent(reed.plumeStart)
         let tip = Point(x: from.x + along.x * reed.plumeLength, y: from.y + along.y * reed.plumeLength)
         let mid = Point(x: (from.x + tip.x) / 2, y: (from.y + tip.y) / 2)
-        context.addPath(ribbon(Curve(start: from, control: mid, end: tip), width: bladeWidth(reed.plumeWidth)))
+        result.append((ribbon(Curve(start: from, control: mid, end: tip), width: bladeWidth(reed.plumeWidth)), false))
+    }
+    return result
+}
+
+func drawReeds(in context: CGContext, color: CGColor, dimColor: CGColor) {
+    for shape in shapes() {
+        context.setFillColor(shape.dim ? dimColor : color)
+        context.addPath(shape.path)
         context.fillPath()
     }
+}
+
+func drawArtwork(in context: CGContext) {
+    let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: [sage, sageLight] as CFArray, locations: [0, 1])!
+    context.drawLinearGradient(gradient, start: CGPoint(x: 0, y: 0), end: CGPoint(x: 0, y: side), options: [])
+    drawReeds(in: context, color: cream, dimColor: creamDim)
 }
 
 func makeContext(_ pixels: Int) -> CGContext {
@@ -153,6 +156,18 @@ func renderIOS(_ pixels: Int = Int(side)) -> CGImage {
     let scale = Double(pixels) / side
     context.scaleBy(x: scale, y: scale)
     drawArtwork(in: context)
+    return context.makeImage()!
+}
+
+/// Just the reeds, black on clear and centred to fill the square, for the
+/// app to tint as a template image.
+func renderMark(_ pixels: Int) -> CGImage {
+    let context = makeContext(pixels)
+    let bounds = shapes().map(\.path.boundingBoxOfPath).reduce(CGRect.null) { $0.union($1) }
+    let scale = Double(pixels) / max(bounds.width, bounds.height)
+    context.scaleBy(x: scale, y: scale)
+    context.translateBy(x: -bounds.midX + Double(pixels) / scale / 2, y: -bounds.midY + Double(pixels) / scale / 2)
+    drawReeds(in: context, color: rgb(0, 0, 0), dimColor: rgb(0, 0, 0, 0.55))
     return context.makeImage()!
 }
 
@@ -213,14 +228,14 @@ for points in [16, 32, 128, 256, 512] {
 
 try writeContents(images, in: folder)
 
-/// The mark is drawn at 34 points; the app rounds its corners.
+/// The mark is drawn at 34 points.
 let markPoints = 34
 let markFolder = catalog.appendingPathComponent("ReedMark.imageset")
 try FileManager.default.createDirectory(at: markFolder, withIntermediateDirectories: true)
 var markImages: [[String: String]] = []
 for scale in [1, 2, 3] {
     let name = "reed-mark@\(scale)x.png"
-    write(renderIOS(markPoints * scale), to: name, in: markFolder)
+    write(renderMark(markPoints * scale), to: name, in: markFolder)
     markImages.append(["filename": name, "idiom": "universal", "scale": "\(scale)x"])
 }
 try writeContents(markImages, in: markFolder)

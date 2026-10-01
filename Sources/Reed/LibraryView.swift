@@ -88,8 +88,8 @@ struct LibraryView: View {
     private var sidebar: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 9) {
-                Image("ReedMark").resizable().frame(width: 34, height: 34)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                Image("ReedMark").renderingMode(.template).resizable().frame(width: 34, height: 34)
+                    .foregroundStyle(ReedStyle.accent)
                 Text("reed").font(.system(size: 34, weight: .regular, design: .serif)).tracking(-1.8)
                 Spacer()
             }
@@ -158,6 +158,23 @@ struct LibraryView: View {
                         .background(NavigationLink(value: article.id) { EmptyView() }.opacity(0))
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                        .swipeActions(edge: .leading) {
+                            Button { library.toggleRead(article) } label: {
+                                Label(article.isRead ? "Unread" : "Finished", systemImage: article.isRead ? "book.closed" : "checkmark.circle")
+                            }
+                            .tint(ReedStyle.accent)
+                        }
+                        // No destructive role: it would remove the row before the delete is confirmed.
+                        .swipeActions(edge: .trailing) {
+                            if article.state != .downloading {
+                                Button { articleToDelete = article } label: { Label("Delete", systemImage: "trash") }
+                                    .tint(.red)
+                            }
+                            Button { library.toggleFavorite(article) } label: {
+                                Label(article.isFavorite ? "Unfavorite" : "Favorite", systemImage: article.isFavorite ? "star.slash" : "star")
+                            }
+                            .tint(.orange)
+                        }
                         .contextMenu {
                             Button(article.isFavorite ? "Remove Favorite" : "Favorite", systemImage: "star") { library.toggleFavorite(article) }
                             Button(article.isRead ? "Mark Unread" : "Mark Finished", systemImage: "checkmark.circle") { library.toggleRead(article) }
@@ -283,21 +300,42 @@ private struct ArticleRow: View {
                 Spacer()
                 if article.isFavorite { Image(systemName: "star.fill").font(.system(size: 9)) }
             }.foregroundStyle(ReedStyle.accent)
-            Text(article.title).font(.system(size: 18, weight: .medium, design: .serif)).lineLimit(3).lineSpacing(2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(article.title).font(.system(size: 18, weight: .medium, design: .serif)).lineLimit(3).lineSpacing(2)
+                if let byline {
+                    Text(byline).font(.system(size: 12, design: .serif).italic()).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
             if !article.excerpt.isEmpty {
                 Text(article.excerpt).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2).lineSpacing(3)
             }
             HStack(spacing: 5) {
                 if article.state == .downloading || article.state == .queued { ProgressView().controlSize(.mini) }
-                else { Image(systemName: article.state.isReadable ? "checkmark.circle" : "exclamationmark.circle").font(.system(size: 10)) }
+                else if !article.state.isReadable { Image(systemName: "exclamationmark.circle").font(.system(size: 10)) }
                 Text(article.state.isReadable ? "\(article.readingMinutes) min read" : article.state.label)
                 if article.state == .partial { Image(systemName: "photo.badge.exclamationmark") }
+                if article.isRead {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 10)).foregroundStyle(.green)
+                        .accessibilityLabel("Finished")
+                } else if article.progress > 0 {
+                    Text("· \(Int(article.progress * 100))%")
+                }
                 Spacer()
-                Text(article.isRead ? "Finished" : article.savedAt.formatted(.dateTime.month(.abbreviated).day()))
+                Text("Saved \(article.savedAt.formatted(.dateTime.month(.abbreviated).day()))")
             }
             .font(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 4)
         }
         .padding(.vertical, 15).padding(.horizontal, 7)
         .accessibilityElement(children: .combine)
+    }
+
+    private var byline: String? {
+        let parts = [article.author, article.publishedAt.map(Self.formatPublished)].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private static func formatPublished(_ date: Date) -> String {
+        let sameYear = Calendar.current.isDate(date, equalTo: .now, toGranularity: .year)
+        return date.formatted(sameYear ? .dateTime.month(.abbreviated).day() : .dateTime.month(.abbreviated).day().year())
     }
 }

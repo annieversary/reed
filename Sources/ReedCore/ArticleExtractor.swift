@@ -9,6 +9,8 @@ public struct ExtractedArticle: Codable, Sendable {
     }
     public let title: String
     public let author: String?
+    /// Milliseconds since 1970, as JavaScript reports it.
+    public let publishedAt: Double?
     public let excerpt: String
     public let html: String
     public let wordCount: Int

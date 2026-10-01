@@ -157,6 +157,7 @@ public final class Library {
             staging = nil
             article.title = extracted.title
             article.author = extracted.author
+            article.publishedAt = extracted.publishedAt.map { Date(timeIntervalSince1970: $0 / 1000) }
             article.excerpt = extracted.excerpt
             article.resolvedURL = page.url.absoluteString
             article.wordCount = extracted.wordCount

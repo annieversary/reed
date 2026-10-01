@@ -52,6 +52,7 @@ for (const link of output.querySelectorAll("a")) {
 return JSON.stringify({
     title: result.title || new URL(sourceURL).hostname,
     author: result.byline || null,
+    publishedAt: Date.parse(result.publishedTime) || null,
     excerpt: excerpt.slice(0, 280),
     html: output.body.innerHTML,
     wordCount: result.textContent.trim().split(/\s+/).length,
