@@ -6,6 +6,7 @@ import WebKit
     let fontSize: Double
     let progress: Double
     var onProgress: (Double) -> Void
+    var onAddLink: (URL) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -36,7 +37,22 @@ import WebKit
         document.head.appendChild(style);
         """, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient)
         configuration.userContentController.addUserScript(darkPaper)
+        #if os(macOS)
+        // AppKit's menu hook doesn't say which link was clicked, so the page reports it first.
+        configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: "contextLink")
+        let contextLink = WKUserScript(source: """
+        document.addEventListener('contextmenu', event => {
+            const link = event.target.closest && event.target.closest('a[href]');
+            window.webkit.messageHandlers.contextLink.postMessage(link ? link.href : '');
+        }, true);
+        """, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient)
+        configuration.userContentController.addUserScript(contextLink)
+        let webView = ReaderWebView(frame: .zero, configuration: configuration)
+        webView.coordinator = coordinator
+        #else
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.uiDelegate = coordinator
+        #endif
         webView.navigationDelegate = coordinator
         #if os(macOS)
         webView.setValue(false, forKey: "drawsBackground")
@@ -54,9 +70,10 @@ import WebKit
         coordinator.applyFont(webView)
     }
 
-    @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         var parent: OfflineWebView
         var loaded = false
+        var contextLink: URL?
         private var currentFontSize: Double?
         init(parent: OfflineWebView) { self.parent = parent }
 
@@ -77,6 +94,10 @@ import WebKit
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "contextLink" {
+                contextLink = (message.body as? String).flatMap(URL.init(string:)).flatMap { Self.isWeb($0) ? $0 : nil }
+                return
+            }
             guard loaded, let number = message.body as? Double else { return }
             parent.onProgress(number)
         }
@@ -84,7 +105,7 @@ import WebKit
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
             guard let url = navigationAction.request.url else { return .cancel }
             if navigationAction.navigationType == .linkActivated {
-                if ["https", "http"].contains(url.scheme?.lowercased() ?? "") {
+                if Self.isWeb(url) {
                     #if os(macOS)
                     NSWorkspace.shared.open(url)
                     #else
@@ -96,15 +117,47 @@ import WebKit
                 return url.isFileURL && url.deletingLastPathComponent().standardizedFileURL == parent.url.deletingLastPathComponent().standardizedFileURL ? .allow : .cancel
             }
         }
+
+        static func isWeb(_ url: URL) -> Bool { ["https", "http"].contains(url.scheme?.lowercased() ?? "") }
+
+        #if os(iOS)
+        func webView(_ webView: WKWebView, contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo) async -> UIContextMenuConfiguration? {
+            guard let url = elementInfo.linkURL, Self.isWeb(url) else { return nil }
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] suggested in
+                let add = UIAction(title: "Add to Reed", image: UIImage(systemName: "plus")) { _ in self?.parent.onAddLink(url) }
+                return UIMenu(children: [add] + suggested)
+            }
+        }
+        #endif
     }
 }
 
 #if os(macOS)
+final class ReaderWebView: WKWebView {
+    weak var coordinator: OfflineWebView.Coordinator?
+
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        guard let coordinator, let url = coordinator.contextLink else { return }
+        let item = NSMenuItem(title: "Add to Reed", action: #selector(addLink(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = url
+        menu.insertItem(item, at: 0)
+        menu.insertItem(.separator(), at: 1)
+    }
+
+    @objc private func addLink(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        coordinator?.parent.onAddLink(url)
+    }
+}
+
 extension OfflineWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView { makeWebView(coordinator: context.coordinator) }
     func updateNSView(_ nsView: WKWebView, context: Context) { update(nsView, coordinator: context.coordinator) }
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
         nsView.configuration.userContentController.removeScriptMessageHandler(forName: "readingProgress", contentWorld: .defaultClient)
+        nsView.configuration.userContentController.removeScriptMessageHandler(forName: "contextLink", contentWorld: .defaultClient)
         nsView.navigationDelegate = nil
     }
 }
@@ -115,6 +168,7 @@ extension OfflineWebView: UIViewRepresentable {
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
         uiView.configuration.userContentController.removeScriptMessageHandler(forName: "readingProgress", contentWorld: .defaultClient)
         uiView.navigationDelegate = nil
+        uiView.uiDelegate = nil
     }
 }
 #endif

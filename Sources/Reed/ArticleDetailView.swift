@@ -33,6 +33,9 @@ struct ArticleDetailView: View {
                 }
                 OfflineWebView(url: url, fontSize: fontSize, progress: article.progress) { value in
                     library.updateProgress(article, value: value)
+                } onAddLink: { link in
+                    do { try library.add(link.absoluteString) }
+                    catch { library.errorMessage = error.localizedDescription }
                 }
                 .id(article.id.uuidString + (article.contentVersion ?? ""))
                 .ignoresSafeArea(edges: .bottom)
