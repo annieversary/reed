@@ -88,7 +88,8 @@ struct LibraryView: View {
     private var sidebar: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 9) {
-                Image(systemName: "leaf").font(.system(size: 24, weight: .light)).foregroundStyle(ReedStyle.accent)
+                Image("ReedMark").resizable().frame(width: 34, height: 34)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 Text("reed").font(.system(size: 34, weight: .regular, design: .serif)).tracking(-1.8)
                 Spacer()
             }

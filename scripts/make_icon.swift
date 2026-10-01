@@ -1,4 +1,5 @@
-// Renders the app icon into Sources/Reed/Assets.xcassets/AppIcon.appiconset.
+// Renders the app icon into Sources/Reed/Assets.xcassets/AppIcon.appiconset,
+// and the same artwork as the ReedMark image shown beside the library title.
 // Run via `make icon` (or `swift scripts/make_icon.swift`) — an icon you
 // can regenerate beats a binary blob nobody can edit.
 //
@@ -147,8 +148,10 @@ func makeContext(_ pixels: Int) -> CGContext {
 }
 
 /// Full bleed: iOS masks the corners itself.
-func renderIOS() -> CGImage {
-    let context = makeContext(Int(side))
+func renderIOS(_ pixels: Int = Int(side)) -> CGImage {
+    let context = makeContext(pixels)
+    let scale = Double(pixels) / side
+    context.scaleBy(x: scale, y: scale)
     drawArtwork(in: context)
     return context.makeImage()!
 }
@@ -174,9 +177,9 @@ func renderMac(_ pixels: Int) -> CGImage {
     return context.makeImage()!
 }
 
-let folder = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "Sources/Reed/Assets.xcassets/AppIcon.appiconset")
+let catalog = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "Sources/Reed/Assets.xcassets")
 
-func write(_ image: CGImage, to name: String) {
+func write(_ image: CGImage, to name: String, in folder: URL) {
     let output = folder.appendingPathComponent(name)
     guard let destination = CGImageDestinationCreateWithURL(output as CFURL, UTType.png.identifier as CFString, 1, nil) else {
         fatalError("could not open \(output.path) for writing")
@@ -185,22 +188,39 @@ func write(_ image: CGImage, to name: String) {
     guard CGImageDestinationFinalize(destination) else { fatalError("could not write \(output.path)") }
 }
 
+func writeContents(_ images: [[String: String]], in folder: URL) throws {
+    let contents: [String: Any] = ["images": images, "info": ["author": "xcode", "version": 1]]
+    let json = try JSONSerialization.data(withJSONObject: contents, options: [.prettyPrinted, .sortedKeys])
+    try json.write(to: folder.appendingPathComponent("Contents.json"))
+    print("wrote \(folder.path)")
+}
+
+let folder = catalog.appendingPathComponent("AppIcon.appiconset")
 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 
 var images: [[String: String]] = [
     ["filename": "icon-ios-1024.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"],
 ]
-write(renderIOS(), to: "icon-ios-1024.png")
+write(renderIOS(), to: "icon-ios-1024.png", in: folder)
 
 for points in [16, 32, 128, 256, 512] {
     for scale in [1, 2] {
         let name = "icon-mac-\(points)@\(scale)x.png"
-        write(renderMac(points * scale), to: name)
+        write(renderMac(points * scale), to: name, in: folder)
         images.append(["filename": name, "idiom": "mac", "scale": "\(scale)x", "size": "\(points)x\(points)"])
     }
 }
 
-let contents: [String: Any] = ["images": images, "info": ["author": "xcode", "version": 1]]
-let json = try JSONSerialization.data(withJSONObject: contents, options: [.prettyPrinted, .sortedKeys])
-try json.write(to: folder.appendingPathComponent("Contents.json"))
-print("wrote \(folder.path)")
+try writeContents(images, in: folder)
+
+/// The mark is drawn at 34 points; the app rounds its corners.
+let markPoints = 34
+let markFolder = catalog.appendingPathComponent("ReedMark.imageset")
+try FileManager.default.createDirectory(at: markFolder, withIntermediateDirectories: true)
+var markImages: [[String: String]] = []
+for scale in [1, 2, 3] {
+    let name = "reed-mark@\(scale)x.png"
+    write(renderIOS(markPoints * scale), to: name, in: markFolder)
+    markImages.append(["filename": name, "idiom": "universal", "scale": "\(scale)x"])
+}
+try writeContents(markImages, in: markFolder)
