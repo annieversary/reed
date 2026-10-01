@@ -63,9 +63,10 @@ struct ArticleDetailView: View {
                 VStack(spacing: 18) {
                     if article.state == .downloading || article.state == .queued {
                         ProgressView().controlSize(.large)
-                        Text("Making room for a good read.").font(.system(size: 25, design: .serif))
-                        Text(library.activity ?? "Waiting to download…").font(.subheadline).foregroundStyle(.secondary)
-                        Text("You can keep browsing your library.").font(.caption).foregroundStyle(.tertiary)
+                        Text("Saving").font(.system(size: 25, design: .serif))
+                        if article.state == .downloading, let imageActivity = library.imageActivity {
+                            Text(imageActivity).font(.subheadline).foregroundStyle(.secondary)
+                        }
                     } else {
                         Image(systemName: "wifi.exclamationmark").font(.system(size: 36, weight: .light)).foregroundStyle(.secondary)
                         Text("This one needs another try.").font(.system(size: 25, design: .serif))

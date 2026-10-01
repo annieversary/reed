@@ -7,6 +7,8 @@ public final class Library {
     public private(set) var articles: [Article] = []
     public var errorMessage: String?
     public private(set) var activity: String?
+    /// Image progress of the article being saved, such as "Saving image 2 of 5…".
+    public private(set) var imageActivity: String?
     /// The front page last fetched from each source, kept between launches.
     public private(set) var frontPages: [ExternalSource: FrontPage] = [:]
     /// Advances whenever the search index changes, so searches can be rerun.
@@ -95,7 +97,7 @@ public final class Library {
         guard worker == nil else { return }
         worker = Task { [weak self] in
             guard let self else { return }
-            defer { self.worker = nil; self.activity = nil }
+            defer { self.worker = nil; self.activity = nil; self.imageActivity = nil }
             while let article = self.articles.last(where: { $0.state == .queued }) {
                 if Task.isCancelled { break }
                 await self.download(article)
@@ -196,7 +198,10 @@ public final class Library {
         article.state = .downloading
         save()
         var staging: URL?
-        defer { if let staging { try? FileManager.default.removeItem(at: staging) } }
+        defer {
+            imageActivity = nil
+            if let staging { try? FileManager.default.removeItem(at: staging) }
+        }
         do {
             activity = "Fetching \(article.domain)…"
             let page = try await downloader.page(at: ArticleURL.parse(article.originalURL))
@@ -209,7 +214,8 @@ public final class Library {
             var totalBytes = 0
             for (index, image) in extracted.images.enumerated() {
                 try Task.checkCancellation()
-                activity = "Saving image \(index + 1) of \(extracted.images.count)…"
+                imageActivity = "Saving image \(index + 1) of \(extracted.images.count)…"
+                activity = imageActivity
                 do {
                     guard index < 40, totalBytes < 64 * 1024 * 1024, let url = URL(string: image.url) else {
                         throw ReedError.oversizedDownload
