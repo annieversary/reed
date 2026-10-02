@@ -176,6 +176,21 @@ import Testing
     #expect(ArticleSpeech.spoken("Pass BASICS, IDEAS and Is to MPs") == "Pass BASICS, IDEAS and Is to MP's")
 }
 
+@Test func symbolsInNamesAreSpokenAsWords() {
+    #expect(ArticleSpeech.spoken("Node.js on news.ycombinator.com, llama.cpp in C++, C# and .NET.")
+            == "Node JS on news dot ycombinator dot com, llama dot cpp in C plus plus, C sharp and dot net.")
+    #expect(ArticleSpeech.spoken("io_uring in v1.2.3, CockroachDB and SolidJS, e.g. at 3.5 or 192.168.0.1.")
+            == "io uring in version 1 dot 2 dot 3, Cockroach DB and Solid JS, e.g. at 3.5 or 192.168.0.1.")
+}
+
+@Test func numeronymsAreSaidInFull() {
+    #expect(ArticleSpeech.spoken("K8s, a11y and i18n, not b2b or x86.") == "Kubernetes, accessibility and internationalization, not b2b or x86.")
+}
+
+@Test func pronunciationsLoad() {
+    #expect(ArticleSpeech.pronunciations["JSON"] == "ʤˈAsᵊn")
+}
+
 @Test func leadImageIsTheFirstSavedImage() {
     #expect(ArticleHTML.firstImage(in: #"<p>Text</p><figure><IMG alt="a" src="image-2"></figure><img src="image-0">"#) == "image-2")
     #expect(ArticleHTML.firstImage(in: #"<img src="https://example.com/x.png"><img src="../etc/passwd">"#) == nil)
