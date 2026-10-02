@@ -5,9 +5,10 @@ import SwiftData
 @MainActor @Observable
 public final class Library {
     public private(set) var articles: [Article] = []
-    /// Front-page stories downloaded ahead to read offline, kept outside the library until saved.
+    /// Front-page stories and recent feed entries downloaded ahead to read offline, kept outside the
+    /// library until saved.
     public private(set) var cached: [Article] = []
-    /// Cached articles kept even once they leave the front pages, such as the one being read.
+    /// Cached articles kept even once they are no longer wanted, such as the one being read.
     public var retained: Set<UUID> = []
     public var errorMessage: String?
     public private(set) var activity: String?
@@ -59,13 +60,13 @@ public final class Library {
                 frontPages[source] = page
             }
         }
-        syncCache()
         if let data = try? Data(contentsOf: Self.feedsURL(root: root)),
            let store = try? JSONDecoder().decode(FeedStore.self, from: data) {
             feeds = store.feeds
             feedItems = Self.river(of: feeds)
             feedsVisitedAt = store.visitedAt
         }
+        syncCache()
         let entries = articles.map(searchEntry)
         Task { [weak self, searchIndex] in
             try? await searchIndex.sync(entries)
@@ -131,7 +132,7 @@ public final class Library {
     }
 
     /// Takes the article out of the library but keeps its copy cached, so it stays readable while it is open
-    /// or on a front page.
+    /// or still wanted in the cache.
     public func removeFromLibrary(_ article: Article) {
         guard !article.isCached else { return }
         article.isCached = true
@@ -146,11 +147,15 @@ public final class Library {
         }
     }
 
-    /// Caches each front-page story that isn't in the library, in front-page order, and drops cached ones
-    /// no longer on any front page.
+    /// How many of the newest feed entries are cached.
+    static let cachedFeedEntries = 50
+
+    /// Caches each front-page story and recent feed entry that isn't in the library, front pages first and
+    /// each in its own order, and drops cached articles that are neither any longer.
     private func syncCache() {
         var kept: [Article] = []
-        for item in ExternalSource.allCases.flatMap({ frontPages[$0]?.items ?? [] })
+        let wanted = ExternalSource.allCases.flatMap { frontPages[$0]?.items ?? [] } + feedItems.prefix(Self.cachedFeedEntries)
+        for item in wanted
         where article(at: item.url) == nil && !kept.contains(where: { $0.isAt(item.url) }) {
             if let existing = cachedArticle(at: item.url) {
                 // Earlier failures are often just being offline.
@@ -208,6 +213,8 @@ public final class Library {
         let feed = Feed(url: finalURL, parsed: parsed, fetchedAt: .now, etag: etag, lastModified: lastModified)
         feeds.append(feed)
         do { try saveFeeds() } catch { feeds.removeAll { $0.id == feed.id }; throw error }
+        syncCache()
+        resumeDownloads()
         return feed
     }
 
@@ -217,6 +224,7 @@ public final class Library {
         let previous = feeds
         feeds.removeAll { $0.id == feed.id }
         do { try saveFeeds() } catch { feeds = previous; errorMessage = error.localizedDescription }
+        syncCache()
     }
 
     /// Fetches every feed again. A feed that fails keeps its earlier entries and records why.
@@ -243,6 +251,8 @@ public final class Library {
         }
         // Subscriptions are unchanged by a refresh, so failing to write only loses the cache.
         try? saveFeeds()
+        syncCache()
+        resumeDownloads()
     }
 
     /// Records a visit to the feeds, returning when they were visited before.
@@ -354,7 +364,7 @@ public final class Library {
         return true
     }
 
-    /// Favoriting a cached article saves it, so it isn't dropped with the front page.
+    /// Favoriting a cached article saves it, so it isn't dropped from the cache.
     public func toggleFavorite(_ article: Article) {
         article.isFavorite.toggle()
         if article.isFavorite && article.isCached { keep(article) } else { save() }

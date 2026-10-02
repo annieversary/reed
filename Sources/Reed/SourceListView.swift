@@ -26,7 +26,7 @@ enum Discover: Hashable {
 
 /// A source's front page, or every subscribed feed together, as last fetched. Front pages are fetched
 /// again only when asked; feeds also when they are an hour old. Choosing a link opens it without saving
-/// it, from the copy cached while it is on a front page; swiping saves it for later, or removes it again.
+/// it, from the copy cached ahead; swiping saves it for later, or removes it again.
 struct SourceListView: View {
     let library: Library
     let origin: Discover

@@ -173,6 +173,7 @@ private let base = URL(string: "https://example.com/feed.xml")!
     let feed = try await library.subscribe(to: candidates[0].url)
     #expect(feed.title == "Stub")
     #expect(library.feedItems.map(\.url.absoluteString) == ["https://stub.test/only"])
+    #expect(library.cached.map(\.originalURL) == ["https://stub.test/only"])
 
     // Unchanged feeds keep their entries.
     await library.refreshFeeds()
@@ -184,6 +185,8 @@ private let base = URL(string: "https://example.com/feed.xml")!
     await library.refreshFeeds()
     #expect(library.feeds[0].failure != nil)
     #expect(library.feedItems.count == 1)
+    // Lets the entry's cache download settle before its files go.
+    while library.cached.contains(where: { $0.state == .queued || $0.state == .downloading }) { await Task.yield() }
 
     #expect(library.visitFeeds() == nil)
     let reopened = try Library(root: root)
@@ -191,6 +194,7 @@ private let base = URL(string: "https://example.com/feed.xml")!
     #expect(reopened.feedItems.count == 1)
     #expect(reopened.feedsVisitedAt != nil)
     reopened.unsubscribe(reopened.feeds[0])
+    #expect(reopened.cached.isEmpty)
     #expect(try Library(root: root).feeds.isEmpty)
 
     await #expect(throws: ReedError.self) { try await library.findFeeds(at: "https://stub.test/missing") }
