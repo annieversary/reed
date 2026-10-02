@@ -101,7 +101,7 @@ function arxivPaperBody(html, paperURL) {
     article.querySelectorAll("math semantics").forEach(node => node.replaceWith(...node.childNodes));
     // Displayed equations are laid out in tables, one row per line with its number in a cell of its own.
     for (const table of article.querySelectorAll("table.ltx_equation, table.ltx_equationgroup")) {
-        const figure = paper.createElement("figure");
+        const equation = paper.createElement("div");
         for (const row of table.querySelectorAll("tr")) {
             const line = paper.createElement("p");
             for (const cell of row.cells) line.append(...cell.childNodes, " ");
@@ -110,9 +110,9 @@ function arxivPaperBody(html, paperURL) {
             if (row.querySelector(".ltx_eqn_eqno")) {
                 line.querySelectorAll("math").forEach(math => { math.setAttribute("display", "inline"); math.setAttribute("displaystyle", "true"); });
             }
-            figure.append(line);
+            equation.append(line);
         }
-        table.replaceWith(figure);
+        table.replaceWith(equation);
     }
     // LaTeXML's class names read to Readability as clutter, like the "headers" in `ltx_guessed_headers` on tables.
     [article, ...article.querySelectorAll("[class]")].forEach(node => node.removeAttribute("class"));

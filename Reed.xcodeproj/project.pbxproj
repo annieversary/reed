@@ -406,6 +406,24 @@
 			<key>fileRef</key>
 			<string>CEFEDFD4E31E49F4A1E14286</string>
 		</dict>
+		<key>EEB59B1F82DE7697DFA2EA5C</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/MathSpeech.js</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>5655465D5EE8F72D987F1856</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>EEB59B1F82DE7697DFA2EA5C</string>
+		</dict>
 		<key>F0BA769FF6C009D39AF6272F</key>
 		<dict>
 			<key>isa</key>
@@ -459,6 +477,78 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>06E25CC4B1EF40148A6D4D98</string>
+		</dict>
+		<key>8EF4AB5F8AA59D154E6B70F5</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/SpeechRuleEngine-LICENSE</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>184ABD530BD7135AA8ECF6BC</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>8EF4AB5F8AA59D154E6B70F5</string>
+		</dict>
+		<key>994BE7706E01A300DB0EDE8C</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/SpeechRuleEngine-base.json</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>3B061ADC390787EBB46C7D96</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>994BE7706E01A300DB0EDE8C</string>
+		</dict>
+		<key>913F45B3A2C0581E78499784</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/SpeechRuleEngine-en.json</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>440F84117214583316BD934B</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>913F45B3A2C0581E78499784</string>
+		</dict>
+		<key>33DD72485945FCBF9ECF674F</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/SpeechRuleEngine.js</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>32B4755D9C5070657682E64A</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>33DD72485945FCBF9ECF674F</string>
 		</dict>
 		<key>169F6D550C9F9B8572CBBC11</key>
 		<dict>
@@ -603,9 +693,14 @@
 				<string>709F77BB5F9974865AC45CF4</string>
 				<string>62F2B30EADC9532F27B629D9</string>
 				<string>CEFEDFD4E31E49F4A1E14286</string>
+				<string>EEB59B1F82DE7697DFA2EA5C</string>
 				<string>F0BA769FF6C009D39AF6272F</string>
 				<string>794BE653DD175AFB4AD9B138</string>
 				<string>06E25CC4B1EF40148A6D4D98</string>
+				<string>8EF4AB5F8AA59D154E6B70F5</string>
+				<string>994BE7706E01A300DB0EDE8C</string>
+				<string>913F45B3A2C0581E78499784</string>
+				<string>33DD72485945FCBF9ECF674F</string>
 				<string>169F6D550C9F9B8572CBBC11</string>
 				<string>F95186331235DB31A60CB636</string>
 				<string>D6B3E48F2D5F9A78B16590C0</string>
@@ -689,9 +784,14 @@
 				<string>280AFA5966C83D33008AA46F</string>
 				<string>95F9C476FA29F4B4FE75BFA6</string>
 				<string>AEC029FEFB7F48EAA6D5738F</string>
+				<string>5655465D5EE8F72D987F1856</string>
 				<string>28237ABACD757084E075B439</string>
 				<string>4A73C7488519AA95EFE0670F</string>
 				<string>57712CA757F1D4E0806AFC1C</string>
+				<string>184ABD530BD7135AA8ECF6BC</string>
+				<string>3B061ADC390787EBB46C7D96</string>
+				<string>440F84117214583316BD934B</string>
+				<string>32B4755D9C5070657682E64A</string>
 				<string>78E7916C12A020A7B2F76EC1</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>

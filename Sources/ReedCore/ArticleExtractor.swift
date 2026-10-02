@@ -12,7 +12,7 @@ public struct ExtractedArticle: Codable, Sendable {
     /// Milliseconds since 1970, as JavaScript reports it.
     public let publishedAt: Double?
     public let excerpt: String
-    public let html: String
+    public internal(set) var html: String
     public let wordCount: Int
     public let images: [Image]
 }
@@ -52,9 +52,11 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
         let script = try ["Readability", "purify.min", "SiteRules", "ExtractArticle"].map { try resource($0, extension: "js") }.joined(separator: "\n")
         var resources: [String: String] = [:]
         for _ in 0..<3 {
-            let data = Data(try await evaluate(script, html: html, url: url, resources: resources, in: view).utf8)
+            let data = Data(try await evaluate(script, arguments: ["html": html, "sourceURL": url.absoluteString, "resources": resources], in: view).utf8)
             guard let needs = try? JSONDecoder().decode(Needs.self, from: data).needs else {
-                return try JSONDecoder().decode(ExtractedArticle.self, from: data)
+                var article = try JSONDecoder().decode(ExtractedArticle.self, from: data)
+                if article.html.contains("<math") { article.html = await wordFormulas(in: article.html, view: view) }
+                return article
             }
             for need in needs {
                 try Task.checkCancellation()
@@ -69,7 +71,19 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
 
     private struct Needs: Decodable { let needs: [String] }
 
-    private func evaluate(_ script: String, html: String, url: URL, resources: [String: String], in view: WKWebView) async throws -> String {
+    /// Labels each formula with how to read it aloud. It's a step of its own, with its own time limit, since a
+    /// formula-heavy paper takes a few seconds; the article is kept as it was if it fails.
+    private func wordFormulas(in html: String, view: WKWebView) async -> String {
+        do {
+            let script = try ["SpeechRuleEngine", "MathSpeech"].map { try resource($0, extension: "js") }.joined(separator: "\n")
+            let maps = ["en": try resource("SpeechRuleEngine-en", extension: "json"), "base": try resource("SpeechRuleEngine-base", extension: "json")]
+            return try await evaluate(script, arguments: ["html": html, "mathMaps": maps], in: view)
+        } catch {
+            return html
+        }
+    }
+
+    private func evaluate(_ script: String, arguments: [String: Any], in view: WKWebView) async throws -> String {
         // Bound JavaScript processing as well as page loading. Each invocation owns its callback,
         // so a late WebKit completion cannot accidentally finish a subsequent extraction.
         let evaluation = Evaluation()
@@ -79,7 +93,7 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
                 do { try await Task.sleep(for: .seconds(25)) } catch { return }
                 evaluation.finish(.failure(ReedError.extractionTimeout))
             }
-            view.callAsyncJavaScript(script, arguments: ["html": html, "sourceURL": url.absoluteString, "resources": resources], in: nil, in: .defaultClient) { result in
+            view.callAsyncJavaScript(script, arguments: arguments, in: nil, in: .defaultClient) { result in
                 switch result {
                 case .success(let value):
                     if let json = value as? String { evaluation.finish(.success(json)) }

@@ -99,11 +99,12 @@ private let arxivAbstract = """
     #expect(article.excerpt.hasPrefix("We show sprockets become gears under mild conditions"))
     #expect(article.html.hasPrefix("<p>Authors: Ada One, Bo Two</p><h2>Abstract</h2><p>We show sprockets"))
     #expect(article.html.contains("<h2>Paper</h2>"))
-    #expect(article.html.contains(#"Every sprocket with <math alttext="n" display="inline"><mi>n</mi></math> teeth"#))
+    #expect(article.html.contains(#"Every sprocket with <math alttext="n" display="inline" aria-label="n"><mi>n</mi></math> teeth"#))
+    #expect(article.html.contains(#"aria-label="p squared is less than or equal to n""#))
     #expect(article.html.contains("<mrow><msup><mi>p</mi><mn>2</mn></msup><mo>≤</mo><mi>n</mi></mrow></math>"))
     #expect(!article.html.contains("annotation"))
     #expect(article.html.contains("14336"))
-    #expect(article.html.contains(#"<figure><p> <math alttext="p=n" display="inline" displaystyle="true"><mi>p</mi><mo>=</mo><mi>n</mi></math> <span>(1)</span> </p></figure>"#))
+    #expect(article.html.contains(#"<p> <math alttext="p=n" display="inline" displaystyle="true" aria-label="p equals n"><mi>p</mi><mo>=</mo><mi>n</mi></math> <span>(1)</span> </p>"#))
     #expect(article.images.map(\.url) == ["https://arxiv.org/html/2401.00001v2/x1.png", "https://arxiv.org/html/2401.00001v2/x2.svg"])
     #expect(article.images.map(\.filename) == ["image-0", "image-1.svg"])
     #expect(!article.html.contains("Contents"))
@@ -124,4 +125,17 @@ private let arxivAbstract = """
     #expect(page("https://arxiv.org/pdf/hep-th/9901001.pdf") == "https://arxiv.org/abs/hep-th/9901001")
     #expect(page("https://arxiv.org/html/2401.00001v2/#S1") == "https://arxiv.org/abs/2401.00001v2")
     #expect(page("https://example.org/pdf/1") == "https://example.org/pdf/1")
+}
+
+@Test @MainActor func formulasAreWordedForNarration() async throws {
+    let formulas = [
+        "<mrow><mi>a</mi><mo>⋅</mo><msub><mi>E</mi><mi>i</mi></msub></mrow><mo>\u{200B}</mo><mrow><mo>(</mo><mi>x</mi><mo>)</mo></mrow>",
+        "<mi mathvariant=\"normal\">ℓ</mi><mo>∈</mo><msup><mi>ℝ</mi><mi>n</mi></msup>",
+        "<msup><mi>W</mi><mo>⊤</mo></msup><mi>x</mi>",
+        "<mn>2</mn><mo>\u{2062}</mo><mrow><mo>(</mo><mi>x</mi><mo>+</mo><mn>1</mn><mo>)</mo></mrow>"
+    ]
+    let paragraphs = formulas.map { "<p>Sprockets turn into gears whenever <math alttext=\"f\"><mrow>\($0)</mrow></math> holds for them, quickly and quietly.</p>" }
+    let article = try await extract("<html><body><article>\(paragraphs.joined())</article></body></html>", url: "https://example.org/gears")
+    let labels = article.html.matches(of: #/aria-label="([^"]*)"/#).map { String($0.output.1) }
+    #expect(labels == ["a times E sub i of x", "ell is a member of R to the n", "W transpose x", "2 times open paren x plus 1 close paren"])
 }

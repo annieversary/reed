@@ -150,6 +150,8 @@ import Testing
     let body = #"<p>With <math alttext="n" display="inline"><mi>n</mi></math> teeth, "#
         + #"<math alttext="p^{2}\leq n" display="inline"><msup><mi>p</mi><mn>2</mn></msup><mo>≤</mo><mi>n</mi></math> holds.</p>"#
     #expect(ArticleText.plain(body) == "With n teeth, holds.")
+    let labelled = body.replacing(#"display="inline"><msup>"#, with: #"display="inline" aria-label="p squared is at most n"><msup>"#)
+    #expect(ArticleText.plain(labelled) == "With n teeth, p squared is at most n holds.")
 }
 
 @Test func narrationReadsBlocksButSkipsCodeAndFigures() {

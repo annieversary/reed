@@ -122,7 +122,7 @@ public enum ArticleText {
         }
         return String(text)
             .replacing(#/<math\b([^>]*)>(.*?)</math\s*>/#.dotMatchesNewlines().ignoresCase()) { match in
-                isReadable(mathAttributes: String(match.output.1)) ? String(match.output.2) : " "
+                " " + spoken(mathAttributes: String(match.output.1), content: String(match.output.2)) + " "
             }
             .replacing(#/<[^>]*>/#, with: " ")
             .replacing(#/&(#[xX][0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/#) { match in
@@ -138,11 +138,14 @@ public enum ArticleText {
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
-    /// Whether a formula reads as plain text, like "n" or "32"; others are left out, since their text is a jumble
-    /// of symbols. The reader's narration highlighting makes the same call.
-    static func isReadable(mathAttributes: String) -> Bool {
-        guard let tex = mathAttributes.firstMatch(of: #/\balttext="([^"]*)"/#)?.output.1 else { return false }
-        return !tex.contains(where: { "\\^_{".contains($0) })
+    /// How a formula reads: its spoken label when it has one, otherwise its text if that's plain, like "n" or "32",
+    /// and otherwise nothing, since the text of anything more is a jumble of symbols. The reader's narration
+    /// highlighting reads formulas the same way.
+    static func spoken(mathAttributes: String, content: String) -> String {
+        if let label = mathAttributes.firstMatch(of: #/\baria-label="([^"]*)"/#)?.output.1 { return String(label) }
+        guard let tex = mathAttributes.firstMatch(of: #/\balttext="([^"]*)"/#)?.output.1,
+              !tex.contains(where: { "\\^_{".contains($0) }) else { return "" }
+        return content
     }
 }
 

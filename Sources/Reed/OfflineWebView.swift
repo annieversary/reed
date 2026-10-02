@@ -119,20 +119,22 @@ enum NarrationDirection: String {
     window.reedNarration = (() => {
         const blocks = 'p,h1,h2,h3,h4,h5,h6,li,dt,dd,blockquote,div,section,article,header,footer,aside,main';
         const squash = text => text.replace(/\s+/g, '');
-        // Narration leaves out formulas that don't read as plain text, like ArticleText does.
-        const unspoken = node => {
-            const math = node.parentElement?.closest('math');
-            return !!math && (!math.hasAttribute('alttext') || /[\\^_{]/.test(math.getAttribute('alttext')));
-        };
-        const spokenTexts = element => {
-            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
-                acceptNode: node => unspoken(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+        // Narration reads a formula as ArticleText does: by its spoken label, as its text when that's plain,
+        // or not at all. Each is read whole, so a sentence can only start or end beside one.
+        const formulaText = math => math.getAttribute('aria-label')
+            ?? (/^[^\\^_{]*$/.test(math.getAttribute('alttext') ?? '\\') ? math.textContent : '');
+        // The text nodes and formulas narration reads within `element`, in order.
+        const spokenParts = element => {
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+                acceptNode: node => node.localName === 'math' || (node.nodeType === Node.TEXT_NODE && !node.parentElement.closest('math'))
+                    ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
             });
-            const nodes = [];
-            for (let node; (node = walker.nextNode());) nodes.push(node);
-            return nodes;
+            const parts = [];
+            for (let node; (node = walker.nextNode());) parts.push(node);
+            return parts;
         };
-        const spokenText = element => spokenTexts(element).map(node => node.data).join('');
+        const partText = part => part.nodeType === Node.TEXT_NODE ? part.data : formulaText(part);
+        const spokenText = element => spokenParts(element).map(partText).join('');
         const style = document.createElement('style');
         style.textContent = `
             :root { --narrating: color-mix(in srgb, var(--accent) 9%, transparent); }
@@ -150,7 +152,7 @@ enum NarrationDirection: String {
         let elements = [], sentences = [], firstPassage = new Map();
         let current = null, currentIndex = null, following = true, leftView = false, reportedAway = '';
         // What's being read: the sentence's range when it was found, otherwise its passage's element.
-        let target = null, marks = [];
+        let target = null, marks = [], tintedFormulas = [];
 
         const locate = passages => {
             const all = Array.from(document.body.querySelectorAll(blocks));
@@ -170,13 +172,16 @@ enum NarrationDirection: String {
         };
         // The range of the `number`th sentence within `element`, matching text the same way passages are matched.
         const sentenceRange = (element, list, number) => {
+            // Each character's range: within its text node, or around its whole formula.
             const characters = [];
             let text = '';
-            for (const node of spokenTexts(element)) {
-                for (let offset = 0; offset < node.data.length; offset++) {
-                    if (/\s/.test(node.data[offset])) continue;
-                    characters.push([node, offset]);
-                    text += node.data[offset];
+            for (const part of spokenParts(element)) {
+                const content = partText(part);
+                const formulaAt = part.nodeType === Node.TEXT_NODE ? null : Array.prototype.indexOf.call(part.parentNode.childNodes, part);
+                for (let offset = 0; offset < content.length; offset++) {
+                    if (/\s/.test(content[offset])) continue;
+                    characters.push(formulaAt === null ? [part, offset, part, offset + 1] : [part.parentNode, formulaAt, part.parentNode, formulaAt + 1]);
+                    text += content[offset];
                 }
             }
             let from = 0, at = -1, length = 0;
@@ -188,17 +193,20 @@ enum NarrationDirection: String {
                 from = at + length;
             }
             const range = document.createRange();
-            range.setStart(...characters[at]);
-            const [endNode, endOffset] = characters[at + length - 1];
-            range.setEnd(endNode, endOffset + 1);
+            range.setStart(characters[at][0], characters[at][1]);
+            range.setEnd(characters[at + length - 1][2], characters[at + length - 1][3]);
             return range;
         };
         // Wraps the text in `range` in tinted spans, one per text node, so it can cross inline elements like links.
+        // Formulas are tinted whole, since spans inside one would break its layout.
         const mark = range => {
+            const container = range.commonAncestorContainer;
+            tintedFormulas = container.nodeType === Node.ELEMENT_NODE
+                ? Array.from(container.querySelectorAll('math')).filter(math => range.intersectsNode(math)) : [];
+            tintedFormulas.forEach(math => math.classList.add('reed-sentence'));
             const pieces = [];
             const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
             for (let node = walker.currentNode.nodeType === Node.TEXT_NODE ? walker.currentNode : walker.nextNode(); node; node = walker.nextNode()) {
-                // Tint spans inside a formula would break its layout.
                 if (!range.intersectsNode(node) || node.parentElement?.closest('math')) continue;
                 const start = node === range.startContainer ? range.startOffset : 0;
                 const end = node === range.endContainer ? range.endOffset : node.length;
@@ -213,10 +221,11 @@ enum NarrationDirection: String {
                 span.appendChild(node);
                 return span;
             });
-            if (!marks.length) return null;
+            const tinted = [...marks, ...tintedFormulas].sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+            if (!tinted.length) return null;
             const marked = document.createRange();
-            marked.setStartBefore(marks[0]);
-            marked.setEndAfter(marks[marks.length - 1]);
+            marked.setStartBefore(tinted[0]);
+            marked.setEndAfter(tinted[tinted.length - 1]);
             return marked;
         };
         const unmark = () => {
@@ -228,6 +237,8 @@ enum NarrationDirection: String {
                 parent.normalize();
             }
             marks = [];
+            tintedFormulas.forEach(math => math.classList.remove('reed-sentence'));
+            tintedFormulas = [];
         };
         const inView = element => {
             const box = element.getBoundingClientRect();
