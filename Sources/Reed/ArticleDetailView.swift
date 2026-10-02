@@ -99,7 +99,7 @@ struct ArticleDetailView: View {
             if article.isRead { Text("Finished") } else { PercentText(fraction: article.progress) }
         }
         .font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
-        .animation(.easeOut(duration: 0.4), value: article.progress)
+        .animation(.easeOut(duration: 0.1), value: article.progress)
         // Opening another article shows its position straight away rather than counting to it.
         .id(article.id)
     }
@@ -172,9 +172,9 @@ struct ArticleDetailView: View {
 }
 
 /// Counts through every whole percent between two values when animated.
-private struct PercentText: View, @preconcurrency Animatable {
+private struct PercentText: View, Animatable {
     var fraction: Double
-    var animatableData: Double {
+    nonisolated var animatableData: Double {
         get { fraction }
         set { fraction = newValue }
     }
