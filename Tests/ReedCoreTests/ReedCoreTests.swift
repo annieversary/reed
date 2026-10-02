@@ -171,6 +171,11 @@ import Testing
     #expect(ArticleSpeech.sentences(in: "A Title") == ["A Title"])
 }
 
+@Test func pluralInitialismsAreSpokenAsLetters() {
+    #expect(ArticleSpeech.spoken("LLMs and APIs, unlike the LLM's GPUs.") == "LLM's and API's, unlike the LLM's GPU's.")
+    #expect(ArticleSpeech.spoken("Pass BASICS, IDEAS and Is to MPs") == "Pass BASICS, IDEAS and Is to MP's")
+}
+
 @Test func leadImageIsTheFirstSavedImage() {
     #expect(ArticleHTML.firstImage(in: #"<p>Text</p><figure><IMG alt="a" src="image-2"></figure><img src="image-0">"#) == "image-2")
     #expect(ArticleHTML.firstImage(in: #"<img src="https://example.com/x.png"><img src="../etc/passwd">"#) == nil)

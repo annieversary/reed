@@ -434,7 +434,7 @@ final class Narrator {
                     for (number, sentence) in sentences[index].enumerated() {
                         if number > 0 { samples += [Float](repeating: 0, count: Int(Self.sentencePause * Self.sampleRate)) }
                         starts.append(Double(samples.count) / Self.sampleRate)
-                        samples += try await kokoro.synthesizeDetailed(text: sentence, voice: voice).samples
+                        samples += try await kokoro.synthesizeDetailed(text: ArticleSpeech.spoken(sentence), voice: voice).samples
                         try Task.checkCancellation()
                     }
                     // Written first, so a passage's audio is never there without its sentence times.
@@ -456,6 +456,7 @@ final class Narrator {
         let loading = loadingKokoro ?? Task {
             let manager = KokoroAneManager(computeUnits: Self.computeUnits)
             try await manager.initialize()
+            await manager.setEnglishCustomLexicon(ArticleSpeech.pronunciations)
             return manager
         }
         loadingKokoro = loading

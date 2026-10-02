@@ -36,4 +36,45 @@ public enum ArticleSpeech {
         }
         return sentences.isEmpty ? [passage] : sentences
     }
+
+    /// A sentence as Kokoro should be given it. Plural initialisms ("LLMs", "APIs") are written as possessives,
+    /// which Kokoro spells out letter by letter, where it would otherwise sound them out as a word.
+    public static func spoken(_ sentence: String) -> String {
+        sentence.replacing(#/\b([A-Z]{2,5})s\b/#) { "\($0.1)'s" }
+    }
+
+    /// Misaki IPA for technical terms Kokoro's lexicon lacks or gets wrong. Keys match exactly,
+    /// or in lowercase when the key is lowercase, so "macos" covers "macOS" and "MacOS".
+    public static let pronunciations: [String: String] = [
+        "JSON": "ʤˈAsᵊn",
+        "YAML": "jˈæmᵊl",
+        "TOML": "tˈɑmᵊl",
+        "WASM": "wˈɑzᵊm",
+        "OS": "ˌO ˈɛs",
+        "macos": "mˈæk ˌO ˈɛs",
+        "OAuth": "ˈO ˌɔθ",
+        "PhD": "pˌi ˌAʧ dˈi",
+        "LaTeX": "lˈAtˌɛk",
+        "wifi": "wˈIfˌI",
+        "github": "ɡˈɪthˌʌb",
+        "gitlab": "ɡˈɪtlˌæb",
+        "nginx": "ˈɛnʤənˌɛks",
+        "kubernetes": "kˌubəɹnˈɛtiz",
+        "postgres": "pˈOstɡɹˌɛs",
+        "postgresql": "pˈOstɡɹˌɛs kjˌu ˈɛl",
+        "mysql": "mˌI ˌɛs kjˌu ˈɛl",
+        "graphql": "ɡɹˈæf kjˌu ˈɛl",
+        "chatgpt": "ʧˈæt ʤˌi pˌi tˈi",
+        "iphone": "ˈIfˌOn",
+        "ipad": "ˈIpˌæd",
+        "swiftui": "swˈɪft jˌu ˈI",
+        "numpy": "nˈʌmpˌI",
+        "pypi": "pˈI pˌi ˈI",
+        "jupyter": "ʤˈupəɾəɹ",
+        "devops": "dˈɛvˌɑps",
+        "npm": "ˌɛn pˌi ˈɛm",
+        "zsh": "zˌi ˌɛs ˈAʧ",
+        "sudo": "sˈudˌu",
+        "emacs": "ˈimˌæks",
+    ]
 }
