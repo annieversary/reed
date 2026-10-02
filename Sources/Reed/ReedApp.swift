@@ -183,6 +183,12 @@ extension Notification.Name {
 enum ReedStyle {
     static let accent = Color(red: 0.32, green: 0.42, blue: 0.32)
     static let warm = Color.primary.opacity(0.035)
+    /// The reader's background, matching saved pages: white, or black in dark mode.
+    #if os(iOS)
+    static let paper = Color(UIColor { $0.userInterfaceStyle == .dark ? .black : .white })
+    #else
+    static let paper = Color(NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .black : .white })
+    #endif
 }
 
 struct ReedSecondaryButtonStyle: ButtonStyle {

@@ -58,13 +58,13 @@ enum NarrationDirection: String {
         }, {passive:true});
         """, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient)
         configuration.userContentController.addUserScript(script)
-        // Articles saved with an older template carry their own dark background.
-        let darkPaper = WKUserScript(source: """
+        // Articles saved with an older template carry their own background.
+        let paper = WKUserScript(source: """
         const style = document.createElement('style');
-        style.textContent = '@media(prefers-color-scheme:dark){:root{--paper:#000}}';
+        style.textContent = ':root{--paper:#fff}@media(prefers-color-scheme:dark){:root{--paper:#000}}';
         document.head.appendChild(style);
         """, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient)
-        configuration.userContentController.addUserScript(darkPaper)
+        configuration.userContentController.addUserScript(paper)
         configuration.userContentController.addUserScript(WKUserScript(source: Self.narrationScript, injectionTime: .atDocumentEnd,
                                                                        forMainFrameOnly: true, in: .defaultClient))
         configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: "narrationJump")

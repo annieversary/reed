@@ -43,7 +43,9 @@ struct LibraryView: View {
     @State private var showingSettings = false
     @State private var articleToDelete: Article?
     @State private var visibility = NavigationSplitViewVisibility.all
-    @State private var searchRevealed = false
+    @State private var searchRowHeight: CGFloat = 0
+    /// How much of the search row is scrolled out of view, from 0 to 1.
+    @State private var searchTucked: CGFloat = 0
     @FocusState private var searchFocused: Bool
     /// Articles that just stopped matching the filter, kept briefly so the change shows before the row goes.
     @State private var lingering: Set<UUID> = []
@@ -251,14 +253,16 @@ struct LibraryView: View {
             #endif
             List(selection: $selectedID) {
                 #if os(iOS)
-                if !pullRevealsSearch {
-                    searchField
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 8, trailing: 20))
-                }
+                Fading(hidden: $searchTucked) { searchField }
+                    .padding(.horizontal, 20).padding(.bottom, 8)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { searchRowHeight = $0 }
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
+                    .id(ListRow.search)
                 Text(articleCount).font(.system(size: 11)).foregroundStyle(.secondary)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+                    .id(ListRow.count)
                 #endif
                 let snippets = snippets
                 ForEach(visibleArticles) { article in
@@ -304,9 +308,9 @@ struct LibraryView: View {
             }
             #if os(iOS)
             .environment(\.defaultMinListRowHeight, 0)
-            .pullToReveal(revealed: $searchRevealed, keepRevealed: searchFocused || !query.isEmpty) {
-                searchField.padding(.horizontal, 20).padding(.bottom, 8)
-            }
+            .pullToReveal(ListRow.search, next: ListRow.count, height: searchRowHeight, startHidden: query.isEmpty, tucked: $searchTucked)
+            // Each collection opens with the search field tucked away.
+            .id(filter)
             // The list stays alive under a pushed article, so its field would keep the keyboard up.
             .onChange(of: selectedID) { searchFocused = false }
             .onDisappear { searchFocused = false }
@@ -344,11 +348,7 @@ struct LibraryView: View {
     }
 
     #if os(iOS)
-    /// Search hides above the list until a pull-down reveals it; without scroll geometry (before iOS 18)
-    /// it is an ordinary row that always shows.
-    private var pullRevealsSearch: Bool {
-        if #available(iOS 18.0, *) { true } else { false }
-    }
+    private enum ListRow { case search, count }
     #endif
 
     private var searchField: some View {
@@ -403,48 +403,73 @@ struct LibraryView: View {
 
 #if os(iOS)
 private extension View {
-    /// Keeps `field` just above the scroll view's content, so pulling down uncovers it. Letting go
-    /// once it is fully uncovered sets `revealed`; scrolling it back out of view clears it again
-    /// unless `keepRevealed`. Does nothing before iOS 18.
-    @ViewBuilder func pullToReveal<Field: View>(revealed: Binding<Bool>, keepRevealed: Bool, @ViewBuilder field: () -> Field) -> some View {
+    /// Lets a pull down uncover `field`, a row `height` tall at the top of the list, as it would a
+    /// navigation bar's search field: if `startHidden`, the list opens scrolled just past it. Scrolling
+    /// never comes to rest with it partly shown; `next` is the row below it, which takes the top when it
+    /// is hidden. A list too short to scroll it away keeps it shown. `tucked` follows how much of it is
+    /// out of view, from 0 to 1. Does nothing before iOS 18.
+    @ViewBuilder func pullToReveal(_ field: some Hashable, next: some Hashable, height: CGFloat, startHidden: Bool, tucked: Binding<CGFloat>) -> some View {
         if #available(iOS 18.0, *) {
-            modifier(PullToReveal(revealed: revealed, keepRevealed: keepRevealed, field: field()))
+            modifier(PullToReveal(field: field, next: next, height: height, startHidden: startHidden, fraction: tucked))
         } else {
             self
         }
     }
 }
 
-/// Revealing widens the top content margin rather than inserting a row, so the content stays
-/// where the finger left it and settles below the field without a re-layout. Hiding narrows it
-/// only once the field is out of view, where the change can't be seen.
 @available(iOS 18.0, *)
-private struct PullToReveal<Field: View>: ViewModifier {
-    @Binding var revealed: Bool
-    let keepRevealed: Bool
-    let field: Field
-    /// How far the content sits below its resting position; negative once scrolled down.
-    @State private var pull: CGFloat = 0
-    @State private var fieldHeight: CGFloat = 52
+private struct PullToReveal<ID: Hashable, Next: Hashable>: ViewModifier {
+    let field: ID
+    let next: Next
+    let height: CGFloat
+    let startHidden: Bool
+    @Binding var fraction: CGFloat
+    /// How far the field is scrolled out of view, from 0 (fully shown) to `height` (fully hidden).
+    @State private var tucked: CGFloat = 0
+    /// Whether the field was last moving into view, so a short pull is enough to finish revealing it.
+    @State private var opening = false
+    /// How far the content can scroll, once laid out; lists shorter than the field just keep it in view.
+    @State private var room: CGFloat?
+    @State private var placed = false
 
     func body(content: Content) -> some View {
-        content
-            .contentMargins(.top, revealed ? fieldHeight : 0, for: .scrollContent)
-            .onScrollGeometryChange(for: CGFloat.self) { -($0.contentOffset.y + $0.contentInsets.top) } action: { _, new in
-                pull = new
-                if revealed && !keepRevealed && pull <= -fieldHeight { revealed = false }
-            }
-            .onScrollPhaseChange { old, _ in
-                if old == .interacting && !revealed && pull >= fieldHeight { revealed = true }
-            }
-            .overlay(alignment: .top) {
-                field
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fieldHeight = $0 }
-                    .offset(y: pull - (revealed ? 0 : fieldHeight))
-                    .opacity(revealed ? 1 : min(1, max(0, pull / fieldHeight)))
-                    .allowsHitTesting(revealed)
-            }
+        ScrollViewReader { proxy in
+            content
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    min(max(0, geometry.contentOffset.y + geometry.contentInsets.top), height)
+                } action: { old, new in
+                    opening = new < old
+                    tucked = new
+                    fraction = height > 0 ? new / height : 0
+                }
+                .onScrollGeometryChange(for: CGFloat?.self) { geometry in
+                    guard geometry.contentSize.height > 0 else { return nil }
+                    return geometry.contentSize.height - geometry.containerSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
+                } action: { _, new in
+                    room = new
+                }
+                .onScrollPhaseChange { _, phase in
+                    guard phase == .idle, tucked > 0.5, tucked < height - 0.5 else { return }
+                    let reveal = (room ?? 0) < height || tucked < height * (opening ? 0.75 : 0.25)
+                    withAnimation(.snappy(duration: 0.25)) {
+                        if reveal { proxy.scrollTo(field, anchor: .top) } else { proxy.scrollTo(next, anchor: .top) }
+                    }
+                }
+                .onChange(of: height > 0 && room != nil, initial: true) { _, measured in
+                    guard measured, let room, !placed else { return }
+                    placed = true
+                    if startHidden && room >= height { proxy.scrollTo(next, anchor: .top) }
+                }
+        }
     }
+}
+
+/// Fades `content` out as `hidden` goes from 0 to 1. It reads the binding itself, so only this view
+/// updates while it changes.
+private struct Fading<Content: View>: View {
+    @Binding var hidden: CGFloat
+    @ViewBuilder let content: Content
+    var body: some View { content.opacity(1 - hidden) }
 }
 #endif
 

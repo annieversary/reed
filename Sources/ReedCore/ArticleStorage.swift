@@ -75,7 +75,7 @@ public enum ArticleHTML {
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src file:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
         <title>\(escape(title))</title>
         <style>
-        :root { color-scheme: light dark; --paper:#faf8f4; --ink:#282d28; --muted:#797e74; --accent:#4c6450; --font-size:19px; }
+        :root { color-scheme: light dark; --paper:#fff; --ink:#282d28; --muted:#797e74; --accent:#4c6450; --font-size:19px; }
         @media(prefers-color-scheme:dark) { :root { --paper:#000; --ink:#e5e8df; --muted:#a0a89b; --accent:#b6cda8; } }
         * { box-sizing:border-box } html { background:var(--paper); overflow-wrap:anywhere; }
         body { max-width:740px; margin:0 auto; padding:60px 42px 140px; color:var(--ink); font:var(--font-size)/1.8 Georgia,serif; }

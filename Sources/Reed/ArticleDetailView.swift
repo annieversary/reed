@@ -69,7 +69,7 @@ struct ArticleDetailView: View {
                         }
                     } else {
                         Image(systemName: "wifi.exclamationmark").font(.system(size: 36, weight: .light)).foregroundStyle(.secondary)
-                        Text("This one needs another try.").font(.system(size: 25, design: .serif))
+                        Text("Save failed.").font(.system(size: 25, design: .serif))
                         Text(article.failureMessage ?? "The article couldn't be downloaded.")
                             .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 380)
                         HStack {
@@ -77,7 +77,7 @@ struct ArticleDetailView: View {
                             if let url = article.sourceURL { Button("Open original") { openURL(url) }.buttonStyle(.reedSecondary) }
                         }
                     }
-                }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity).background(ReedStyle.warm)
+                }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity).background(ReedStyle.paper)
             }
         }
         .navigationTitle("")
