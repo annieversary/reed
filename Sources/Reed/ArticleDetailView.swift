@@ -95,8 +95,13 @@ struct ArticleDetailView: View {
     }
 
     private var progressLabel: some View {
-        Text(article.isRead ? "Finished" : "\(Int(article.progress * 100))%")
-            .font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+        Group {
+            if article.isRead { Text("Finished") } else { PercentText(fraction: article.progress) }
+        }
+        .font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+        .animation(.easeOut(duration: 0.4), value: article.progress)
+        // Opening another article shows its position straight away rather than counting to it.
+        .id(article.id)
     }
 
     private var listenButton: some View {
@@ -164,4 +169,15 @@ struct ArticleDetailView: View {
         Button("Reset", systemImage: "textformat.size") { fontSize = 19 }
         Button("Larger", systemImage: "textformat.size.larger") { fontSize = min(28, fontSize + 1) }
     }
+}
+
+/// Counts through every whole percent between two values when animated.
+private struct PercentText: View, @preconcurrency Animatable {
+    var fraction: Double
+    var animatableData: Double {
+        get { fraction }
+        set { fraction = newValue }
+    }
+
+    var body: some View { Text("\(Int(fraction * 100))%") }
 }
