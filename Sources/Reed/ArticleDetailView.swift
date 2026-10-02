@@ -130,6 +130,12 @@ struct ArticleDetailView: View {
 
     private var readerMenu: some View {
         Menu {
+            if article.isCached {
+                Button("Save to Library", systemImage: "tray.and.arrow.down") { library.keep(article) }
+            } else {
+                Button("Remove from Library", systemImage: "tray.and.arrow.up") { library.removeFromLibrary(article) }
+            }
+            Divider()
             Button(article.isFavorite ? "Remove Favorite" : "Favorite", systemImage: article.isFavorite ? "star.slash" : "star") {
                 library.toggleFavorite(article)
             }

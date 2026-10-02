@@ -72,7 +72,7 @@ struct LibraryView: View {
         let query: String
         let revision: Int
     }
-    private var selectedArticle: Article? { library.articles.first { $0.id == selectedID } }
+    private var selectedArticle: Article? { (library.articles + library.cached).first { $0.id == selectedID } }
 
     private struct Membership: Equatable {
         let filter: CollectionFilter
@@ -103,12 +103,8 @@ struct LibraryView: View {
         } content: {
             Group {
                 if case .discover(let origin) = selection {
-                    SourceListView(library: library, origin: origin, open: { selectedID = $0.id }) { article in
-                        if selectedID == article.id { selectedID = nil }
-                        if narrator.articleID == article.id { narrator.stop() }
-                        library.discard(article)
-                    }
-                    .id(origin)
+                    SourceListView(library: library, origin: origin) { selectedID = $0.id }
+                        .id(origin)
                 } else {
                     articleList
                 }
@@ -135,6 +131,7 @@ struct LibraryView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .reedAddArticle)) { _ in showingAdd = true }
         .onAppear { if !columnsStack { selection = .collection(.all) } }
+        .onChange(of: [selectedID, narrator.articleID], initial: true) { _, ids in library.retained = Set(ids.compactMap { $0 }) }
         #if os(iOS)
         .sheet(isPresented: $showingSettings) { NavigationStack { SettingsView() } }
         #endif

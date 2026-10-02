@@ -25,13 +25,12 @@ enum Discover: Hashable {
 }
 
 /// A source's front page, or every subscribed feed together, as last fetched. Front pages are fetched
-/// again only when asked; feeds also when they are an hour old. Choosing a link saves it and opens it;
-/// swiping saves it for later, or removes it again.
+/// again only when asked; feeds also when they are an hour old. Choosing a link opens it without saving
+/// it, from the copy cached while it is on a front page; swiping saves it for later, or removes it again.
 struct SourceListView: View {
     let library: Library
     let origin: Discover
     let open: (Article) -> Void
-    let remove: (Article) -> Void
     @State private var openedID: String?
     @State private var failure: String?
     @State private var loading = false
@@ -132,7 +131,7 @@ struct SourceListView: View {
             .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
             .swipeActions(edge: .trailing) {
                 if let saved {
-                    Button { remove(saved) } label: { Label("Remove", systemImage: "tray.and.arrow.up") }
+                    Button { library.removeFromLibrary(saved) } label: { Label("Remove", systemImage: "tray.and.arrow.up") }
                         .tint(.red)
                 } else {
                     Button { save(item) } label: { Label("Save", systemImage: "tray.and.arrow.down") }
@@ -141,7 +140,7 @@ struct SourceListView: View {
             }
             .contextMenu {
                 if let saved {
-                    Button("Remove from Library", systemImage: "tray.and.arrow.up", role: .destructive) { remove(saved) }
+                    Button("Remove from Library", systemImage: "tray.and.arrow.up", role: .destructive) { library.removeFromLibrary(saved) }
                 } else {
                     Button("Save to Library", systemImage: "tray.and.arrow.down") { save(item) }
                 }
@@ -293,10 +292,9 @@ struct SourceListView: View {
         }
     }
 
-    /// Saving happens as the row is chosen, so the article is ready by the time its page is shown.
     private func choose(_ id: String?) {
         openedID = id
-        guard let item = items?.first(where: { $0.id == id }), let article = save(item) else { return }
+        guard let item = items?.first(where: { $0.id == id }), let article = library.readable(at: item.url) else { return }
         open(article)
     }
 

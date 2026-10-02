@@ -5,6 +5,10 @@ import SwiftData
 @MainActor @Observable
 public final class Library {
     public private(set) var articles: [Article] = []
+    /// Front-page stories downloaded ahead to read offline, kept outside the library until saved.
+    public private(set) var cached: [Article] = []
+    /// Cached articles kept even once they leave the front pages, such as the one being read.
+    public var retained: Set<UUID> = []
     public var errorMessage: String?
     public private(set) var activity: String?
     /// Image progress of the article being saved, such as "Saving image 2 of 5…".
@@ -37,9 +41,11 @@ public final class Library {
         let configuration = ModelConfiguration(url: root.appendingPathComponent("Library.store"))
         container = try ModelContainer(for: Article.self, configurations: configuration)
         searchIndex = try SearchIndex(url: root.appendingPathComponent("Search.sqlite"))
-        articles = try container.mainContext.fetch(FetchDescriptor<Article>(sortBy: [SortDescriptor(\.savedAt, order: .reverse)]))
+        let stored = try container.mainContext.fetch(FetchDescriptor<Article>(sortBy: [SortDescriptor(\.savedAt, order: .reverse)]))
+        articles = stored.filter { !$0.isCached }
+        cached = stored.filter(\.isCached)
         try storage.cleanStaging()
-        for article in articles {
+        for article in stored {
             if article.state == .downloading { article.state = .queued }
             if article.state.isReadable && contentURL(for: article) == nil {
                 article.state = .failed
@@ -53,6 +59,7 @@ public final class Library {
                 frontPages[source] = page
             }
         }
+        syncCache()
         if let data = try? Data(contentsOf: Self.feedsURL(root: root)),
            let store = try? JSONDecoder().decode(FeedStore.self, from: data) {
             feeds = store.feeds
@@ -69,6 +76,7 @@ public final class Library {
     @discardableResult public func add(_ input: String) throws -> Article {
         let url = try ArticleURL.parse(input)
         if let existing = article(at: url) { return existing }
+        if let cached = cachedArticle(at: url) { keep(cached); return cached }
         let article = Article(url: url)
         container.mainContext.insert(article)
         do { try container.mainContext.save() }
@@ -81,12 +89,94 @@ public final class Library {
 
     /// The saved article for `url`, whether saved from that link or redirected to it.
     public func article(at url: URL) -> Article? {
-        articles.first { $0.originalURL == url.absoluteString || $0.resolvedURL == url.absoluteString }
+        articles.first { $0.isAt(url) }
+    }
+
+    public func cachedArticle(at url: URL) -> Article? {
+        cached.first { $0.isAt(url) }
+    }
+
+    /// The copy of `url` to read: the saved one, else the cached one, cached now if need be.
+    public func readable(at url: URL) -> Article? {
+        if let saved = article(at: url) { return saved }
+        let article: Article
+        if let existing = cachedArticle(at: url) {
+            article = existing
+            if article.state == .failed { article.state = .queued; save() }
+        } else {
+            article = Article(url: url)
+            article.isCached = true
+            container.mainContext.insert(article)
+            do { try container.mainContext.save() }
+            catch { container.mainContext.delete(article); errorMessage = error.localizedDescription; return nil }
+        }
+        // Cached articles download in order, so the one being opened goes first.
+        cached.removeAll { $0.id == article.id }
+        cached.insert(article, at: 0)
+        resumeDownloads()
+        return article
+    }
+
+    /// Moves a cached article into the library, without downloading it again.
+    public func keep(_ article: Article) {
+        guard article.isCached else { return }
+        article.isCached = false
+        article.savedAt = .now
+        if article.state == .failed { article.state = .queued; article.failureMessage = nil }
+        save()
+        cached.removeAll { $0.id == article.id }
+        articles.insert(article, at: 0)
+        reindex(article)
+        resumeDownloads()
+    }
+
+    /// Takes the article out of the library but keeps its copy cached, so it stays readable while it is open
+    /// or on a front page.
+    public func removeFromLibrary(_ article: Article) {
+        guard !article.isCached else { return }
+        article.isCached = true
+        article.isFavorite = false
+        save()
+        articles.removeAll { $0.id == article.id }
+        cached.append(article)
+        let id = article.id
+        Task { [weak self, searchIndex] in
+            try? await searchIndex.remove(id)
+            self?.searchRevision += 1
+        }
+    }
+
+    /// Caches each front-page story that isn't in the library, in front-page order, and drops cached ones
+    /// no longer on any front page.
+    private func syncCache() {
+        var kept: [Article] = []
+        for item in ExternalSource.allCases.flatMap({ frontPages[$0]?.items ?? [] })
+        where article(at: item.url) == nil && !kept.contains(where: { $0.isAt(item.url) }) {
+            if let existing = cachedArticle(at: item.url) {
+                // Earlier failures are often just being offline.
+                if existing.state == .failed { existing.state = .queued; existing.failureMessage = nil }
+                kept.append(existing)
+            } else {
+                let article = Article(url: item.url)
+                article.isCached = true
+                container.mainContext.insert(article)
+                kept.append(article)
+            }
+        }
+        for article in cached where !kept.contains(where: { $0.id == article.id }) {
+            if retained.contains(article.id) { kept.append(article) }
+            else if article.state == .downloading { discarded.insert(article.id) }
+            else { erase(article) }
+        }
+        cached = kept
+        save()
     }
 
     public func refreshFrontPage(of source: ExternalSource) async throws {
         let page = FrontPage(items: try await source.frontPage(using: downloader), fetchedAt: .now)
         frontPages[source] = page
+        syncCache()
+        resumeDownloads()
         // The cache only spares a fetch at launch, so failing to write it isn't worth reporting.
         let url = Self.frontPageURL(root: storage.root, source: source)
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -230,7 +320,7 @@ public final class Library {
         worker = Task { [weak self] in
             guard let self else { return }
             defer { self.worker = nil; self.activity = nil; self.imageActivity = nil }
-            while let article = self.articles.last(where: { $0.state == .queued }) {
+            while let article = self.articles.last(where: { $0.state == .queued }) ?? self.cached.first(where: { $0.state == .queued }) {
                 if Task.isCancelled { break }
                 await self.download(article)
             }
@@ -253,12 +343,6 @@ public final class Library {
         if erase(article) { articles.remove(at: index) }
     }
 
-    /// Removes the article from the library straight away, even mid-download.
-    public func discard(_ article: Article) {
-        guard article.state == .downloading else { delete(article); return }
-        articles.removeAll { $0.id == article.id }
-        discarded.insert(article.id)
-    }
 
     /// Whether the article's metadata is gone; leftover files are reported but don't count against it.
     @discardableResult private func erase(_ article: Article) -> Bool {
@@ -270,7 +354,11 @@ public final class Library {
         return true
     }
 
-    public func toggleFavorite(_ article: Article) { article.isFavorite.toggle(); save() }
+    /// Favoriting a cached article saves it, so it isn't dropped with the front page.
+    public func toggleFavorite(_ article: Article) {
+        article.isFavorite.toggle()
+        if article.isFavorite && article.isCached { keep(article) } else { save() }
+    }
     public func toggleRead(_ article: Article) { article.isRead.toggle(); save() }
 
     public func updateProgress(_ article: Article, value: Double) {
@@ -330,14 +418,16 @@ public final class Library {
         article.state = .downloading
         save()
         var staging: URL?
+        // Caching happens quietly; only saving to the library is reported.
+        func report(_ message: String) { if !article.isCached { activity = message } }
         defer {
             imageActivity = nil
             if let staging { try? FileManager.default.removeItem(at: staging) }
         }
         do {
-            activity = "Fetching \(article.domain)…"
+            report("Fetching \(article.domain)…")
             let page = try await downloader.page(at: ArticleURL.parse(article.originalURL))
-            activity = "Finding the article…"
+            report("Finding the article…")
             let extracted = try await extractor.extract(html: page.html, url: page.url) { [downloader] url in
                 String(decoding: try await downloader.json(at: url), as: UTF8.self)
             }
@@ -348,8 +438,9 @@ public final class Library {
             var totalBytes = 0
             for (index, image) in extracted.images.enumerated() {
                 try Task.checkCancellation()
-                imageActivity = "Saving image \(index + 1) of \(extracted.images.count)…"
-                activity = imageActivity
+                let message = "Saving image \(index + 1) of \(extracted.images.count)…"
+                imageActivity = message
+                report(message)
                 do {
                     guard index < 40, totalBytes < 64 * 1024 * 1024, let url = URL(string: image.url) else {
                         throw ReedError.oversizedDownload
@@ -388,7 +479,7 @@ public final class Library {
             article.state = missing > 0 ? .partial : .ready
             article.failureMessage = nil
             try container.mainContext.save()
-            reindex(article)
+            if !article.isCached { reindex(article) }
         } catch {
             article.state = .failed
             article.failureMessage = error.localizedDescription
@@ -396,4 +487,8 @@ public final class Library {
         }
         if discarded.remove(article.id) != nil { erase(article) }
     }
+}
+
+private extension Article {
+    func isAt(_ url: URL) -> Bool { originalURL == url.absoluteString || resolvedURL == url.absoluteString }
 }

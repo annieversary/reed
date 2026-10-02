@@ -246,3 +246,36 @@ import Testing
     #expect(library.frontPages[.lobsters]?.fetchedAt == Date(timeIntervalSince1970: 100))
     #expect(library.frontPages[.hackerNews] == nil)
 }
+
+@MainActor @Test func frontPageStoriesAreCachedOutsideTheLibraryUntilSaved() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    func story(_ id: String) -> SourceItem {
+        SourceItem(id: id, title: id, url: URL(string: "https://example.com/\(id)")!, discussionURL: nil,
+                   author: nil, points: nil, comments: nil, postedAt: nil)
+    }
+    func writeFrontPage(_ items: [SourceItem]) throws {
+        let url = Library.frontPageURL(root: root, source: .lobsters)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(FrontPage(items: items, fetchedAt: .now)).write(to: url)
+    }
+    try writeFrontPage([story("a"), story("b"), story("c")])
+    let library = try Library(root: root)
+    #expect(library.articles.isEmpty)
+    #expect(library.cached.map(\.originalURL) == ["https://example.com/a", "https://example.com/b", "https://example.com/c"])
+    let cached = try #require(library.cachedArticle(at: story("a").url))
+    #expect(library.readable(at: story("a").url)?.id == cached.id)
+    #expect(try library.add(story("a").url.absoluteString).id == cached.id)
+    #expect(library.articles.map(\.id) == [cached.id])
+    #expect(!cached.isCached)
+    library.removeFromLibrary(cached)
+    #expect(library.articles.isEmpty)
+    #expect(library.cachedArticle(at: story("a").url)?.id == cached.id)
+    library.keep(cached)
+
+    try writeFrontPage([story("c"), story("d")])
+    let reopened = try Library(root: root)
+    #expect(reopened.articles.map(\.originalURL) == ["https://example.com/a"])
+    #expect(reopened.cached.map(\.originalURL) == ["https://example.com/c", "https://example.com/d"])
+}
+

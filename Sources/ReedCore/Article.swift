@@ -39,6 +39,8 @@ public final class Article {
     public var contentVersion: String?
     /// The passage narration last reached, to resume from.
     public var narrationPassage: Int?
+    /// Downloaded ahead from a front page so it can be read offline, but not saved to the library.
+    public var isCached: Bool = false
 
     public init(url: URL, id: UUID = UUID()) {
         self.id = id
