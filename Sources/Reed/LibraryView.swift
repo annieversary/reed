@@ -168,8 +168,19 @@ struct LibraryView: View {
     /// doesn't reach into the columns on iOS, which would leave the reader running underneath it.
     @ViewBuilder private func narrationBar(when shown: Bool) -> some View {
         if shown, narrator.articleID != nil {
-            NarrationBar(narrator: narrator) { selectedID = narrator.articleID }
+            NarrationBar(narrator: narrator, onOpen: openNarrated)
         }
+    }
+
+    /// When the columns stack, the article is pushed from the article list's selection, so that list
+    /// must be the one showing, and hold the article, from the sidebar, Discover or another collection.
+    private func openNarrated() {
+        guard let id = narrator.articleID else { return }
+        if columnsStack, filter == nil || !visibleArticles.contains(where: { $0.id == id }) {
+            selection = .collection(.all)
+            query = ""
+        }
+        selectedID = id
     }
 
     private var sidebar: some View {
