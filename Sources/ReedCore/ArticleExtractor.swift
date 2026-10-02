@@ -25,7 +25,8 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
 
     public override init() { super.init() }
 
-    public func extract(html: String, url: URL) async throws -> ExtractedArticle {
+    /// `fetch` loads the same-origin JSON a site rule asks for, such as a README rendered client-side.
+    public func extract(html: String, url: URL, fetch: (URL) async throws -> String) async throws -> ExtractedArticle {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         let rules = try await WKContentRuleListStore.default().compileContentRuleList(
@@ -48,13 +49,27 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
             view.loadHTMLString("<html><head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'\"></head><body></body></html>", baseURL: nil)
         }
         try Task.checkCancellation()
-        let script = try resource("Readability", extension: "js") + "\n" + resource("purify.min", extension: "js") + "\n" + resource("ExtractArticle", extension: "js")
-        let json = try await evaluate(script, html: html, url: url, in: view)
-        guard let data = json.data(using: .utf8) else { throw ReedError.emptyArticle }
-        return try JSONDecoder().decode(ExtractedArticle.self, from: data)
+        let script = try ["Readability", "purify.min", "SiteRules", "ExtractArticle"].map { try resource($0, extension: "js") }.joined(separator: "\n")
+        var resources: [String: String] = [:]
+        for _ in 0..<3 {
+            let data = Data(try await evaluate(script, html: html, url: url, resources: resources, in: view).utf8)
+            guard let needs = try? JSONDecoder().decode(Needs.self, from: data).needs else {
+                return try JSONDecoder().decode(ExtractedArticle.self, from: data)
+            }
+            for need in needs {
+                try Task.checkCancellation()
+                // A failed fetch leaves the rule to make do without it.
+                var body = ""
+                if let needURL = URL(string: need) { body = (try? await fetch(needURL)) ?? "" }
+                resources[need] = body
+            }
+        }
+        throw ReedError.emptyArticle
     }
 
-    private func evaluate(_ script: String, html: String, url: URL, in view: WKWebView) async throws -> String {
+    private struct Needs: Decodable { let needs: [String] }
+
+    private func evaluate(_ script: String, html: String, url: URL, resources: [String: String], in view: WKWebView) async throws -> String {
         // Bound JavaScript processing as well as page loading. Each invocation owns its callback,
         // so a late WebKit completion cannot accidentally finish a subsequent extraction.
         let evaluation = Evaluation()
@@ -64,7 +79,7 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
                 do { try await Task.sleep(for: .seconds(25)) } catch { return }
                 evaluation.finish(.failure(ReedError.extractionTimeout))
             }
-            view.callAsyncJavaScript(script, arguments: ["html": html, "sourceURL": url.absoluteString], in: nil, in: .defaultClient) { result in
+            view.callAsyncJavaScript(script, arguments: ["html": html, "sourceURL": url.absoluteString, "resources": resources], in: nil, in: .defaultClient) { result in
                 switch result {
                 case .success(let value):
                     if let json = value as? String { evaluation.finish(.success(json)) }

@@ -442,6 +442,24 @@
 			<key>fileRef</key>
 			<string>794BE653DD175AFB4AD9B138</string>
 		</dict>
+		<key>06E25CC4B1EF40148A6D4D98</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/SiteRules.js</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>57712CA757F1D4E0806AFC1C</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>06E25CC4B1EF40148A6D4D98</string>
+		</dict>
 		<key>169F6D550C9F9B8572CBBC11</key>
 		<dict>
 			<key>isa</key>
@@ -587,6 +605,7 @@
 				<string>CEFEDFD4E31E49F4A1E14286</string>
 				<string>F0BA769FF6C009D39AF6272F</string>
 				<string>794BE653DD175AFB4AD9B138</string>
+				<string>06E25CC4B1EF40148A6D4D98</string>
 				<string>169F6D550C9F9B8572CBBC11</string>
 				<string>F95186331235DB31A60CB636</string>
 				<string>D6B3E48F2D5F9A78B16590C0</string>
@@ -672,6 +691,7 @@
 				<string>AEC029FEFB7F48EAA6D5738F</string>
 				<string>28237ABACD757084E075B439</string>
 				<string>4A73C7488519AA95EFE0670F</string>
+				<string>57712CA757F1D4E0806AFC1C</string>
 				<string>78E7916C12A020A7B2F76EC1</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
