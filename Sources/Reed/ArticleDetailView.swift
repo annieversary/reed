@@ -12,6 +12,8 @@ struct ArticleDetailView: View {
     @State private var passages: [[String]]?
     @State private var reader = ReaderProxy()
     @State private var narrationAway: NarrationDirection?
+    @State private var notes: [ArticleNote]?
+    @State private var notesOpen = false
 
     private var isNarrating: Bool { narrator.articleID == article.id }
 
@@ -24,6 +26,7 @@ struct ArticleDetailView: View {
                 if library.contentURL(for: article) != nil {
                     progressLabel
                     if !isNarrating { listenButton }
+                    notesButton
                 }
                 readerMenu
             }
@@ -42,7 +45,7 @@ struct ArticleDetailView: View {
                 }
                 OfflineWebView(url: url, fontSize: fontSize, progress: article.progress, passages: passages,
                                narrating: isNarrating ? NarrationPosition(passage: narrator.current, sentence: narrator.sentence) : nil,
-                               proxy: reader) { value in
+                               proxy: reader, notes: notes, notesOpen: notesOpen) { value in
                     library.updateProgress(article, value: value)
                 } onAddLink: { link in
                     do { try library.add(link.absoluteString) }
@@ -51,11 +54,19 @@ struct ArticleDetailView: View {
                     narrator.play(article, from: passage, in: library)
                 } onNarrationAway: { direction in
                     withAnimation(.easeOut(duration: 0.2)) { narrationAway = direction }
+                } onNotesOpen: { open in
+                    notesOpen = open
+                } onNoteChange: { passage, text in
+                    library.setNote(text, at: passage, for: article)
                 }
                 .id(article.id.uuidString + (article.contentVersion ?? ""))
                 // Text runs under the home indicator, but not under the narration controls.
                 .ignoresSafeArea(edges: narrator.articleID == nil ? .bottom : [])
-                .task(id: url) { passages = library.passages(for: article)?.map(ArticleSpeech.sentences(in:)) }
+                .task(id: url) {
+                    let text = library.passages(for: article)
+                    notes = text.map { library.notes(for: article, passages: $0) }
+                    passages = text?.map(ArticleSpeech.sentences(in:))
+                }
                 // Drawn by the app rather than the page, so it sits above the narration controls.
                 .overlay(alignment: .bottom) {
                     if isNarrating, let narrationAway { returnToNarrationButton(narrationAway) }
@@ -87,6 +98,7 @@ struct ArticleDetailView: View {
             if library.contentURL(for: article) != nil {
                 ToolbarItem(placement: .principal) { progressLabel }
                 if !isNarrating { ToolbarItem(placement: .primaryAction) { listenButton } }
+                ToolbarItem(placement: .primaryAction) { notesButton }
             }
             ToolbarItem(placement: .primaryAction) { readerMenu }
         }
@@ -117,6 +129,15 @@ struct ArticleDetailView: View {
             .buttonStyle(.borderless)
             #endif
             .help("Listen")
+    }
+
+    private var notesButton: some View {
+        Button(notesOpen ? "Hide Notes" : "Notes", systemImage: notesOpen ? "note.text.badge.plus" : "note.text") { notesOpen.toggle() }
+            .labelStyle(.iconOnly)
+            #if os(macOS)
+            .buttonStyle(.borderless)
+            #endif
+            .help(notesOpen ? "Hide Notes" : "Notes")
     }
 
     private func returnToNarrationButton(_ direction: NarrationDirection) -> some View {

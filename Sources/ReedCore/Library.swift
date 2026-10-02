@@ -398,6 +398,34 @@ public final class Library {
         return ArticleSpeech.passages(title: article.title, html: html)
     }
 
+    /// The notes written beside the saved article's passages, as `passages(for:)` gives them.
+    public func notes(for article: Article, passages: [String]) -> [ArticleNote] {
+        ArticleNotes.placed(storedNotes(for: article), in: passages)
+    }
+
+    /// Replaces the note beside a passage; empty text removes it. Writing a note keeps a cached article,
+    /// so the note isn't evicted with it.
+    public func setNote(_ text: String, at passage: Int, for article: Article) {
+        guard let passages = passages(for: article), passages.indices.contains(passage) else { return }
+        var notes = ArticleNotes.placed(storedNotes(for: article), in: passages).filter { $0.passage != passage }
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty {
+            notes.append(ArticleNote(passage: passage, anchor: ArticleNotes.anchor(for: passages[passage]), text: text))
+            notes.sort { $0.passage < $1.passage }
+            keep(article)
+        }
+        let url = storage.notesURL(article.id)
+        do {
+            if !notes.isEmpty { try JSONEncoder().encode(notes).write(to: url, options: .atomic) }
+            else if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func storedNotes(for article: Article) -> [ArticleNote] {
+        guard let data = try? Data(contentsOf: storage.notesURL(article.id)) else { return [] }
+        return (try? JSONDecoder().decode([ArticleNote].self, from: data)) ?? []
+    }
+
     /// The first image saved with the article, if any.
     public func leadImage(for article: Article) -> URL? {
         guard let url = contentURL(for: article), let html = try? String(contentsOf: url, encoding: .utf8),

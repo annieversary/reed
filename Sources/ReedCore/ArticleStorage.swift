@@ -27,6 +27,11 @@ public struct ArticleStorage: Sendable {
             .appendingPathComponent(version, isDirectory: true).appendingPathComponent(voice, isDirectory: true)
     }
 
+    /// Notes written beside the article. They sit beside the versions, so they outlast a fresh download.
+    public func notesURL(_ id: UUID) -> URL {
+        articleDirectory(id).appendingPathComponent("Notes.json")
+    }
+
     public func createStagingDirectory() throws -> URL {
         let url = root.appendingPathComponent("Staging", isDirectory: true).appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

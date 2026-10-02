@@ -34,6 +34,7 @@ Builds for `generic/platform=iOS`, then installs and launches over `devicectl`. 
 - Search titles, authors, websites, and excerpts; favorite articles and mark them finished.
 - Save reading position and restore it when reopening an article.
 - Listen to saved articles, read aloud on device by Kokoro (see below).
+- Write notes beside each paragraph: swipe from right to left (or sideways on a trackpad) to slide the article over for a margin of notes. A note longer than its paragraph parts the article below it, so it stays beside what it's about.
 - Distinguish queued, downloading, saved, partially saved, and failed downloads.
 - Retry failures, recover interrupted downloads on launch, and delete saved articles.
 - Deduplicate normalized URLs without stripping meaningful query parameters.
@@ -64,6 +65,7 @@ Library.store                   SwiftData metadata and download states
 Articles/<id>/<version>/
   index.html                    Sanitized article and Reed's reader stylesheet
   image-0                       Downloaded image, referenced locally
+Articles/<id>/Notes.json        Notes, each anchored to its paragraph's opening text
 Articles/<id>/Audio/<version>/<voice>/
   0.m4a, 1.m4a, …               Narration, one file per passage
 Staging/                        Incomplete downloads, cleaned after restart

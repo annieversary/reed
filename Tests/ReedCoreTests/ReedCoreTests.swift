@@ -171,6 +171,16 @@ import Testing
     #expect(ArticleSpeech.sentences(in: "A Title") == ["A Title"])
 }
 
+@Test func notesFollowTheirPassagesWhenAnArticleChanges() {
+    let note = { (passage: Int, text: String) in ArticleNote(passage: passage, anchor: ArticleNotes.anchor(for: text), text: "On \(text)") }
+    let notes = [note(1, "Second"), note(2, "Third"), note(3, "Gone")]
+    #expect(ArticleNotes.placed(notes, in: ["Title", "Inserted", "Second", "Third"]).map { [String($0.passage), $0.text] }
+            == [["2", "On Second"], ["3", "On Third\n\nOn Gone"]])
+    // Repeated passages keep the note on the one nearest where it was.
+    #expect(ArticleNotes.placed([note(3, "Same")], in: ["Same", "a", "b", "Same", "c"]).map(\.passage) == [3])
+    #expect(ArticleNotes.placed(notes, in: []).isEmpty)
+}
+
 @Test func pluralInitialismsAreSpokenAsLetters() {
     #expect(ArticleSpeech.spoken("LLMs and APIs, unlike the LLM's GPUs.") == "LLM's and API's, unlike the LLM's GPU's.")
     #expect(ArticleSpeech.spoken("Pass BASICS, IDEAS and Is to MPs") == "Pass BASICS, IDEAS and Is to MP's")
