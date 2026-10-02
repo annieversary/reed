@@ -241,7 +241,7 @@ struct LibraryView: View {
                     Button { showingAdd = true } label: {
                         Image(systemName: "plus").font(.system(size: 15, weight: .medium)).frame(width: 32, height: 32)
                     }
-                    .buttonStyle(.bordered).clipShape(RoundedRectangle(cornerRadius: 9))
+                    .buttonStyle(.reedSecondaryIcon)
                     .help("Save an article (⌘N)").accessibilityLabel("Save an article")
                 }
                 searchField

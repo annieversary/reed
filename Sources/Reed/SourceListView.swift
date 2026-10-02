@@ -119,7 +119,7 @@ struct SourceListView: View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: 14, weight: .medium)).frame(width: 32, height: 32)
         }
-        .buttonStyle(.bordered).clipShape(RoundedRectangle(cornerRadius: 9))
+        .buttonStyle(.reedSecondaryIcon)
         .help(help).accessibilityLabel(help)
     }
     #endif
@@ -193,14 +193,14 @@ struct SourceListView: View {
                         .font(.system(size: 12)).multilineTextAlignment(.center).lineSpacing(3)
                 }
                 .foregroundStyle(.secondary)
-                Button("Add a Feed") { showingAddFeed = true }.buttonStyle(.bordered)
+                Button("Add a Feed") { showingAddFeed = true }.buttonStyle(.reedSecondary)
             }
             .padding(30)
         } else if let failure = currentFailure, items?.isEmpty ?? true {
             VStack(spacing: 14) {
                 Text("Couldn't load \(origin == .feeds ? "your feeds" : origin.title).").font(.system(size: 18, design: .serif))
                 Text(failure).font(.system(size: 12)).multilineTextAlignment(.center)
-                Button("Try Again") { Task { await load() } }.buttonStyle(.bordered)
+                Button("Try Again") { Task { await load() } }.buttonStyle(.reedSecondary)
             }
             .foregroundStyle(.secondary).padding(30)
         } else if items == nil || (items?.isEmpty == true && isLoading) {

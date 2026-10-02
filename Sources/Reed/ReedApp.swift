@@ -184,3 +184,23 @@ enum ReedStyle {
     static let accent = Color(red: 0.32, green: 0.42, blue: 0.32)
     static let warm = Color.primary.opacity(0.035)
 }
+
+struct ReedSecondaryButtonStyle: ButtonStyle {
+    var padded = true
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, padded ? 10 : 0).padding(.vertical, padded ? 5 : 0)
+            .foregroundStyle(ReedStyle.accent)
+            .background(ReedStyle.accent.opacity(configuration.isPressed ? 0.22 : 0.12), in: RoundedRectangle(cornerRadius: 9))
+            .opacity(isEnabled ? 1 : 0.45)
+            .contentShape(RoundedRectangle(cornerRadius: 9))
+    }
+}
+
+extension ButtonStyle where Self == ReedSecondaryButtonStyle {
+    static var reedSecondary: ReedSecondaryButtonStyle { ReedSecondaryButtonStyle() }
+    /// For icon buttons that size themselves.
+    static var reedSecondaryIcon: ReedSecondaryButtonStyle { ReedSecondaryButtonStyle(padded: false) }
+}

@@ -74,7 +74,7 @@ struct ArticleDetailView: View {
                             .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 380)
                         HStack {
                             Button("Retry download") { library.retry(article) }.buttonStyle(.borderedProminent)
-                            if let url = article.sourceURL { Button("Open original") { openURL(url) }.buttonStyle(.bordered) }
+                            if let url = article.sourceURL { Button("Open original") { openURL(url) }.buttonStyle(.reedSecondary) }
                         }
                     }
                 }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity).background(ReedStyle.warm)
