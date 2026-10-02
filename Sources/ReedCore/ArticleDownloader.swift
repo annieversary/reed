@@ -23,7 +23,7 @@ public actor ArticleDownloader {
     }
 
     public func page(at url: URL) async throws -> DownloadedPage {
-        let (data, response) = try await fetch(url, limit: 8 * 1024 * 1024, kind: .html)
+        let (data, response) = try await fetch(Self.readablePage(for: url), limit: 8 * 1024 * 1024, kind: .html)
         let encoding: String.Encoding
         switch response.textEncodingName?.lowercased() {
         case "iso-8859-1", "latin1": encoding = .isoLatin1
@@ -34,6 +34,25 @@ public actor ArticleDownloader {
         guard let html = String(data: data, encoding: encoding) ?? String(data: data, encoding: .windowsCP1252),
               let finalURL = response.url else { throw ReedError.unsupportedContent }
         return DownloadedPage(html: html, url: finalURL)
+    }
+
+    /// arXiv's PDF and HTML renderings, as their abstract page, which links to the HTML when there is one.
+    static func readablePage(for url: URL) -> URL {
+        guard let host = url.host(), host == "arxiv.org" || host.hasSuffix(".arxiv.org"),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        let parts = components.path.split(separator: "/", maxSplits: 1).map(String.init)
+        guard parts.count == 2, ["pdf", "html"].contains(parts[0]) else { return url }
+        var id = parts[1]
+        if id.hasSuffix("/") { id.removeLast() }
+        if id.hasSuffix(".pdf") { id.removeLast(4) }
+        components.path = "/abs/" + id
+        components.fragment = nil
+        return components.url ?? url
+    }
+
+    /// Same-origin JSON or HTML a site rule asks for.
+    public func resource(at url: URL) async throws -> Data {
+        try await fetch(url, limit: 8 * 1024 * 1024, kind: .resource).0
     }
 
     public func image(at url: URL) async throws -> Data {
@@ -57,7 +76,7 @@ public actor ArticleDownloader {
                         lastModified: response.value(forHTTPHeaderField: "Last-Modified"))
     }
 
-    private enum Kind { case html, image, json, feed }
+    private enum Kind { case html, image, json, resource, feed }
 
     private func fetch(_ url: URL, limit: Int, kind: Kind) async throws -> (Data, HTTPURLResponse) {
         try await fetch(URLRequest(url: url), limit: limit, kind: kind)
@@ -75,8 +94,10 @@ public actor ArticleDownloader {
             guard ["text/html", "application/xhtml+xml"].contains(mime) else { throw ReedError.unsupportedContent }
         case .json:
             guard mime == "application/json" else { throw ReedError.unsupportedContent }
+        case .resource:
+            guard ["application/json", "text/html", "application/xhtml+xml"].contains(mime) else { throw ReedError.unsupportedContent }
         case .image:
-            guard ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif", "image/heic", "image/bmp", "image/tiff"].contains(mime) else { throw ReedError.unsupportedContent }
+            guard ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif", "image/heic", "image/bmp", "image/tiff", "image/svg+xml"].contains(mime) else { throw ReedError.unsupportedContent }
         case .feed:
             break
         }

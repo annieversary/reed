@@ -39,7 +39,8 @@ for (const img of output.querySelectorAll("img")) {
     if (!["https:", "http:"].includes(url.protocol)) { img.remove(); continue; }
     let filename = seen.get(url.href);
     if (!filename) {
-        filename = "image-" + images.length;
+        // Offline, WebKit types images by extension, and renders SVG only when typed as such.
+        filename = "image-" + images.length + (/\.svg$/i.test(url.pathname) ? ".svg" : "");
         seen.set(url.href, filename);
         images.push({ url: url.href, filename, alt: img.getAttribute("alt") || "" });
     }

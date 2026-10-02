@@ -439,7 +439,7 @@ public final class Library {
             let page = try await downloader.page(at: ArticleURL.parse(article.originalURL))
             report("Finding the article…")
             let extracted = try await extractor.extract(html: page.html, url: page.url) { [downloader] url in
-                String(decoding: try await downloader.json(at: url), as: UTF8.self)
+                String(decoding: try await downloader.resource(at: url), as: UTF8.self)
             }
             let directory = try storage.createStagingDirectory()
             staging = directory

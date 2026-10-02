@@ -63,3 +63,58 @@ private let readme = "<h1>Widget<a class=\"anchor\" href=\"#widget\">#</a></h1><
     let article = try await extract(html, url: "https://github.com/someone/widget/issues/1")
     #expect(article.wordCount > 50)
 }
+
+private let arxivAbstract = """
+<html><head><meta name="citation_title" content="Gears from Sprockets"></head><body>
+<div class="authors"><span class="descriptor">Authors:</span><a href="/a/one">Ada One</a>, <a href="/a/two">Bo Two</a></div>
+<blockquote class="abstract mathjax"><span class="descriptor">Abstract:</span>We show sprockets become gears under mild conditions, quickly and quietly.</blockquote>
+<a href="https://arxiv.org/html/2401.00001v2" id="latexml-download-link">HTML (experimental)</a>
+<ul>\(languages)</ul></body></html>
+"""
+
+@Test @MainActor func arxivPaperKeepsAuthorsAbstractAndPaper() async throws {
+    let paper = """
+    <html><body><nav class="ltx_page_navbar"><ol><li>Contents</li></ol></nav><div class="ltx_page_content"><article class="ltx_document">
+    <h1 class="ltx_title ltx_title_document">Gears from Sprockets</h1><div class="ltx_authors">Ada One, Bo Two</div>
+    <div class="ltx_abstract"><h6>Abstract</h6><p>We show sprockets become gears.</p></div>
+    <section class="ltx_section"><h2 class="ltx_title">1 Introduction</h2>
+    <p class="ltx_p">Every sprocket with <math alttext="n" display="inline"><mi>n</mi></math> teeth meshes once its pitch satisfies
+    <math alttext="p^{2}\\leq n" display="inline"><msup><mi>p</mi><mn>2</mn></msup></math>, as the figure below shows for several sprockets of different sizes.</p>
+    <figure class="ltx_figure"><img src="2401.00001v2/x1.png" alt="A gear"><figcaption>A gear meshing with a sprocket.</figcaption></figure>
+    <figure class="ltx_figure"><object type="image/svg+xml" data="2401.00001v2/x2.svg"></object><figcaption>Teeth per sprocket, plotted.</figcaption></figure>
+    <p class="ltx_p">We measured many sprockets over many weeks and found the result holds for every one of them without exception.</p>
+    </section></article></div></body></html>
+    """
+    var fetched: [URL] = []
+    let article = try await extract(arxivAbstract, url: "https://arxiv.org/abs/2401.00001") { url in
+        fetched.append(url)
+        return paper
+    }
+    #expect(fetched.map(\.absoluteString) == ["https://arxiv.org/html/2401.00001v2"])
+    #expect(article.title == "Gears from Sprockets")
+    #expect(article.excerpt.hasPrefix("We show sprockets become gears under mild conditions"))
+    #expect(article.html.hasPrefix("<p>Authors: Ada One, Bo Two</p><h2>Abstract</h2><p>We show sprockets"))
+    #expect(article.html.contains("<h2>Paper</h2>"))
+    #expect(article.html.contains("Every sprocket with n teeth"))
+    #expect(article.html.contains("<code>p^{2}\\leq n</code>"))
+    #expect(article.images.map(\.url) == ["https://arxiv.org/html/2401.00001v2/x1.png", "https://arxiv.org/html/2401.00001v2/x2.svg"])
+    #expect(article.images.map(\.filename) == ["image-0", "image-1.svg"])
+    #expect(!article.html.contains("Contents"))
+    #expect(!article.html.contains("We show sprockets become gears.</p>"))
+    #expect(!article.html.contains("Language"))
+}
+
+@Test @MainActor func arxivPaperWithoutHTMLKeepsAuthorsAndAbstract() async throws {
+    let html = arxivAbstract.replacingOccurrences(of: "id=\"latexml-download-link\"", with: "")
+    let article = try await extract(html, url: "https://arxiv.org/abs/2401.00001") { _ in Issue.record("nothing to fetch"); return "" }
+    #expect(article.html.hasPrefix("<p>Authors: Ada One, Bo Two</p><h2>Abstract</h2>"))
+    #expect(!article.html.contains("Paper"))
+}
+
+@Test func arxivRenderingsReadFromTheAbstractPage() {
+    let page = { ArticleDownloader.readablePage(for: URL(string: $0)!).absoluteString }
+    #expect(page("https://arxiv.org/pdf/2401.00001v2") == "https://arxiv.org/abs/2401.00001v2")
+    #expect(page("https://arxiv.org/pdf/hep-th/9901001.pdf") == "https://arxiv.org/abs/hep-th/9901001")
+    #expect(page("https://arxiv.org/html/2401.00001v2/#S1") == "https://arxiv.org/abs/2401.00001v2")
+    #expect(page("https://example.org/pdf/1") == "https://example.org/pdf/1")
+}
