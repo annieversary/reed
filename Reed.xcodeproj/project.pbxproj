@@ -406,6 +406,24 @@
 			<key>fileRef</key>
 			<string>CEFEDFD4E31E49F4A1E14286</string>
 		</dict>
+		<key>E4537F5D14830A127945A908</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/MathMarkup.js</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>C47B733E82AC3618641BA5AE</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>E4537F5D14830A127945A908</string>
+		</dict>
 		<key>EEB59B1F82DE7697DFA2EA5C</key>
 		<dict>
 			<key>isa</key>
@@ -550,6 +568,24 @@
 			<key>fileRef</key>
 			<string>33DD72485945FCBF9ECF674F</string>
 		</dict>
+		<key>75857B617F2B5DCC9E2C3829</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/Temml-LICENSE</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>535E6A29B098BB1D3ECA6C31</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>75857B617F2B5DCC9E2C3829</string>
+		</dict>
 		<key>169F6D550C9F9B8572CBBC11</key>
 		<dict>
 			<key>isa</key>
@@ -567,6 +603,24 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>169F6D550C9F9B8572CBBC11</string>
+		</dict>
+		<key>CD9B04105A02C96A8DF2ACE0</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/temml.min.js</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>EECE7CD735EB7418541930D0</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>CD9B04105A02C96A8DF2ACE0</string>
 		</dict>
 		<key>F95186331235DB31A60CB636</key>
 		<dict>
@@ -693,6 +747,7 @@
 				<string>709F77BB5F9974865AC45CF4</string>
 				<string>62F2B30EADC9532F27B629D9</string>
 				<string>CEFEDFD4E31E49F4A1E14286</string>
+				<string>E4537F5D14830A127945A908</string>
 				<string>EEB59B1F82DE7697DFA2EA5C</string>
 				<string>F0BA769FF6C009D39AF6272F</string>
 				<string>794BE653DD175AFB4AD9B138</string>
@@ -701,7 +756,9 @@
 				<string>994BE7706E01A300DB0EDE8C</string>
 				<string>913F45B3A2C0581E78499784</string>
 				<string>33DD72485945FCBF9ECF674F</string>
+				<string>75857B617F2B5DCC9E2C3829</string>
 				<string>169F6D550C9F9B8572CBBC11</string>
+				<string>CD9B04105A02C96A8DF2ACE0</string>
 				<string>F95186331235DB31A60CB636</string>
 				<string>D6B3E48F2D5F9A78B16590C0</string>
 				<string>F1EEAC1AABD95DE2505EEBCD</string>
@@ -784,6 +841,7 @@
 				<string>280AFA5966C83D33008AA46F</string>
 				<string>95F9C476FA29F4B4FE75BFA6</string>
 				<string>AEC029FEFB7F48EAA6D5738F</string>
+				<string>C47B733E82AC3618641BA5AE</string>
 				<string>5655465D5EE8F72D987F1856</string>
 				<string>28237ABACD757084E075B439</string>
 				<string>4A73C7488519AA95EFE0670F</string>
@@ -792,7 +850,9 @@
 				<string>3B061ADC390787EBB46C7D96</string>
 				<string>440F84117214583316BD934B</string>
 				<string>32B4755D9C5070657682E64A</string>
+				<string>535E6A29B098BB1D3ECA6C31</string>
 				<string>78E7916C12A020A7B2F76EC1</string>
+				<string>EECE7CD735EB7418541930D0</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
 			<integer>0</integer>

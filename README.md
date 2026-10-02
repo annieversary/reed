@@ -98,6 +98,7 @@ After adding source or resource files, run `python3 scripts/generate_project.py`
 
 - Mozilla Readability **0.6.0**, Apache-2.0: `Sources/ReedCore/Resources/Readability.js` and `Readability-LICENSE.md`.
 - DOMPurify **3.4.15**, Apache-2.0 OR MPL-2.0: `Sources/ReedCore/Resources/purify.min.js` and `DOMPurify-LICENSE`.
+- Temml **0.13.5**, MIT, which converts TeX left for MathJax or KaTeX into MathML: `Sources/ReedCore/Resources/temml.min.js` and `Temml-LICENSE`.
 - Speech Rule Engine **4.1.4**, Apache-2.0, which words formulas for narration: `Sources/ReedCore/Resources/SpeechRuleEngine.js`, its English rules `SpeechRuleEngine-en.json` and `SpeechRuleEngine-base.json`, and `SpeechRuleEngine-LICENSE`.
 
 These libraries and their licenses are bundled for reproducible offline operation.

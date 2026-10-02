@@ -49,7 +49,7 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
             view.loadHTMLString("<html><head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'\"></head><body></body></html>", baseURL: nil)
         }
         try Task.checkCancellation()
-        let script = try ["Readability", "purify.min", "SiteRules", "ExtractArticle"].map { try resource($0, extension: "js") }.joined(separator: "\n")
+        let script = try ["Readability", "purify.min", "temml.min", "MathMarkup", "SiteRules", "ExtractArticle"].map { try resource($0, extension: "js") }.joined(separator: "\n")
         var resources: [String: String] = [:]
         for _ in 0..<3 {
             let data = Data(try await evaluate(script, arguments: ["html": html, "sourceURL": url.absoluteString, "resources": resources], in: view).utf8)

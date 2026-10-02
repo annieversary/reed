@@ -67,7 +67,7 @@ private let readme = "<h1>Widget<a class=\"anchor\" href=\"#widget\">#</a></h1><
 private let arxivAbstract = """
 <html><head><meta name="citation_title" content="Gears from Sprockets"></head><body>
 <div class="authors"><span class="descriptor">Authors:</span><a href="/a/one">Ada One</a>, <a href="/a/two">Bo Two</a></div>
-<blockquote class="abstract mathjax"><span class="descriptor">Abstract:</span>We show sprockets become gears under mild conditions, quickly and quietly.</blockquote>
+<blockquote class="abstract mathjax"><span class="descriptor">Abstract:</span>We show sprockets become gears under mild conditions, quickly and quietly, once $p^2 \\leq n$.</blockquote>
 <a href="https://arxiv.org/html/2401.00001v2" id="latexml-download-link">HTML (experimental)</a>
 <ul>\(languages)</ul></body></html>
 """
@@ -97,6 +97,8 @@ private let arxivAbstract = """
     #expect(fetched.map(\.absoluteString) == ["https://arxiv.org/html/2401.00001v2"])
     #expect(article.title == "Gears from Sprockets")
     #expect(article.excerpt.hasPrefix("We show sprockets become gears under mild conditions"))
+    #expect(article.excerpt.hasSuffix("once p^2 \\leq n."))
+    #expect(article.html.contains(#"<math alttext="p^2 \leq n""#))
     #expect(article.html.hasPrefix("<p>Authors: Ada One, Bo Two</p><h2>Abstract</h2><p>We show sprockets"))
     #expect(article.html.contains("<h2>Paper</h2>"))
     #expect(article.html.contains(#"Every sprocket with <math alttext="n" display="inline" aria-label="n"><mi>n</mi></math> teeth"#))

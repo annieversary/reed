@@ -13,6 +13,7 @@ for (const img of doc.querySelectorAll("img")) {
         if (source) img.setAttribute("src", source.split(",")[0].trim().split(/\s+/)[0]);
     }
 }
+prepareMath(doc);
 const site = applySiteRule(doc, new URL(sourceURL), resources);
 if (site?.needs) return JSON.stringify({ needs: site.needs });
 let result = site;
@@ -23,18 +24,18 @@ if (!result) {
 const clean = DOMPurify.sanitize(result.content, {
     ALLOWED_TAGS: ["p", "div", "section", "article", "h1", "h2", "h3", "h4", "h5", "h6", "a", "img", "figure", "figcaption", "picture", "blockquote", "pre", "code", "ul", "ol", "li", "dl", "dt", "dd", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "caption", "strong", "em", "b", "i", "u", "s", "sub", "sup", "br", "hr", "span", "time", "abbr",
         "math", "mrow", "mi", "mn", "mo", "ms", "mtext", "mspace", "msup", "msub", "msubsup", "mfrac", "msqrt", "mroot",
-        "mover", "munder", "munderover", "mtable", "mtr", "mtd", "mstyle", "mpadded", "mphantom", "menclose"],
+        "mover", "munder", "munderover", "mtable", "mtr", "mtd", "mstyle", "mpadded", "mphantom", "menclose", "mmultiscripts", "mprescripts"],
     ALLOWED_ATTR: ["href", "src", "alt", "title", "colspan", "rowspan", "start", "dir",
         "display", "alttext", "mathvariant", "stretchy", "fence", "separator", "accent", "accentunder", "movablelimits",
         "lspace", "rspace", "largeop", "symmetric", "minsize", "maxsize", "linethickness", "scriptlevel", "displaystyle",
-        "columnalign", "columnspan", "notation", "width", "height", "depth", "voffset"],
+        "columnalign", "columnspan", "rowspacing", "columnspacing", "form", "notation", "width", "height", "depth", "voffset"],
     ALLOW_DATA_ATTR: false
 });
 const output = new DOMParser().parseFromString(clean, "text/html");
 // Readability may retain a standalone byline even though we display it in the reader header.
 const firstParagraph = output.querySelector("p");
 if (result.byline && firstParagraph?.textContent.trim() === result.byline.trim()) firstParagraph.remove();
-const excerpt = site?.excerpt || Array.from(output.querySelectorAll("p")).map(p => p.textContent.trim()).find(text => text.length > 80)
+const excerpt = site?.excerpt || Array.from(output.querySelectorAll("p")).map(p => textWithFormulas(p).trim()).find(text => text.length > 80)
     || result.excerpt || result.textContent.trim();
 const images = [];
 const seen = new Map();

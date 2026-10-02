@@ -77,7 +77,7 @@ const siteRules = [
             }
             const paper = paperURL && arxivPaperBody(resources[paperURL], paperURL);
             if (paper) content.push(heading("Paper"), paper);
-            return { title, excerpt: abstractBody.textContent.trim(), content };
+            return { title, excerpt: textWithFormulas(abstractBody).trim(), content };
         }
     }
 ];
@@ -96,9 +96,7 @@ function arxivPaperBody(html, paperURL) {
             try { node.setAttribute(attribute, new URL(node.getAttribute(attribute), paperURL).href); } catch {}
         }
     }
-    // Formulas keep their presentation markup; the TeX and content markup annotating it would show as text.
-    article.querySelectorAll("math annotation, math annotation-xml").forEach(node => node.remove());
-    article.querySelectorAll("math semantics").forEach(node => node.replaceWith(...node.childNodes));
+    tidyMathML(article);
     // Displayed equations are laid out in tables, one row per line with its number in a cell of its own.
     for (const table of article.querySelectorAll("table.ltx_equation, table.ltx_equationgroup")) {
         const equation = paper.createElement("div");
