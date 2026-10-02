@@ -9,7 +9,7 @@ struct ArticleDetailView: View {
     @AppStorage("readerFontSize") private var fontSize = 19.0
     @Environment(\.openURL) private var openURL
     @Environment(Narrator.self) private var narrator
-    @State private var passages: [String]?
+    @State private var passages: [[String]]?
     @State private var reader = ReaderProxy()
     @State private var narrationAway: NarrationDirection?
 
@@ -41,7 +41,8 @@ struct ArticleDetailView: View {
                     .font(.caption).padding(12).background(.yellow.opacity(0.08))
                 }
                 OfflineWebView(url: url, fontSize: fontSize, progress: article.progress, passages: passages,
-                               narrating: isNarrating ? narrator.current : nil, proxy: reader) { value in
+                               narrating: isNarrating ? NarrationPosition(passage: narrator.current, sentence: narrator.sentence) : nil,
+                               proxy: reader) { value in
                     library.updateProgress(article, value: value)
                 } onAddLink: { link in
                     do { try library.add(link.absoluteString) }
@@ -54,7 +55,7 @@ struct ArticleDetailView: View {
                 .id(article.id.uuidString + (article.contentVersion ?? ""))
                 // Text runs under the home indicator, but not under the narration controls.
                 .ignoresSafeArea(edges: narrator.articleID == nil ? .bottom : [])
-                .task(id: url) { passages = library.passages(for: article) }
+                .task(id: url) { passages = library.passages(for: article)?.map(ArticleSpeech.sentences(in:)) }
                 // Drawn by the app rather than the page, so it sits above the narration controls.
                 .overlay(alignment: .bottom) {
                     if isNarrating, let narrationAway { returnToNarrationButton(narrationAway) }

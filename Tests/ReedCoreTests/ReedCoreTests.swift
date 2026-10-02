@@ -157,6 +157,12 @@ import Testing
             == ["A Title", "Fish & chips", "First line continues here.", "One", "Two", "lines", "Quoted"])
 }
 
+@Test func passagesSplitIntoSentences() {
+    #expect(ArticleSpeech.sentences(in: "Dr. Smith arrived at 3.5 p.m. on Friday. Was it late? Not really — ")
+            == ["Dr. Smith arrived at 3.5 p.m. on Friday.", "Was it late?", "Not really —"])
+    #expect(ArticleSpeech.sentences(in: "A Title") == ["A Title"])
+}
+
 @Test func leadImageIsTheFirstSavedImage() {
     #expect(ArticleHTML.firstImage(in: #"<p>Text</p><figure><IMG alt="a" src="image-2"></figure><img src="image-0">"#) == "image-2")
     #expect(ArticleHTML.firstImage(in: #"<img src="https://example.com/x.png"><img src="../etc/passwd">"#) == nil)

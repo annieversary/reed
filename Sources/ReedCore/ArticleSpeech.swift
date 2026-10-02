@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 
 public enum ArticleSpeech {
     /// The passages of a saved reader document to read aloud, one per block, starting with the title.
@@ -16,5 +17,23 @@ public enum ArticleSpeech {
         let blocks = String(body).replacing(unspoken, with: "\u{1}").replacing(block, with: "\u{1}").split(separator: "\u{1}")
         return ([title] + blocks.map { ArticleText.plain(String($0)) })
             .filter { $0.contains { $0.isLetter || $0.isNumber } }
+    }
+
+    /// The sentences of a passage, in order. Fragments with nothing to say, like a lone dash, stay with the sentence before.
+    public static func sentences(in passage: String) -> [String] {
+        let tokenizer = NLTokenizer(unit: .sentence)
+        tokenizer.string = passage
+        var sentences: [String] = []
+        tokenizer.enumerateTokens(in: passage.startIndex..<passage.endIndex) { range, _ in
+            let sentence = passage[range].trimmingCharacters(in: .whitespacesAndNewlines)
+            if sentence.isEmpty { return true }
+            if !sentence.contains(where: { $0.isLetter || $0.isNumber }), let last = sentences.popLast() {
+                sentences.append(last + " " + sentence)
+            } else {
+                sentences.append(sentence)
+            }
+            return true
+        }
+        return sentences.isEmpty ? [passage] : sentences
     }
 }

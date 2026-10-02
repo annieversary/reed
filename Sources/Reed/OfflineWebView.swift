@@ -17,6 +17,12 @@ import WebKit
     }
 }
 
+/// The sentence being read aloud, and the passage it's in.
+struct NarrationPosition: Equatable {
+    var passage: Int
+    var sentence: Int
+}
+
 /// Where the passage being read is, once you've scrolled away from it.
 enum NarrationDirection: String {
     case up, down
@@ -26,10 +32,10 @@ enum NarrationDirection: String {
     let url: URL
     let fontSize: Double
     let progress: Double
-    /// The article's text as narration reads it, so passages can be found on the page.
-    var passages: [String]?
-    /// The passage being read aloud, if this article is being narrated.
-    var narrating: Int?
+    /// The article's text as narration reads it, sentence by sentence within each passage, so it can be found on the page.
+    var passages: [[String]]?
+    /// What's being read aloud, if this article is being narrated.
+    var narrating: NarrationPosition?
     var proxy: ReaderProxy?
     var onProgress: (Double) -> Void
     var onAddLink: (URL) -> Void
@@ -106,7 +112,8 @@ enum NarrationDirection: String {
     }
 
     /// Matches each passage read aloud to the element holding it, by text and in reading order. While narrating,
-    /// the current one is tinted and kept in view; scrolling away stops that and reports which way it went.
+    /// the current sentence is tinted (or its whole passage, if the sentence can't be found) and kept in view;
+    /// scrolling away stops that and reports which way it went.
     /// Tapping a paragraph asks to read from there.
     private static let narrationScript = #"""
     window.reedNarration = (() => {
@@ -117,14 +124,19 @@ enum NarrationDirection: String {
             :root { --narrating: color-mix(in srgb, var(--accent) 9%, transparent); }
             @media (prefers-color-scheme: dark) { :root { --narrating: color-mix(in srgb, var(--accent) 15%, transparent); } }
             :where(${blocks}) { transition: background-color .5s, box-shadow .5s; }
+            :root { --narrating-sentence: color-mix(in srgb, var(--accent) 20%, transparent); }
+            @media (prefers-color-scheme: dark) { :root { --narrating-sentence: color-mix(in srgb, var(--accent) 32%, transparent); } }
             .reed-narrating { background-color: var(--narrating); box-shadow: 0 0 0 .4em var(--narrating); border-radius: .25em; }
+            .reed-sentence { background-color: var(--narrating-sentence); }
             .reed-narration-active .reed-passage { cursor: pointer; }`;
         document.head.appendChild(style);
         const imagesLoaded = Promise.all(Array.from(document.images).map(img => img.complete ? null
             : new Promise(resolve => { img.addEventListener('load', resolve); img.addEventListener('error', resolve); })));
 
-        let elements = [], firstPassage = new Map();
+        let elements = [], sentences = [], firstPassage = new Map();
         let current = null, currentIndex = null, following = true, leftView = false, reportedAway = '';
+        // What's being read: the sentence's range when it was found, otherwise its passage's element.
+        let target = null, marks = [];
 
         const locate = passages => {
             const all = Array.from(document.body.querySelectorAll(blocks));
@@ -142,22 +154,83 @@ enum NarrationDirection: String {
                 return found;
             });
         };
+        // The range of the `number`th sentence within `element`, matching text the same way passages are matched.
+        const sentenceRange = (element, list, number) => {
+            const characters = [];
+            let text = '';
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+            for (let node; (node = walker.nextNode());) {
+                for (let offset = 0; offset < node.data.length; offset++) {
+                    if (/\s/.test(node.data[offset])) continue;
+                    characters.push([node, offset]);
+                    text += node.data[offset];
+                }
+            }
+            let from = 0, at = -1, length = 0;
+            for (let index = 0; index <= number; index++) {
+                const sentence = squash(list[index] ?? '');
+                at = sentence ? text.indexOf(sentence, from) : -1;
+                if (at < 0) return null;
+                length = sentence.length;
+                from = at + length;
+            }
+            const range = document.createRange();
+            range.setStart(...characters[at]);
+            const [endNode, endOffset] = characters[at + length - 1];
+            range.setEnd(endNode, endOffset + 1);
+            return range;
+        };
+        // Wraps the text in `range` in tinted spans, one per text node, so it can cross inline elements like links.
+        const mark = range => {
+            const pieces = [];
+            const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
+            for (let node = walker.currentNode.nodeType === Node.TEXT_NODE ? walker.currentNode : walker.nextNode(); node; node = walker.nextNode()) {
+                if (!range.intersectsNode(node)) continue;
+                const start = node === range.startContainer ? range.startOffset : 0;
+                const end = node === range.endContainer ? range.endOffset : node.length;
+                if (start < end) pieces.push([node, start, end]);
+            }
+            marks = pieces.map(([node, start, end]) => {
+                if (end < node.length) node.splitText(end);
+                if (start > 0) node = node.splitText(start);
+                const span = document.createElement('span');
+                span.className = 'reed-sentence';
+                node.parentNode.insertBefore(span, node);
+                span.appendChild(node);
+                return span;
+            });
+            if (!marks.length) return null;
+            const marked = document.createRange();
+            marked.setStartBefore(marks[0]);
+            marked.setEndAfter(marks[marks.length - 1]);
+            return marked;
+        };
+        const unmark = () => {
+            for (const span of marks) {
+                const parent = span.parentNode;
+                if (!parent) continue;
+                while (span.firstChild) parent.insertBefore(span.firstChild, span);
+                span.remove();
+                parent.normalize();
+            }
+            marks = [];
+        };
         const inView = element => {
             const box = element.getBoundingClientRect();
             return box.bottom > 0 && box.top < innerHeight;
         };
         const scrollToCurrent = always => imagesLoaded.then(() => {
-            if (!current) return;
-            const box = current.getBoundingClientRect();
+            if (!target) return;
+            const box = target.getBoundingClientRect();
             if (!always && box.top >= 0 && box.bottom <= innerHeight * 0.75) return;
             window.scrollTo({top: scrollY + box.top - innerHeight * 0.2, behavior: 'smooth'});
         });
-        // Tells the app whether the paragraph being read is above or below the screen, or '' when it's in view.
+        // Tells the app whether what's being read is above or below the screen, or '' when it's in view.
         const reportAway = () => {
             let away = '';
-            if (!following && current && !inView(current)) {
+            if (!following && target && !inView(target)) {
                 leftView = true;
-                away = current.getBoundingClientRect().top < 0 ? 'up' : 'down';
+                away = target.getBoundingClientRect().top < 0 ? 'up' : 'down';
             }
             if (away === reportedAway) return;
             reportedAway = away;
@@ -168,9 +241,9 @@ enum NarrationDirection: String {
             window.addEventListener(type, () => { if (currentIndex !== null) { following = false; leftView = false; } }, {passive: true});
         }
         window.addEventListener('scroll', () => {
-            if (following || !current) return;
-            // Scrolling back to the paragraph being read picks following up again.
-            if (leftView && inView(current)) following = true;
+            if (following || !target) return;
+            // Scrolling back to what's being read picks following up again.
+            if (leftView && inView(target)) following = true;
             reportAway();
         }, {passive: true});
         document.addEventListener('click', event => {
@@ -185,7 +258,8 @@ enum NarrationDirection: String {
 
         return {
             setPassages(passages) {
-                elements = locate(passages);
+                sentences = passages;
+                elements = locate(passages.map(list => list.join(' ')));
                 firstPassage = new Map();
                 elements.forEach((element, index) => {
                     if (!element || firstPassage.has(element)) return;
@@ -198,19 +272,20 @@ enum NarrationDirection: String {
                 const index = elements.findIndex(element => element && element.getBoundingClientRect().bottom > 4);
                 return index < 0 ? null : index;
             },
-            show(index) {
+            show(index, sentence) {
                 document.documentElement.classList.add('reed-narration-active');
                 currentIndex = index;
-                const element = elements[index] ?? null;
-                if (element !== current) {
-                    current?.classList.remove('reed-narrating');
-                    current = element;
-                    current?.classList.add('reed-narrating');
-                }
+                current?.classList.remove('reed-narrating');
+                unmark();
+                current = elements[index] ?? null;
+                const range = current ? sentenceRange(current, sentences[index] ?? [], sentence) : null;
+                const marked = range ? mark(range) : null;
+                if (!marked) current?.classList.add('reed-narrating');
+                target = marked ?? current;
                 if (following) scrollToCurrent(false);
                 reportAway();
             },
-            // Back to the paragraph being read, following it again.
+            // Back to what's being read, following it again.
             follow() {
                 following = true;
                 reportAway();
@@ -219,7 +294,9 @@ enum NarrationDirection: String {
             clear() {
                 document.documentElement.classList.remove('reed-narration-active');
                 current?.classList.remove('reed-narrating');
+                unmark();
                 current = null;
+                target = null;
                 currentIndex = null;
                 following = true;
                 reportAway();
@@ -233,8 +310,8 @@ enum NarrationDirection: String {
         var loaded = false
         var contextLink: URL?
         private var currentFontSize: Double?
-        private var sentPassages: [String]?
-        private var shownNarration: Int?
+        private var sentPassages: [[String]]?
+        private var shownNarration: NarrationPosition?
         init(parent: OfflineWebView) { self.parent = parent }
 
         func applyFont(_ webView: WKWebView) {
@@ -254,8 +331,9 @@ enum NarrationDirection: String {
         func applyNarration(_ webView: WKWebView) {
             guard sentPassages != nil, shownNarration != parent.narrating else { return }
             shownNarration = parent.narrating
-            if let index = parent.narrating {
-                webView.callAsyncJavaScript("reedNarration.show(index)", arguments: ["index": index], in: nil, in: .defaultClient) { _ in }
+            if let position = parent.narrating {
+                webView.callAsyncJavaScript("reedNarration.show(index, sentence)", arguments: ["index": position.passage, "sentence": position.sentence],
+                                            in: nil, in: .defaultClient) { _ in }
             } else {
                 webView.evaluateJavaScript("reedNarration.clear()", in: nil, in: .defaultClient) { _ in }
             }

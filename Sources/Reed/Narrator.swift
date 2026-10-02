@@ -9,8 +9,8 @@ import ReedCore
 
 /// Reads saved articles aloud with Kokoro, synthesized on device.
 ///
-/// Each passage is synthesized once, cached as a small audio file beside the article, and queued for
-/// gapless playback as soon as it's ready. Synthesis runs ahead of playback to the end of the article,
+/// Each passage is synthesized once, a sentence at a time so the one being heard can be followed, cached as
+/// a small audio file beside the article, and queued for gapless playback as soon as it's ready. Synthesis runs ahead of playback to the end of the article,
 /// so replaying or skipping back never waits.
 @MainActor @Observable
 final class Narrator {
@@ -20,6 +20,8 @@ final class Narrator {
     private(set) var passageCount = 0
     /// The passage being heard, or waited for.
     private(set) var current = 0
+    /// The sentence being heard, within the current passage.
+    private(set) var sentence = 0
     /// The last passage queued on the player.
     private(set) var scheduled = -1
     private(set) var isPlaying = false
@@ -44,6 +46,7 @@ final class Narrator {
             guard let article, let library, let version = article.contentVersion else { return }
             directory = library.storage.audioDirectory(article.id, version: version, voice: voice)
             durations = [:]
+            sentenceStarts = [:]
             let wasPlaying = isPlaying
             start(at: current)
             if !wasPlaying { pause() }
@@ -59,6 +62,7 @@ final class Narrator {
     var isWaiting: Bool { articleID != nil && scheduled < current && errorMessage == nil }
 
     @ObservationIgnored private var passages: [String] = []
+    @ObservationIgnored private var sentences: [[String]] = []
     @ObservationIgnored private var article: Article?
     @ObservationIgnored private var library: Library?
     @ObservationIgnored private var directory: URL?
@@ -77,6 +81,10 @@ final class Narrator {
     @ObservationIgnored private var startOffset: AVAudioFramePosition = 0
     /// Lengths of synthesized passages, in seconds.
     @ObservationIgnored private var durations: [Int: Double] = [:]
+    /// When each sentence of a synthesized passage begins, in seconds into it.
+    @ObservationIgnored private var sentenceStarts: [Int: [Double]] = [:]
+    /// Keeps `sentence` in step with playback.
+    @ObservationIgnored private var tracker: Task<Void, Never>?
     @ObservationIgnored private var artwork: MPMediaItemArtwork?
     @ObservationIgnored private var previewPlayer: AVAudioPlayer?
     @ObservationIgnored private var previewTask: Task<Void, Never>?
@@ -86,6 +94,8 @@ final class Narrator {
     nonisolated private static let sampleRate = Double(KokoroAneConstants.sampleRate)
     /// A beat of silence after each passage, so paragraphs don't run together.
     nonisolated private static let pause = 0.35
+    /// The shorter beat between sentences of a passage.
+    nonisolated private static let sentencePause = 0.15
     nonisolated private static let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
     /// Kokoro reads at roughly this pace, to estimate passages not synthesized yet.
     private static let wordsPerSecond = 2.8
@@ -126,6 +136,7 @@ final class Narrator {
         title = article.title
         domain = article.domain
         self.passages = passages
+        sentences = passages.map(ArticleSpeech.sentences(in:))
         passageCount = passages.count
         directory = library.storage.audioDirectory(article.id, version: version, voice: voice)
         artwork = Self.artwork(from: library.leadImage(for: article))
@@ -136,6 +147,7 @@ final class Narrator {
         guard isPlaying else { return }
         player.pause()
         isPlaying = false
+        stopTracking()
         updateNowPlaying()
     }
 
@@ -144,6 +156,7 @@ final class Narrator {
         if engine.isRunning {
             isPlaying = true
             player.play()
+            track()
             updateNowPlaying()
         } else {
             start(at: current)
@@ -191,10 +204,13 @@ final class Narrator {
         generator = nil
         player.stop()
         engine.stop()
+        stopTracking()
         articleID = nil
         passages = []
+        sentences = []
         passageCount = 0
         current = 0
+        sentence = 0
         scheduled = -1
         isPlaying = false
         errorMessage = nil
@@ -203,6 +219,7 @@ final class Narrator {
         library = nil
         artwork = nil
         durations = [:]
+        sentenceStarts = [:]
         startFrames = [:]
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -264,6 +281,7 @@ final class Narrator {
         startFrames = [:]
         nextFrame = 0
         startOffset = AVAudioFramePosition(offset * Self.sampleRate)
+        sentence = sentenceIndex(at: offset)
         rememberPosition()
         do {
             #if os(iOS)
@@ -279,6 +297,7 @@ final class Narrator {
         }
         player.play()
         isPlaying = true
+        track()
         scheduleReady()
         generate(from: index)
         updateNowPlaying()
@@ -328,6 +347,52 @@ final class Narrator {
         return Double(passages[index].split(whereSeparator: \.isWhitespace).count) / Self.wordsPerSecond + Self.pause
     }
 
+    /// The sentence of the current passage playing `time` seconds into it.
+    private func sentenceIndex(at time: Double) -> Int {
+        starts(of: current).lastIndex { $0 <= time } ?? 0
+    }
+
+    /// Read from beside the passage's audio, or estimated from sentence lengths for audio made before it was recorded.
+    private func starts(of index: Int) -> [Double] {
+        if let known = sentenceStarts[index] { return known }
+        let parts = sentences.indices.contains(index) ? sentences[index] : []
+        guard parts.count > 1 else { return [0] }
+        if let directory, let data = try? Data(contentsOf: Self.sentencesURL(index, in: directory)),
+           let starts = try? JSONDecoder().decode([Double].self, from: data), starts.count == parts.count {
+            sentenceStarts[index] = starts
+            return starts
+        }
+        guard durations[index] != nil || (directory.map { FileManager.default.fileExists(atPath: Self.audioURL(index, in: $0).path) } ?? false)
+        else { return [0] }
+        let lengths = parts.map { Double($0.count) }
+        let spoken = max(duration(of: index) - Self.pause, 0)
+        var starts: [Double] = [], total = 0.0
+        for length in lengths {
+            starts.append(total * spoken / lengths.reduce(0, +))
+            total += length
+        }
+        sentenceStarts[index] = starts
+        return starts
+    }
+
+    private func track() {
+        guard tracker == nil else { return }
+        tracker = Task { [weak self] in
+            while !Task.isCancelled {
+                if let self {
+                    let heard = sentenceIndex(at: elapsedInPassage)
+                    if heard != sentence { sentence = heard }
+                } else { return }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+
+    private func stopTracking() {
+        tracker?.cancel()
+        tracker = nil
+    }
+
     private func finished(_ index: Int, epoch: Int) {
         guard epoch == self.epoch, index == current else { return }
         guard current + 1 < passageCount else {
@@ -339,6 +404,7 @@ final class Narrator {
             return
         }
         current += 1
+        sentence = 0
         startOffset = 0
         rememberPosition()
         scheduleReady()
@@ -355,17 +421,24 @@ final class Narrator {
     private func generate(from start: Int) {
         generator?.cancel()
         guard let directory else { return }
-        let passages = passages, voice = voice
+        let sentences = sentences, voice = voice
         errorMessage = nil
         generator = Task { [weak self] in
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                for index in start..<passages.count {
+                for index in start..<sentences.count {
                     let url = Self.audioURL(index, in: directory)
                     guard !FileManager.default.fileExists(atPath: url.path) else { continue }
                     guard let kokoro = try await self?.loadKokoro() else { return }
-                    let samples = try await kokoro.synthesizeDetailed(text: passages[index], voice: voice).samples
-                    try Task.checkCancellation()
+                    var samples: [Float] = [], starts: [Double] = []
+                    for (number, sentence) in sentences[index].enumerated() {
+                        if number > 0 { samples += [Float](repeating: 0, count: Int(Self.sentencePause * Self.sampleRate)) }
+                        starts.append(Double(samples.count) / Self.sampleRate)
+                        samples += try await kokoro.synthesizeDetailed(text: sentence, voice: voice).samples
+                        try Task.checkCancellation()
+                    }
+                    // Written first, so a passage's audio is never there without its sentence times.
+                    try JSONEncoder().encode(starts).write(to: Self.sentencesURL(index, in: directory), options: .atomic)
                     try await Self.write(samples, to: url)
                     self?.scheduleReady()
                 }
@@ -400,6 +473,10 @@ final class Narrator {
 
     private static func audioURL(_ index: Int, in directory: URL) -> URL {
         directory.appendingPathComponent("\(index).m4a")
+    }
+
+    private static func sentencesURL(_ index: Int, in directory: URL) -> URL {
+        directory.appendingPathComponent("\(index).json")
     }
 
     private static func buffer(at url: URL) -> AVAudioPCMBuffer? {
