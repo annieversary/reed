@@ -119,6 +119,20 @@ enum NarrationDirection: String {
     window.reedNarration = (() => {
         const blocks = 'p,h1,h2,h3,h4,h5,h6,li,dt,dd,blockquote,div,section,article,header,footer,aside,main';
         const squash = text => text.replace(/\s+/g, '');
+        // Narration leaves out formulas that don't read as plain text, like ArticleText does.
+        const unspoken = node => {
+            const math = node.parentElement?.closest('math');
+            return !!math && (!math.hasAttribute('alttext') || /[\\^_{]/.test(math.getAttribute('alttext')));
+        };
+        const spokenTexts = element => {
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+                acceptNode: node => unspoken(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+            });
+            const nodes = [];
+            for (let node; (node = walker.nextNode());) nodes.push(node);
+            return nodes;
+        };
+        const spokenText = element => spokenTexts(element).map(node => node.data).join('');
         const style = document.createElement('style');
         style.textContent = `
             :root { --narrating: color-mix(in srgb, var(--accent) 9%, transparent); }
@@ -140,7 +154,7 @@ enum NarrationDirection: String {
 
         const locate = passages => {
             const all = Array.from(document.body.querySelectorAll(blocks));
-            const texts = new Map(all.map(element => [element, squash(element.textContent)]));
+            const texts = new Map(all.map(element => [element, squash(spokenText(element))]));
             let cursor = 0;
             return passages.map(text => {
                 const target = squash(text);
@@ -158,8 +172,7 @@ enum NarrationDirection: String {
         const sentenceRange = (element, list, number) => {
             const characters = [];
             let text = '';
-            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-            for (let node; (node = walker.nextNode());) {
+            for (const node of spokenTexts(element)) {
                 for (let offset = 0; offset < node.data.length; offset++) {
                     if (/\s/.test(node.data[offset])) continue;
                     characters.push([node, offset]);
@@ -185,7 +198,8 @@ enum NarrationDirection: String {
             const pieces = [];
             const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
             for (let node = walker.currentNode.nodeType === Node.TEXT_NODE ? walker.currentNode : walker.nextNode(); node; node = walker.nextNode()) {
-                if (!range.intersectsNode(node)) continue;
+                // Tint spans inside a formula would break its layout.
+                if (!range.intersectsNode(node) || node.parentElement?.closest('math')) continue;
                 const start = node === range.startContainer ? range.startOffset : 0;
                 const end = node === range.endContainer ? range.endOffset : node.length;
                 if (start < end) pieces.push([node, start, end]);

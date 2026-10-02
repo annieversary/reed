@@ -121,6 +121,9 @@ public enum ArticleText {
             text = text[start.upperBound..<end.lowerBound]
         }
         return String(text)
+            .replacing(#/<math\b([^>]*)>(.*?)</math\s*>/#.dotMatchesNewlines().ignoresCase()) { match in
+                isReadable(mathAttributes: String(match.output.1)) ? String(match.output.2) : " "
+            }
             .replacing(#/<[^>]*>/#, with: " ")
             .replacing(#/&(#[xX][0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/#) { match in
                 let name = match.output.1
@@ -133,6 +136,13 @@ public enum ArticleText {
                 return ["amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " "][String(name)] ?? String(match.output.0)
             }
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// Whether a formula reads as plain text, like "n" or "32"; others are left out, since their text is a jumble
+    /// of symbols. The reader's narration highlighting makes the same call.
+    static func isReadable(mathAttributes: String) -> Bool {
+        guard let tex = mathAttributes.firstMatch(of: #/\balttext="([^"]*)"/#)?.output.1 else { return false }
+        return !tex.contains(where: { "\\^_{".contains($0) })
     }
 }
 

@@ -79,9 +79,13 @@ private let arxivAbstract = """
     <div class="ltx_abstract"><h6>Abstract</h6><p>We show sprockets become gears.</p></div>
     <section class="ltx_section"><h2 class="ltx_title">1 Introduction</h2>
     <p class="ltx_p">Every sprocket with <math alttext="n" display="inline"><mi>n</mi></math> teeth meshes once its pitch satisfies
-    <math alttext="p^{2}\\leq n" display="inline"><msup><mi>p</mi><mn>2</mn></msup></math>, as the figure below shows for several sprockets of different sizes.</p>
+    <math alttext="p^{2}\\leq n" display="inline"><semantics><mrow><msup><mi>p</mi><mn>2</mn></msup><mo>≤</mo><mi>n</mi></mrow>\
+    <annotation encoding="application/x-tex">p^{2}\\leq n</annotation></semantics></math>, as the figure below shows for several sprockets of different sizes.</p>
     <figure class="ltx_figure"><img src="2401.00001v2/x1.png" alt="A gear"><figcaption>A gear meshing with a sprocket.</figcaption></figure>
     <figure class="ltx_figure"><object type="image/svg+xml" data="2401.00001v2/x2.svg"></object><figcaption>Teeth per sprocket, plotted.</figcaption></figure>
+    <figure class="ltx_table"><table class="ltx_tabular ltx_guessed_headers"><tr><th>Teeth</th></tr><tr><td>14336</td></tr></table></figure>
+    <table class="ltx_equation ltx_eqn_table"><tr><td class="ltx_eqn_cell"></td><td class="ltx_eqn_cell"><math alttext="p=n" display="block"><mi>p</mi><mo>=</mo><mi>n</mi></math></td>\
+    <td class="ltx_eqn_cell ltx_eqn_eqno"><span>(1)</span></td></tr></table>
     <p class="ltx_p">We measured many sprockets over many weeks and found the result holds for every one of them without exception.</p>
     </section></article></div></body></html>
     """
@@ -95,8 +99,11 @@ private let arxivAbstract = """
     #expect(article.excerpt.hasPrefix("We show sprockets become gears under mild conditions"))
     #expect(article.html.hasPrefix("<p>Authors: Ada One, Bo Two</p><h2>Abstract</h2><p>We show sprockets"))
     #expect(article.html.contains("<h2>Paper</h2>"))
-    #expect(article.html.contains("Every sprocket with n teeth"))
-    #expect(article.html.contains("<code>p^{2}\\leq n</code>"))
+    #expect(article.html.contains(#"Every sprocket with <math alttext="n" display="inline"><mi>n</mi></math> teeth"#))
+    #expect(article.html.contains("<mrow><msup><mi>p</mi><mn>2</mn></msup><mo>≤</mo><mi>n</mi></mrow></math>"))
+    #expect(!article.html.contains("annotation"))
+    #expect(article.html.contains("14336"))
+    #expect(article.html.contains(#"<figure><p> <math alttext="p=n" display="inline" displaystyle="true"><mi>p</mi><mo>=</mo><mi>n</mi></math> <span>(1)</span> </p></figure>"#))
     #expect(article.images.map(\.url) == ["https://arxiv.org/html/2401.00001v2/x1.png", "https://arxiv.org/html/2401.00001v2/x2.svg"])
     #expect(article.images.map(\.filename) == ["image-0", "image-1.svg"])
     #expect(!article.html.contains("Contents"))

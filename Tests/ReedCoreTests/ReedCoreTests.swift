@@ -146,6 +146,12 @@ import Testing
     #expect(ArticleText.plain(document) == "Café Fish & chips' at noon — fresh")
 }
 
+@Test func formulasReadAsTextOnlyWhenTheyAreSimple() {
+    let body = #"<p>With <math alttext="n" display="inline"><mi>n</mi></math> teeth, "#
+        + #"<math alttext="p^{2}\leq n" display="inline"><msup><mi>p</mi><mn>2</mn></msup><mo>≤</mo><mi>n</mi></math> holds.</p>"#
+    #expect(ArticleText.plain(body) == "With n teeth, holds.")
+}
+
 @Test func narrationReadsBlocksButSkipsCodeAndFigures() {
     let document = ArticleHTML.document(title: "Ignored <title>", author: "Byline", domain: "example.com", minutes: 4, body: """
         <h2>Fish &amp; chips</h2><p>First line

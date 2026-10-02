@@ -88,7 +88,7 @@ public enum ArticleHTML {
         figure { margin:2em 0; } figcaption { font:13px/1.6 -apple-system,sans-serif; color:var(--muted); }
         blockquote { margin:1.7em 0; padding-left:24px; border-left:3px solid var(--accent); font-style:italic; }
         pre { overflow:auto; padding:18px; background:color-mix(in srgb,var(--muted) 10%,transparent); border-radius:5px; }
-        code { font:0.85em ui-monospace,monospace; } table { display:block; max-width:100%; overflow:auto; border-collapse:collapse; }
+        math { font-family:"STIX Two Math",math; } code { font:0.85em ui-monospace,monospace; } table { display:block; max-width:100%; overflow:auto; border-collapse:collapse; }
         th,td { border:1px solid var(--muted); padding:8px; } hr { border:0; border-top:1px solid var(--muted); margin:2em 0; }
         .missing-image { color:var(--muted); font:13px -apple-system,sans-serif; }
         @media(max-width:500px) { body { padding:32px 24px 100px; } h1 { font-size:1.85em; } }

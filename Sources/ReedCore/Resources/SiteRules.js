@@ -96,12 +96,26 @@ function arxivPaperBody(html, paperURL) {
             try { node.setAttribute(attribute, new URL(node.getAttribute(attribute), paperURL).href); } catch {}
         }
     }
-    // MathML doesn't survive sanitizing, so keep each formula's TeX source.
-    for (const math of article.querySelectorAll("math")) {
-        const tex = math.getAttribute("alttext") || math.textContent;
-        const replacement = /[\\^_{]/.test(tex) ? Object.assign(paper.createElement("code"), { textContent: tex }) : paper.createTextNode(tex);
-        math.replaceWith(replacement);
+    // Formulas keep their presentation markup; the TeX and content markup annotating it would show as text.
+    article.querySelectorAll("math annotation, math annotation-xml").forEach(node => node.remove());
+    article.querySelectorAll("math semantics").forEach(node => node.replaceWith(...node.childNodes));
+    // Displayed equations are laid out in tables, one row per line with its number in a cell of its own.
+    for (const table of article.querySelectorAll("table.ltx_equation, table.ltx_equationgroup")) {
+        const figure = paper.createElement("figure");
+        for (const row of table.querySelectorAll("tr")) {
+            const line = paper.createElement("p");
+            for (const cell of row.cells) line.append(...cell.childNodes, " ");
+            if (!line.textContent.trim()) continue;
+            // A block formula would push its number onto a line of its own.
+            if (row.querySelector(".ltx_eqn_eqno")) {
+                line.querySelectorAll("math").forEach(math => { math.setAttribute("display", "inline"); math.setAttribute("displaystyle", "true"); });
+            }
+            figure.append(line);
+        }
+        table.replaceWith(figure);
     }
+    // LaTeXML's class names read to Readability as clutter, like the "headers" in `ltx_guessed_headers` on tables.
+    [article, ...article.querySelectorAll("[class]")].forEach(node => node.removeAttribute("class"));
     paper.body.replaceChildren(article);
     let result;
     try { result = new Readability(paper, { maxElemsToParse: 60000 }).parse(); } catch {}

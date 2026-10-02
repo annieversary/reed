@@ -21,8 +21,13 @@ if (!result) {
     if (!result || !result.textContent || result.textContent.trim().length < 100) return null;
 }
 const clean = DOMPurify.sanitize(result.content, {
-    ALLOWED_TAGS: ["p", "div", "section", "article", "h1", "h2", "h3", "h4", "h5", "h6", "a", "img", "figure", "figcaption", "picture", "blockquote", "pre", "code", "ul", "ol", "li", "dl", "dt", "dd", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "caption", "strong", "em", "b", "i", "u", "s", "sub", "sup", "br", "hr", "span", "time", "abbr"],
-    ALLOWED_ATTR: ["href", "src", "alt", "title", "colspan", "rowspan", "start", "dir"],
+    ALLOWED_TAGS: ["p", "div", "section", "article", "h1", "h2", "h3", "h4", "h5", "h6", "a", "img", "figure", "figcaption", "picture", "blockquote", "pre", "code", "ul", "ol", "li", "dl", "dt", "dd", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "caption", "strong", "em", "b", "i", "u", "s", "sub", "sup", "br", "hr", "span", "time", "abbr",
+        "math", "mrow", "mi", "mn", "mo", "ms", "mtext", "mspace", "msup", "msub", "msubsup", "mfrac", "msqrt", "mroot",
+        "mover", "munder", "munderover", "mtable", "mtr", "mtd", "mstyle", "mpadded", "mphantom", "menclose"],
+    ALLOWED_ATTR: ["href", "src", "alt", "title", "colspan", "rowspan", "start", "dir",
+        "display", "alttext", "mathvariant", "stretchy", "fence", "separator", "accent", "accentunder", "movablelimits",
+        "lspace", "rspace", "largeop", "symmetric", "minsize", "maxsize", "linethickness", "scriptlevel", "displaystyle",
+        "columnalign", "columnspan", "notation", "width", "height", "depth", "voffset"],
     ALLOW_DATA_ATTR: false
 });
 const output = new DOMParser().parseFromString(clean, "text/html");
