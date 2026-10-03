@@ -141,3 +141,16 @@ private let arxivAbstract = """
     let labels = article.html.matches(of: #/aria-label="([^"]*)"/#).map { String($0.output.1) }
     #expect(labels == ["a times E sub i of x", "ell is a member of R to the n", "W transpose x", "2 times open paren x plus 1 close paren"])
 }
+
+@Test @MainActor func linksWithinTheArticleStayOnThePage() async throws {
+    let body = (1...4).map { "<p>Paragraph \($0) about sprockets and gears, long enough that Readability keeps it as article text.</p>" }.joined()
+    let html = """
+    <html><body><article><p><a href="#gears">Skip to gears</a> or <a href="/post?id=1#gears">here</a>,
+    not <a href="/other#gears">elsewhere</a>.</p>\(body)<h2 id="gears">Gears</h2>\(body)</article></body></html>
+    """
+    let article = try await extract(html, url: "https://example.com/post?id=1")
+    #expect(article.html.contains("href=\"#gears\">Skip"))
+    #expect(article.html.contains("href=\"#gears\">here"))
+    #expect(article.html.contains("href=\"https://example.com/other#gears\""))
+    #expect(article.html.contains("id=\"gears\""))
+}

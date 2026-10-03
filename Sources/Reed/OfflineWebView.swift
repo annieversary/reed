@@ -695,6 +695,7 @@ enum NarrationDirection: String {
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
             guard let url = navigationAction.request.url else { return .cancel }
             if navigationAction.navigationType == .linkActivated {
+                if url.fragment != nil, url.isFileURL, url.standardizedFileURL.path == parent.url.standardizedFileURL.path { return .allow }
                 if Self.isWeb(url) {
                     #if os(macOS)
                     NSWorkspace.shared.open(url)

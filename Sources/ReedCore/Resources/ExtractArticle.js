@@ -25,7 +25,7 @@ const clean = DOMPurify.sanitize(result.content, {
     ALLOWED_TAGS: ["p", "div", "section", "article", "h1", "h2", "h3", "h4", "h5", "h6", "a", "img", "figure", "figcaption", "picture", "blockquote", "pre", "code", "ul", "ol", "li", "dl", "dt", "dd", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "caption", "strong", "em", "b", "i", "u", "s", "sub", "sup", "br", "hr", "span", "time", "abbr",
         "math", "mrow", "mi", "mn", "mo", "ms", "mtext", "mspace", "msup", "msub", "msubsup", "mfrac", "msqrt", "mroot",
         "mover", "munder", "munderover", "mtable", "mtr", "mtd", "mstyle", "mpadded", "mphantom", "menclose", "mmultiscripts", "mprescripts"],
-    ALLOWED_ATTR: ["href", "src", "alt", "title", "colspan", "rowspan", "start", "dir",
+    ALLOWED_ATTR: ["href", "id", "name", "src", "alt", "title", "colspan", "rowspan", "start", "dir",
         "display", "alttext", "mathvariant", "stretchy", "fence", "separator", "accent", "accentunder", "movablelimits",
         "lspace", "rspace", "largeop", "symmetric", "minsize", "maxsize", "linethickness", "scriptlevel", "displaystyle",
         "columnalign", "columnspan", "rowspacing", "columnspacing", "form", "notation", "width", "height", "depth", "voffset"],
@@ -57,7 +57,9 @@ for (const link of output.querySelectorAll("a")) {
     if (!href) continue;
     try {
         const url = new URL(href, sourceURL);
-        if (["https:", "http:"].includes(url.protocol)) link.setAttribute("href", url.href);
+        const page = new URL(sourceURL);
+        if (url.hash && url.origin + url.pathname + url.search === page.origin + page.pathname + page.search) link.setAttribute("href", url.hash);
+        else if (["https:", "http:"].includes(url.protocol)) link.setAttribute("href", url.href);
         else link.removeAttribute("href");
     } catch { link.removeAttribute("href"); }
 }
