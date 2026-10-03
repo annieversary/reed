@@ -49,6 +49,11 @@ struct LibraryView: View {
     @FocusState private var searchFocused: Bool
     /// Articles that just stopped matching the filter, kept briefly so the change shows before the row goes.
     @State private var lingering: Set<UUID> = []
+    @State private var expandedSeries: Set<UUID> = []
+    /// The article a new series is being made from.
+    @State private var seriesStart: Article?
+    @State private var seriesToRename: Series?
+    @State private var seriesName = ""
 
     private var filter: CollectionFilter? {
         if case .collection(let filter) = selection { filter } else { nil }
@@ -64,6 +69,43 @@ struct LibraryView: View {
         }
         return candidates.filter { (filter ?? .all).includes($0) || lingering.contains($0.id) }
     }
+    private enum Entry: Identifiable {
+        case article(Article), series(Series, [Article])
+        var id: UUID {
+            switch self {
+            case .article(let article): article.id
+            case .series(let series, _): series.id
+            }
+        }
+        var articleCount: Int {
+            switch self {
+            case .article: 1
+            case .series(_, let parts): parts.count
+            }
+        }
+    }
+
+    /// The list's rows: series gathered into one row where their newest part would be, except in search
+    /// results and favorites, which are about single articles. A series is unread while any part is,
+    /// and finished once every part is.
+    private var entries: [Entry] {
+        let filter = filter ?? .all
+        guard query.isEmpty, filter != .favorites else { return visibleArticles.map(Entry.article) }
+        var shown = Set<UUID>()
+        var entries: [Entry] = []
+        for article in library.articles {
+            if let series = library.series(of: article) {
+                guard shown.insert(series.id).inserted else { continue }
+                let parts = library.parts(of: series)
+                let included = filter == .read ? parts.allSatisfy(filter.includes) : parts.contains(where: filter.includes)
+                if included || parts.contains(where: { lingering.contains($0.id) }) { entries.append(.series(series, parts)) }
+            } else if filter.includes(article) || lingering.contains(article.id) {
+                entries.append(.article(article))
+            }
+        }
+        return entries
+    }
+
     private var snippets: [UUID: String] {
         query.isEmpty ? [:] : Dictionary(matches.compactMap { match in match.snippet.map { (match.id, $0) } }) { first, _ in first }
     }
@@ -158,6 +200,14 @@ struct LibraryView: View {
                 articleToDelete = nil
             }
         } message: { Text("Its offline copy will be removed from this device.") }
+        .sheet(item: $seriesStart) { article in
+            MakeSeriesView(library: library, start: article) { expandedSeries.insert($0.id) }
+        }
+        .alert("Rename series", isPresented: Binding(get: { seriesToRename != nil }, set: { if !$0 { seriesToRename = nil } })) {
+            TextField("Name", text: $seriesName)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") { if let series = seriesToRename { library.rename(series, to: seriesName) } }
+        }
     }
 
     /// Whether the columns are shown one at a time, as on iPhone, rather than side by side.
@@ -181,6 +231,9 @@ struct LibraryView: View {
     /// must be the one showing, and hold the article, from the sidebar, Discover or another collection.
     private func openNarrated() {
         guard let id = narrator.articleID else { return }
+        if let article = library.articles.first(where: { $0.id == id }), let series = library.series(of: article) {
+            expandedSeries.insert(series.id)
+        }
         if columnsStack, filter == nil || !visibleArticles.contains(where: { $0.id == id }) {
             selection = .collection(.all)
             query = ""
@@ -278,41 +331,14 @@ struct LibraryView: View {
                     .id(ListRow.count)
                 #endif
                 let snippets = snippets
-                ForEach(visibleArticles) { article in
-                    // A hidden link keeps row navigation without the disclosure chevron.
-                    ArticleRow(article: article, snippet: snippets[article.id])
-                        .background(NavigationLink(value: article.id) { EmptyView() }.opacity(0))
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
-                        .swipeActions(edge: .leading) {
-                            Button { library.toggleRead(article) } label: {
-                                Label(article.isRead ? "Unread" : "Finished", systemImage: article.isRead ? "book.closed" : "checkmark.circle")
-                            }
-                            .tint(ReedStyle.accent)
-                        }
-                        // No destructive role: it would remove the row before the delete is confirmed.
-                        .swipeActions(edge: .trailing) {
-                            if article.state != .downloading {
-                                Button { articleToDelete = article } label: { Label("Delete", systemImage: "trash") }
-                                    .tint(.red)
-                            }
-                            Button { library.toggleFavorite(article) } label: {
-                                Label(article.isFavorite ? "Unfavorite" : "Favorite", systemImage: article.isFavorite ? "star.slash" : "star")
-                            }
-                            .tint(.orange)
-                        }
-                        .contextMenu {
-                            Button(article.isFavorite ? "Remove Favorite" : "Favorite", systemImage: "star") { library.toggleFavorite(article) }
-                            Button(article.isRead ? "Mark Unread" : "Mark Finished", systemImage: "checkmark.circle") { library.toggleRead(article) }
-                            if article.state == .failed || article.state == .partial {
-                                Button("Retry Download", systemImage: "arrow.clockwise") { library.retry(article) }
-                            } else if article.state == .ready {
-                                Button("Refresh", systemImage: "arrow.clockwise") { library.retry(article) }
-                            }
-                            Divider()
-                            Button("Delete", systemImage: "trash", role: .destructive) { articleToDelete = article }
-                                .disabled(article.state == .downloading)
-                        }
+                ForEach(entries) { entry in
+                    switch entry {
+                    case .article(let article):
+                        actionable(ArticleRow(article: article, snippet: snippets[article.id]), for: article,
+                                   insets: EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                    case .series(let series, let parts):
+                        seriesRows(series, parts: parts)
+                    }
                 }
             }
             .listStyle(.plain)
@@ -331,7 +357,7 @@ struct LibraryView: View {
             .onDisappear { searchFocused = false }
             #endif
             .overlay {
-                if visibleArticles.isEmpty {
+                if entries.isEmpty {
                     Text(emptyMessage).font(.system(size: 18, design: .serif))
                         .foregroundStyle(.secondary)
                 }
@@ -366,6 +392,104 @@ struct LibraryView: View {
     private enum ListRow { case search, count }
     #endif
 
+    @ViewBuilder private func seriesRows(_ series: Series, parts: [Article]) -> some View {
+        let expanded = Binding(get: { expandedSeries.contains(series.id) },
+                               set: { if $0 { expandedSeries.insert(series.id) } else { expandedSeries.remove(series.id) } })
+        if let first = parts.first {
+            // Opens the part to carry on with, or the first once every part is finished. The tag replaces
+            // the series' own ID, which the list would otherwise select.
+            let next = (SeriesRow.upNext(in: parts) ?? first).id
+            SeriesRow(series: series, parts: parts, expanded: expanded)
+                .background(NavigationLink(value: next) { EmptyView() }.opacity(0))
+                .tag(next)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: expanded.wrappedValue ? 0 : 4, trailing: 12))
+                .contextMenu {
+                    Button(expanded.wrappedValue ? "Hide Parts" : "Show Parts", systemImage: "list.bullet") {
+                        withAnimation(.snappy(duration: 0.25)) { expanded.wrappedValue.toggle() }
+                    }
+                    Button("Rename Series…", systemImage: "pencil") { seriesName = series.name; seriesToRename = series }
+                    let finished = parts.allSatisfy(\.isRead)
+                    Button(finished ? "Mark All Unread" : "Mark All Finished", systemImage: "checkmark.circle") {
+                        library.setRead(!finished, for: parts)
+                    }
+                    Divider()
+                    Button("Ungroup Series", systemImage: "square.stack.3d.down.right") { library.ungroup(series) }
+                }
+            if expanded.wrappedValue {
+                ForEach(Array(parts.enumerated()), id: \.element.id) { index, part in
+                    actionable(PartRow(article: part, number: index + 1, seriesName: series.name), for: part,
+                               insets: EdgeInsets(top: 0, leading: 19, bottom: 0, trailing: 12))
+                }
+                .onMove { library.moveParts(of: series, from: $0, to: $1) }
+            }
+        }
+    }
+
+    /// A row that opens `article`, with its swipe actions and context menu.
+    private func actionable(_ row: some View, for article: Article, insets: EdgeInsets) -> some View {
+        // A hidden link keeps row navigation without the disclosure chevron.
+        row
+            .background(NavigationLink(value: article.id) { EmptyView() }.opacity(0))
+            .listRowSeparator(.hidden)
+            .listRowInsets(insets)
+            .swipeActions(edge: .leading) {
+                Button { library.toggleRead(article) } label: {
+                    Label(article.isRead ? "Unread" : "Finished", systemImage: article.isRead ? "book.closed" : "checkmark.circle")
+                }
+                .tint(ReedStyle.accent)
+            }
+            // No destructive role: it would remove the row before the delete is confirmed.
+            .swipeActions(edge: .trailing) {
+                if article.state != .downloading {
+                    Button { articleToDelete = article } label: { Label("Delete", systemImage: "trash") }
+                        .tint(.red)
+                }
+                Button { library.toggleFavorite(article) } label: {
+                    Label(article.isFavorite ? "Unfavorite" : "Favorite", systemImage: article.isFavorite ? "star.slash" : "star")
+                }
+                .tint(.orange)
+            }
+            .contextMenu {
+                Button(article.isFavorite ? "Remove Favorite" : "Favorite", systemImage: "star") { library.toggleFavorite(article) }
+                Button(article.isRead ? "Mark Unread" : "Mark Finished", systemImage: "checkmark.circle") { library.toggleRead(article) }
+                if article.state == .failed || article.state == .partial {
+                    Button("Retry Download", systemImage: "arrow.clockwise") { library.retry(article) }
+                } else if article.state == .ready {
+                    Button("Refresh", systemImage: "arrow.clockwise") { library.retry(article) }
+                }
+                Divider()
+                seriesMenu(for: article)
+                Divider()
+                Button("Delete", systemImage: "trash", role: .destructive) { articleToDelete = article }
+                    .disabled(article.state == .downloading)
+            }
+    }
+
+    @ViewBuilder private func seriesMenu(for article: Article) -> some View {
+        if let series = library.series(of: article) {
+            if let index = series.parts.firstIndex(of: article.id) {
+                if index > 0 {
+                    Button("Move Earlier", systemImage: "arrow.up") { library.moveParts(of: series, from: [index], to: index - 1) }
+                }
+                if index < series.parts.count - 1 {
+                    Button("Move Later", systemImage: "arrow.down") { library.moveParts(of: series, from: [index], to: index + 2) }
+                }
+            }
+            Button("Remove from Series", systemImage: "minus.circle") { library.removeFromSeries(article) }
+        } else if library.series.isEmpty {
+            Button("Make Series…", systemImage: "square.stack") { seriesStart = article }
+        } else {
+            Menu("Add to Series", systemImage: "square.stack") {
+                ForEach(library.series) { series in
+                    Button(series.name) { library.add(article, to: series) }
+                }
+                Divider()
+                Button("New Series…") { seriesStart = article }
+            }
+        }
+    }
+
     private var searchField: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(.tertiary)
@@ -391,7 +515,8 @@ struct LibraryView: View {
     }
 
     private var articleCount: String {
-        "\(visibleArticles.count) \(visibleArticles.count == 1 ? "article" : "articles")"
+        let count = entries.reduce(0) { $0 + $1.articleCount }
+        return "\(count) \(count == 1 ? "article" : "articles")"
     }
 
     private var readerPlaceholder: some View {

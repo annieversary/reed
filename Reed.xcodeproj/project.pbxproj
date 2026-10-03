@@ -172,6 +172,24 @@
 			<key>fileRef</key>
 			<string>E9837CD9914E91D5750B82BD</string>
 		</dict>
+		<key>E1B4CFB83055600EEABE19D0</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/SeriesViews.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>A39272BA477257773A42D1B1</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>E1B4CFB83055600EEABE19D0</string>
+		</dict>
 		<key>5819C39293FCA9B70AE93D0E</key>
 		<dict>
 			<key>isa</key>
@@ -694,6 +712,24 @@
 			<key>fileRef</key>
 			<string>F95186331235DB31A60CB636</string>
 		</dict>
+		<key>CE88F19EEA1429E85B50DAE5</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Series.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>DABFDAF3DA54B71E77115C79</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>CE88F19EEA1429E85B50DAE5</string>
+		</dict>
 		<key>D6B3E48F2D5F9A78B16590C0</key>
 		<dict>
 			<key>isa</key>
@@ -806,6 +842,7 @@
 				<string>2A88CBB9E73D0A0E48B9C71C</string>
 				<string>EA6A37D30699070A655CB24E</string>
 				<string>E9837CD9914E91D5750B82BD</string>
+				<string>E1B4CFB83055600EEABE19D0</string>
 				<string>5819C39293FCA9B70AE93D0E</string>
 				<string>B71B90F4906B3A73F8C70F6A</string>
 				<string>E0D1E03E3838001C7278D202</string>
@@ -835,6 +872,7 @@
 				<string>169F6D550C9F9B8572CBBC11</string>
 				<string>CD9B04105A02C96A8DF2ACE0</string>
 				<string>F95186331235DB31A60CB636</string>
+				<string>CE88F19EEA1429E85B50DAE5</string>
 				<string>D6B3E48F2D5F9A78B16590C0</string>
 				<string>1DD381AB02DE9B858DEA0D7D</string>
 				<string>F1EEAC1AABD95DE2505EEBCD</string>
@@ -889,6 +927,7 @@
 				<string>E0E7870EA5D095C9234442AA</string>
 				<string>4258CB1E66946A2A57F938EC</string>
 				<string>CD546E1A338CABB67FC83DE5</string>
+				<string>A39272BA477257773A42D1B1</string>
 				<string>41EC7785CCE9D09B2D4FA7B1</string>
 				<string>6BF7FEFFFD817D6E50733FDA</string>
 				<string>97B769EE3A4FECEA35AF013F</string>
@@ -904,6 +943,7 @@
 				<string>E990D3D09BB177A7DFFE6EEE</string>
 				<string>B6FD6E0B91E4341452F8BF65</string>
 				<string>6679307645738DA919E28E26</string>
+				<string>DABFDAF3DA54B71E77115C79</string>
 				<string>E02CFC5074F0F3AE2CC43C5B</string>
 				<string>C63FD7F25C65273D3CA18C5B</string>
 			</array>

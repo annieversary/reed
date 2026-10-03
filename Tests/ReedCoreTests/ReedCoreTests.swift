@@ -352,3 +352,49 @@ import Testing
     #expect(reopened.cached.map(\.originalURL) == ["https://example.com/c", "https://example.com/d"])
 }
 
+
+@Test func seriesTitlesGivePartNumbersAndAName() {
+    #expect(SeriesTitle.partNumber(in: "Making our own executable packer (Part 12)") == 12)
+    #expect(SeriesTitle.partNumber(in: "Rust ownership, pt. 3: borrowing") == 3)
+    #expect(SeriesTitle.partNumber(in: "The compiler, part IV") == 4)
+    #expect(SeriesTitle.partNumber(in: "Part two: the parser") == 2)
+    #expect(SeriesTitle.partNumber(in: "Notes on lenses (3/7)") == 3)
+    #expect(SeriesTitle.partNumber(in: "Weeknotes #41") == 41)
+    #expect(SeriesTitle.partNumber(in: "Part of the plan") == nil)
+    #expect(SeriesTitle.partNumber(in: "Why 2024 was strange") == nil)
+    #expect(SeriesTitle.name(for: ["Writing a GC, part 1: marking", "Writing a GC, part 2: sweeping"]) == "Writing a GC")
+    #expect(SeriesTitle.name(for: ["Scanning — Crafting Interpreters", "Parsing — Crafting Interpreters"]) == "Crafting Interpreters")
+    #expect(SeriesTitle.name(for: ["Lenses (Part 1)"]) == "Lenses")
+    #expect(SeriesTitle.name(for: ["Apples", "Oranges"]) == "")
+}
+
+@Test @MainActor func seriesKeepTheirPartsInOrderAcrossLaunches() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    _ = try ArticleStorage(root: root)
+    do {
+        let container = try ModelContainer(for: Article.self, configurations: ModelConfiguration(url: root.appendingPathComponent("Library.store")))
+        for (index, title) in ["Packer, part 3", "Packer, part 1", "Packer, part 4", "Unrelated"].enumerated() {
+            let article = Article(url: URL(string: "https://example.com/\(index)")!)
+            article.title = title
+            // Failed, so the library doesn't try to download them.
+            article.state = .failed
+            container.mainContext.insert(article)
+        }
+        try container.mainContext.save()
+    }
+    let library = try Library(root: root)
+    func titled(_ title: String) -> Article { library.articles.first { $0.title == title }! }
+    let series = try #require(library.makeSeries(named: "Packer", of: [titled("Packer, part 3"), titled("Packer, part 1")]))
+    library.add(titled("Packer, part 4"), to: series)
+    #expect(library.parts(of: series).map(\.title) == ["Packer, part 1", "Packer, part 3", "Packer, part 4"])
+    library.moveParts(of: series, from: [2], to: 0)
+    library.rename(series, to: "Executable packer")
+    library.delete(titled("Packer, part 3"))
+    let reopened = try Library(root: root)
+    #expect(reopened.series.map(\.name) == ["Executable packer"])
+    #expect(reopened.parts(of: reopened.series[0]).map(\.title) == ["Packer, part 4", "Packer, part 1"])
+    reopened.removeFromLibrary(reopened.articles.first { $0.title == "Packer, part 4" }!)
+    reopened.removeFromSeries(reopened.articles.first { $0.title == "Packer, part 1" }!)
+    #expect(reopened.series.isEmpty)
+}

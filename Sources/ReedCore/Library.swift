@@ -23,6 +23,8 @@ public final class Library {
     /// When the feeds were last looked at, so what has arrived since can be told apart.
     public private(set) var feedsVisitedAt: Date?
     public private(set) var refreshingFeeds = false
+    /// Saved articles grouped into series, in the order they were made.
+    public private(set) var series: [Series] = []
     /// Advances whenever the search index changes, so searches can be rerun.
     public private(set) var searchRevision = 0
     public let container: ModelContainer
@@ -66,6 +68,12 @@ public final class Library {
             feeds = store.feeds
             feedItems = Self.river(of: feeds)
             feedsVisitedAt = store.visitedAt
+        }
+        if let data = try? Data(contentsOf: Self.seriesURL(root: root)),
+           let stored = try? JSONDecoder().decode([Series].self, from: data) {
+            let saved = Set(articles.map(\.id))
+            series = stored.map { var series = $0; series.parts.removeAll { !saved.contains($0) }; return series }
+                .filter { !$0.parts.isEmpty }
         }
         syncCache()
         let entries = articles.map(searchEntry)
@@ -141,6 +149,7 @@ public final class Library {
         save()
         articles.removeAll { $0.id == article.id }
         cached.append(article)
+        removeFromSeries(article)
         let id = article.id
         Task { [weak self, searchIndex] in
             try? await searchIndex.remove(id)
@@ -358,8 +367,98 @@ public final class Library {
         guard article.state != .downloading else { return }
         let id = article.id
         guard let index = articles.firstIndex(where: { $0.id == id }) else { return }
-        if erase(article) { articles.remove(at: index) }
+        if erase(article) { articles.remove(at: index); removeFromSeries(article) }
     }
+
+    public func series(of article: Article) -> Series? {
+        series.first { $0.parts.contains(article.id) }
+    }
+
+    /// The series' articles, in reading order.
+    public func parts(of series: Series) -> [Article] {
+        let byID = Dictionary(uniqueKeysWithValues: articles.map { ($0.id, $0) })
+        let current = self.series.first { $0.id == series.id } ?? series
+        return current.parts.compactMap { byID[$0] }
+    }
+
+    /// Gathers articles into a new series, taking them out of any other, ordered by the part numbers in
+    /// their titles if every one has one, and otherwise by when they were published, then saved.
+    @discardableResult public func makeSeries(named name: String, of parts: [Article]) -> Series? {
+        guard !parts.isEmpty else { return nil }
+        let numbers = parts.map { SeriesTitle.partNumber(in: $0.title) }
+        let ordered = if numbers.allSatisfy({ $0 != nil }) {
+            zip(parts, numbers).sorted { $0.1! < $1.1! }.map(\.0)
+        } else {
+            parts.sorted { ($0.publishedAt ?? $0.savedAt, $0.savedAt) < ($1.publishedAt ?? $1.savedAt, $1.savedAt) }
+        }
+        let new = Series(name: name.trimmingCharacters(in: .whitespacesAndNewlines), parts: ordered.map(\.id))
+        updateSeries { all in
+            for index in all.indices { all[index].parts.removeAll(where: new.parts.contains) }
+            all.removeAll { $0.parts.isEmpty }
+            all.append(new)
+        }
+        return new
+    }
+
+    /// Adds an article to a series, after the parts numbered before it, or at the end.
+    public func add(_ article: Article, to series: Series) {
+        let id = article.id
+        updateSeries { all in
+            for index in all.indices { all[index].parts.removeAll { $0 == id } }
+            guard let target = all.firstIndex(where: { $0.id == series.id }) else { return }
+            var position = all[target].parts.endIndex
+            let byID = Dictionary(uniqueKeysWithValues: articles.map { ($0.id, $0) })
+            let numbers = all[target].parts.map { byID[$0].flatMap { SeriesTitle.partNumber(in: $0.title) } }
+            if let number = SeriesTitle.partNumber(in: article.title), numbers.allSatisfy({ $0 != nil }) {
+                position = numbers.firstIndex { $0! > number } ?? position
+            }
+            all[target].parts.insert(id, at: position)
+            all.removeAll { $0.parts.isEmpty }
+        }
+    }
+
+    /// Takes an article out of its series, which goes once it has no parts left.
+    public func removeFromSeries(_ article: Article) {
+        guard series(of: article) != nil else { return }
+        updateSeries { all in
+            for index in all.indices { all[index].parts.removeAll { $0 == article.id } }
+            all.removeAll { $0.parts.isEmpty }
+        }
+    }
+
+    public func moveParts(of series: Series, from offsets: IndexSet, to destination: Int) {
+        updateSeries { all in
+            guard let index = all.firstIndex(where: { $0.id == series.id }) else { return }
+            let parts = all[index].parts
+            let moved = offsets.map { parts[$0] }
+            var rest = parts.enumerated().filter { !offsets.contains($0.offset) }.map(\.element)
+            rest.insert(contentsOf: moved, at: destination - offsets.count { $0 < destination })
+            all[index].parts = rest
+        }
+    }
+
+    public func rename(_ series: Series, to name: String) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        updateSeries { all in
+            guard let index = all.firstIndex(where: { $0.id == series.id }) else { return }
+            all[index].name = name
+        }
+    }
+
+    /// Ends a series, keeping its articles.
+    public func ungroup(_ series: Series) {
+        updateSeries { $0.removeAll { $0.id == series.id } }
+    }
+
+    private func updateSeries(_ change: (inout [Series]) -> Void) {
+        let previous = series
+        change(&series)
+        do { try JSONEncoder().encode(series).write(to: Self.seriesURL(root: storage.root), options: .atomic) }
+        catch { series = previous; errorMessage = error.localizedDescription }
+    }
+
+    static func seriesURL(root: URL) -> URL { root.appendingPathComponent("Series.json") }
 
 
     /// Whether the article's metadata is gone; leftover files are reported but don't count against it.
@@ -378,6 +477,10 @@ public final class Library {
         if article.isFavorite && article.isCached { keep(article) } else { save() }
     }
     public func toggleRead(_ article: Article) { article.isRead.toggle(); save() }
+    public func setRead(_ read: Bool, for articles: [Article]) {
+        for article in articles { article.isRead = read }
+        save()
+    }
 
     public func updateProgress(_ article: Article, value: Double) {
         guard value.isFinite else { return }
