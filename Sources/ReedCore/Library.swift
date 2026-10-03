@@ -29,6 +29,7 @@ public final class Library {
     public let storage: ArticleStorage
     private let downloader: ArticleDownloader
     private let extractor = ArticleExtractor()
+    private let renderer = PageRenderer()
     private let searchIndex: SearchIndex
     private var worker: Task<Void, Never>?
     private var progressSave: Task<Void, Never>?
@@ -452,6 +453,30 @@ public final class Library {
                           domain: article.domain, content: contentURL(for: article))
     }
 
+    /// The article as served or, when that holds little text, as its scripts render it: some pages arrive
+    /// as an empty shell and build the article on load.
+    private func extract(_ page: DownloadedPage, report: (String) -> Void) async throws -> ExtractedArticle {
+        let fetch: (URL) async throws -> String = { [downloader] url in
+            String(decoding: try await downloader.resource(at: url), as: UTF8.self)
+        }
+        var extracted: ExtractedArticle?
+        var failure: Error?
+        do { extracted = try await extractor.extract(html: page.html, url: page.url, fetch: fetch) }
+        catch is CancellationError { throw CancellationError() }
+        catch { failure = error }
+        if (extracted?.wordCount ?? 0) < 150 {
+            report("Rendering \(page.url.host() ?? "the page")…")
+            if let html = try? await renderer.html(at: page.url),
+               let rendered = try? await extractor.extract(html: html, url: page.url, fetch: fetch),
+               rendered.wordCount > (extracted?.wordCount ?? 0) {
+                extracted = rendered
+            }
+            try Task.checkCancellation()
+        }
+        guard let extracted else { throw failure ?? ReedError.emptyArticle }
+        return extracted
+    }
+
     private func download(_ article: Article) async {
         article.state = .downloading
         save()
@@ -466,9 +491,7 @@ public final class Library {
             report("Fetching \(article.domain)…")
             let page = try await downloader.page(at: ArticleURL.parse(article.originalURL))
             report("Finding the article…")
-            let extracted = try await extractor.extract(html: page.html, url: page.url) { [downloader] url in
-                String(decoding: try await downloader.resource(at: url), as: UTF8.self)
-            }
+            let extracted = try await extract(page, report: report)
             let directory = try storage.createStagingDirectory()
             staging = directory
             var body = extracted.html

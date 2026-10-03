@@ -28,6 +28,7 @@ import ReedCore
         do {
             guard argument("--library-root") != nil else { throw Failure(message: "Smoke test requires an isolated library root") }
             if let base = argument("--smoke-url") {
+                let rendered = try library.add(base + "/rendered")
                 let article = try library.add(base + "/article")
                 let duplicate = try library.add(base + "/article#section")
                 try check(article.id == duplicate.id, "URL fragments do not create duplicate articles")
@@ -44,11 +45,12 @@ import ReedCore
                 try check(article.resolvedURL == base + "/story", "Redirected source URL is retained")
                 try check(failed.state == .failed && failed.failureMessage?.contains("503") == true, "HTTP errors are surfaced")
                 try check(unsupported.state == .failed, "Non-HTML content is rejected")
+                try check(rendered.state == .ready && rendered.wordCount > 150, "Pages built by script are rendered before extraction")
                 library.toggleFavorite(article)
                 library.updateProgress(article, value: 0.4)
                 library.save()
             } else {
-                try check(library.articles.count == 3, "Library survives a full app restart")
+                try check(library.articles.count == 4, "Library survives a full app restart")
             }
             guard let article = library.articles.first(where: { $0.state.isReadable }), let url = library.contentURL(for: article) else {
                 throw Failure(message: "No readable local article")

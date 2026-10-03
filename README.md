@@ -73,7 +73,7 @@ Staging/                        Incomplete downloads, cleaned after restart
 
 Article packages are assembled in staging and moved into place before metadata points to them. A failed replacement leaves the earlier package intact. Saved articles are durable files, not a browser cache. On iOS this directory is inside the app container.
 
-The extractor runs bundled JavaScript against an inert DOM in a network-blocked WebKit shell. Publisher scripts are never loaded into a live page. The reader uses sanitized HTML, disabled page JavaScript, a restrictive content security policy, and local files only; following a link explicitly opens the system browser.
+The extractor runs bundled JavaScript against an inert DOM in a network-blocked WebKit shell. When the served HTML holds almost no text, as with pages that assemble their article in the browser, `PageRenderer` loads the page once in a throwaway WebKit view (no stored data, no images, media, frames or new windows), lets its scripts run until the text settles, and extracts from the result the same way. Publisher scripts never run in the reader. The reader uses sanitized HTML, disabled page JavaScript, a restrictive content security policy, and local files only; following a link explicitly opens the system browser.
 
 Downloads are sequential and bounded: 8 MiB of HTML, 12 MiB per image, up to 40 images and 64 MiB of image data per article. Image failures preserve the text and display a partial-save status. Supported images are raster formats; SVGs and remote embeds are excluded.
 

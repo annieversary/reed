@@ -15,6 +15,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--app", type=Path, default=ROOT / "build/Build/Products/Debug/Reed.app")
 args = parser.parse_args()
 fixture = (ROOT / "Tests/ReedCoreTests/Fixtures/article.html").read_bytes()
+# An empty shell whose script writes the article, as single-page apps do.
+rendered = b"""<!doctype html><html><head><title>Built on arrival</title></head><body><article id="post"></article>
+<script>document.getElementById("post").innerHTML = "<h1>Built on arrival</h1>" +
+  Array.from({length: 8}, (_, i) => "<p>Paragraph " + i + " was written by the page's own script after it loaded, the way many blogs assemble their posts in the browser instead of sending them whole.</p>").join("");</script>
+</body></html>"""
 image = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
 requests = []
 
@@ -28,6 +33,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         payload, status, mime = {
             "/story": (fixture, 200, "text/html; charset=utf-8"),
+            "/rendered": (rendered, 200, "text/html; charset=utf-8"),
             "/image.png": (image, 200, "image/png"),
             "/document.pdf": (b"%PDF", 200, "application/pdf"),
             "/unavailable": (b"Unavailable", 503, "text/plain"),

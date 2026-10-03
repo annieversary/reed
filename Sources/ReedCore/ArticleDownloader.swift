@@ -12,13 +12,14 @@ public enum FeedDownload: Sendable {
 }
 
 public actor ArticleDownloader {
+    static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15 Reed/0.1"
     private let session: URLSession
 
     public init(session: URLSession? = nil) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 30
         configuration.timeoutIntervalForResource = 60
-        configuration.httpAdditionalHeaders = ["User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15 Reed/0.1"]
+        configuration.httpAdditionalHeaders = ["User-Agent": Self.userAgent]
         self.session = session ?? URLSession(configuration: configuration)
     }
 
