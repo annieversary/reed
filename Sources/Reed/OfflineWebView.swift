@@ -725,11 +725,11 @@ enum NarrationDirection: String {
         static func isWeb(_ url: URL) -> Bool { ["https", "http"].contains(url.scheme?.lowercased() ?? "") }
 
         #if os(iOS)
-        func webView(_ webView: WKWebView, contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo) async -> UIContextMenuConfiguration? {
+        func webView(_ webView: WKWebView, contextMenuConfigurationFor elementInfo: WKContextMenuElementInfo) async -> UIContextMenuConfiguration? {
             guard let url = elementInfo.linkURL, Self.isWeb(url) else { return nil }
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] suggested in
-                let add = UIAction(title: "Add to Reed", image: UIImage(systemName: "plus")) { _ in self?.parent.onAddLink(url) }
-                return UIMenu(children: [add] + suggested)
+                let save = UIAction(title: "Save", image: UIImage(systemName: "tray.and.arrow.down")) { _ in self?.parent.onAddLink(url) }
+                return UIMenu(children: [save] + suggested)
             }
         }
         #endif
@@ -743,7 +743,7 @@ final class ReaderWebView: WKWebView {
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
         guard let coordinator, let url = coordinator.contextLink else { return }
-        let item = NSMenuItem(title: "Add to Reed", action: #selector(addLink(_:)), keyEquivalent: "")
+        let item = NSMenuItem(title: "Save", action: #selector(addLink(_:)), keyEquivalent: "")
         item.target = self
         item.representedObject = url
         menu.insertItem(item, at: 0)
