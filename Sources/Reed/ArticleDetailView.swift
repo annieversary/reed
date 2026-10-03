@@ -26,7 +26,6 @@ struct ArticleDetailView: View {
                 if library.contentURL(for: article) != nil {
                     progressLabel
                     if !isNarrating { listenButton }
-                    notesButton
                 }
                 readerMenu
             }
@@ -98,7 +97,6 @@ struct ArticleDetailView: View {
             if library.contentURL(for: article) != nil {
                 ToolbarItem(placement: .principal) { progressLabel }
                 if !isNarrating { ToolbarItem(placement: .primaryAction) { listenButton } }
-                ToolbarItem(placement: .primaryAction) { notesButton }
             }
             ToolbarItem(placement: .primaryAction) { readerMenu }
         }
@@ -129,15 +127,6 @@ struct ArticleDetailView: View {
             .buttonStyle(.borderless)
             #endif
             .help("Listen")
-    }
-
-    private var notesButton: some View {
-        Button(notesOpen ? "Hide Notes" : "Notes", systemImage: notesOpen ? "note.text.badge.plus" : "note.text") { notesOpen.toggle() }
-            .labelStyle(.iconOnly)
-            #if os(macOS)
-            .buttonStyle(.borderless)
-            #endif
-            .help(notesOpen ? "Hide Notes" : "Notes")
     }
 
     private func returnToNarrationButton(_ direction: NarrationDirection) -> some View {
