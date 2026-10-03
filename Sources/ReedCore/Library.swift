@@ -542,8 +542,14 @@ public final class Library {
             try container.mainContext.save()
             if !article.isCached { reindex(article) }
         } catch {
-            article.state = .failed
-            article.failureMessage = error.localizedDescription
+            // A failed refresh leaves the copy already saved readable.
+            if contentURL(for: article) != nil {
+                article.state = article.missingImageCount > 0 ? .partial : .ready
+                if !article.isCached { errorMessage = error.localizedDescription }
+            } else {
+                article.state = .failed
+                article.failureMessage = error.localizedDescription
+            }
             save()
         }
         if discarded.remove(article.id) != nil { erase(article) }

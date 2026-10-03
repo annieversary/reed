@@ -301,6 +301,8 @@ struct LibraryView: View {
                             Button(article.isRead ? "Mark Unread" : "Mark Finished", systemImage: "checkmark.circle") { library.toggleRead(article) }
                             if article.state == .failed || article.state == .partial {
                                 Button("Retry Download", systemImage: "arrow.clockwise") { library.retry(article) }
+                            } else if article.state == .ready {
+                                Button("Refresh", systemImage: "arrow.clockwise") { library.retry(article) }
                             }
                             Divider()
                             Button("Delete", systemImage: "trash", role: .destructive) { articleToDelete = article }
