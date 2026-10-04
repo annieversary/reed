@@ -89,7 +89,8 @@ public enum ArticleHTML {
         h1 { font-size:2.25em; font-weight:normal; line-height:1.16; letter-spacing:-1.4px; margin:18px 0; }
         .byline { color:var(--muted); font:13px/1.6 -apple-system,sans-serif; }
         h2,h3,h4 { line-height:1.35; margin-top:1.8em; } p { margin:1.2em 0; }
-        a { color:var(--accent); text-underline-offset:4px; } img { max-width:100%; height:auto; border-radius:4px; }
+        a { color:var(--accent); text-underline-offset:4px; } img, svg { max-width:100%; height:auto; border-radius:4px; }
+        @media(prefers-color-scheme:dark) { svg { background:#fff; color:#282d28; } }
         figure { margin:2em 0; } figcaption { font:13px/1.6 -apple-system,sans-serif; color:var(--muted); }
         blockquote { margin:1.7em 0; padding-left:24px; border-left:3px solid var(--accent); font-style:italic; }
         pre { overflow:auto; padding:18px; background:color-mix(in srgb,var(--muted) 10%,transparent); border-radius:5px; }

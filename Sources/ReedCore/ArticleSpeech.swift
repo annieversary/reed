@@ -3,13 +3,13 @@ import NaturalLanguage
 
 public enum ArticleSpeech {
     /// The passages of a saved reader document to read aloud, one per block, starting with the title.
-    /// Code, tables and figures are left out, since they don't make sense spoken.
+    /// Code, tables, figures and drawings are left out, since they don't make sense spoken.
     public static func passages(title: String, html: String) -> [String] {
         var body = Substring(html)
         if let start = body.range(of: "<main>"), let end = body.range(of: "</main>", options: .backwards), start.upperBound <= end.lowerBound {
             body = body[start.upperBound..<end.lowerBound]
         }
-        let unspoken = #/<(pre|table|figure|script|style)\b.*?</\1\s*>|<span class="missing-image">.*?</span>/#
+        let unspoken = #/<(pre|table|figure|svg|script|style)\b.*?</\1\s*>|<span class="missing-image">.*?</span>/#
             .dotMatchesNewlines().ignoresCase()
         let block = #/</?(?:p|div|h[1-6]|li|ul|ol|dl|dt|dd|blockquote|section|article|header|footer|aside|hr)\b[^>]*>|<br\s*/?>/#
             .ignoresCase()

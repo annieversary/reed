@@ -41,11 +41,47 @@ public final class PageRenderer: NSObject, WKNavigationDelegate {
             steady = current > 0 && current == length ? steady + 1 : 0
             length = current
         }
-        guard let html = try await view.evaluateJavaScript("document.documentElement.outerHTML") as? String else {
+        guard let html = try await view.evaluateJavaScript(Self.snapshot) as? String else {
             throw ReedError.emptyArticle
         }
         return html
     }
+
+    /// The document, with drawings given their size on the page and the colours and type their stylesheets set,
+    /// since extraction keeps neither stylesheets nor classes. Only what differs from what an element would
+    /// inherit is written.
+    private static let snapshot = """
+    const inherited = ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-opacity", "stroke-dasharray",
+                       "font-size", "font-family", "font-weight", "text-anchor"];
+    const initial = { "opacity": "1", "stop-color": "rgb(0, 0, 0)", "stop-opacity": "1" };
+    for (const node of document.querySelectorAll("svg, svg *")) {
+        const style = getComputedStyle(node);
+        const parent = node.localName === "svg" && !node.parentElement?.closest("svg") ? null : getComputedStyle(node.parentElement);
+        for (const property of inherited) {
+            const value = style.getPropertyValue(property);
+            if (parent && value === parent.getPropertyValue(property)) node.removeAttribute(property);
+            else node.setAttribute(property, value);
+        }
+        for (const [property, value] of Object.entries(initial)) {
+            const current = style.getPropertyValue(property);
+            if (current === value) node.removeAttribute(property);
+            else node.setAttribute(property, current);
+        }
+    }
+    // Drawings sized by the page's layout keep that size, instead of filling the reader's column.
+    for (const svg of document.querySelectorAll("svg:not([width])")) {
+        const width = Math.round(svg.getBoundingClientRect().width);
+        if (width > 0 && !svg.parentElement?.closest("svg")) svg.setAttribute("width", width);
+    }
+    // Items set apart by the layout, like a chart's key, would otherwise run together.
+    for (const node of document.body.querySelectorAll("*")) {
+        if (!/flex|grid/.test(getComputedStyle(node).display)) continue;
+        for (const child of Array.from(node.children).slice(1)) {
+            if (!/\\s$/.test(child.previousSibling?.textContent ?? " ")) child.before(" ");
+        }
+    }
+    document.documentElement.outerHTML
+    """
 
     // Only the page itself loads: no frames, new windows, or navigating elsewhere once it has loaded.
     public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
