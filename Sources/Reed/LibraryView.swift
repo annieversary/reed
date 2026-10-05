@@ -86,15 +86,15 @@ struct LibraryView: View {
         }
     }
 
-    /// The list's rows: series gathered into one row where their newest part would be, except in search
-    /// results and favorites, which are about single articles. A series is unread while any part is,
-    /// and finished once every part is.
+    /// The list's rows: series gathered into one row where their first listed part would be, except in
+    /// search results and favorites, which are about single articles. A series is unread while any part
+    /// is, and finished once every part is. Unread lists oldest first, so the queue reads in order saved.
     private var entries: [Entry] {
         let filter = filter ?? .all
         guard query.isEmpty, filter != .favorites else { return visibleArticles.map(Entry.article) }
         var shown = Set<UUID>()
         var entries: [Entry] = []
-        for article in library.articles {
+        for article in filter == .unread ? Array(library.articles.reversed()) : library.articles {
             if let series = library.series(of: article) {
                 guard shown.insert(series.id).inserted else { continue }
                 let parts = library.parts(of: series)
