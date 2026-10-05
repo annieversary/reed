@@ -74,12 +74,21 @@ enum NarrationDirection: String {
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: "readingProgress")
         let script = WKUserScript(source: """
+        // Progress runs to the end of the article rather than the page, so what's added after it once it's open,
+        // such as the cards that follow it, doesn't move a position already saved.
+        window.reedProgress = {
+            distance() {
+                const main = document.querySelector('main');
+                const end = main ? main.getBoundingClientRect().bottom + window.scrollY : document.documentElement.scrollHeight;
+                return end - window.innerHeight;
+            },
+        };
         // Throttled rather than debounced, so progress keeps updating during one long scroll.
         let lastReport = 0, trailing;
         const report = () => {
             lastReport = Date.now();
-            const distance = document.documentElement.scrollHeight - window.innerHeight;
-            if (distance > 0) window.webkit.messageHandlers.readingProgress.postMessage(window.scrollY / distance);
+            const distance = reedProgress.distance();
+            if (distance > 0) window.webkit.messageHandlers.readingProgress.postMessage(Math.min(window.scrollY / distance, 1));
         };
         window.addEventListener('scroll', () => {
             clearTimeout(trailing);
@@ -167,8 +176,7 @@ enum NarrationDirection: String {
     private static func restoreScript(_ progress: Double) -> String {
         """
         (() => {
-            const root = document.documentElement;
-            const restore = () => window.scrollTo(0, \(min(max(progress, 0), 1)) * Math.max(0, root.scrollHeight - window.innerHeight));
+            const restore = () => window.scrollTo(0, \(min(max(progress, 0), 1)) * Math.max(0, reedProgress.distance()));
             let moved = false;
             for (const type of ['touchstart', 'wheel', 'keydown']) window.addEventListener(type, () => { moved = true; }, {passive: true, once: true});
             const images = Promise.all(Array.from(document.images, img => img.complete ? null
