@@ -28,24 +28,6 @@
 			<key>fileRef</key>
 			<string>8A1C9B68090CF9EC3BF00E03</string>
 		</dict>
-		<key>CD30CCE4A34F006D70CC05E8</key>
-		<dict>
-			<key>isa</key>
-			<string>PBXFileReference</string>
-			<key>path</key>
-			<string>Sources/Reed/ArticleDetailView.swift</string>
-			<key>sourceTree</key>
-			<string>SOURCE_ROOT</string>
-			<key>lastKnownFileType</key>
-			<string>sourcecode.swift</string>
-		</dict>
-		<key>87E1C50AE6666844D88732DE</key>
-		<dict>
-			<key>isa</key>
-			<string>PBXBuildFile</string>
-			<key>fileRef</key>
-			<string>CD30CCE4A34F006D70CC05E8</string>
-		</dict>
 		<key>58082E44E6C06764D52E1DD7</key>
 		<dict>
 			<key>isa</key>
@@ -63,6 +45,24 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>58082E44E6C06764D52E1DD7</string>
+		</dict>
+		<key>389682EFB429072B64101425</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/BookViews.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>E08D13C4A79B214B6C93A7E8</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>389682EFB429072B64101425</string>
 		</dict>
 		<key>55138BB89AD0F42AA656C991</key>
 		<dict>
@@ -153,6 +153,24 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>EA6A37D30699070A655CB24E</string>
+		</dict>
+		<key>575985CDDA4DBE71F857D139</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/ReaderView.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>DB06D738042C6762A381055D</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>575985CDDA4DBE71F857D139</string>
 		</dict>
 		<key>E9837CD9914E91D5750B82BD</key>
 		<dict>
@@ -370,6 +388,24 @@
 			<key>fileRef</key>
 			<string>98CED4B3A5C97EFC85BEB56A</string>
 		</dict>
+		<key>CF68800A261266D8B7FAE975</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Book.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>E7F44333818D0C1F695D8584</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>CF68800A261266D8B7FAE975</string>
+		</dict>
 		<key>D65FBF6BA5AB19F660046967</key>
 		<dict>
 			<key>isa</key>
@@ -387,6 +423,24 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>D65FBF6BA5AB19F660046967</string>
+		</dict>
+		<key>E4A6130A16DFE8999FB570D0</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/EPUB.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>9B15EC43A7052836950CBFB3</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>E4A6130A16DFE8999FB570D0</string>
 		</dict>
 		<key>E54706938FEB6E4E3EB76450</key>
 		<dict>
@@ -477,6 +531,24 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>E19C3B9C9D4C96E790AFE745</string>
+		</dict>
+		<key>D49B00CFA40DD23E9D1BCB63</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Readable.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>A8E8D5151E72BF383840C9F6</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>D49B00CFA40DD23E9D1BCB63</string>
 		</dict>
 		<key>62F2B30EADC9532F27B629D9</key>
 		<dict>
@@ -845,6 +917,24 @@
 			<key>fileRef</key>
 			<string>8EE19AFD73856104EEE50822</string>
 		</dict>
+		<key>03B0AAE7E258B2787B178101</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/ZipArchive.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>9BA0E3B3C5A57ACBC1732299</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>03B0AAE7E258B2787B178101</string>
+		</dict>
 		<key>F1EEAC1AABD95DE2505EEBCD</key>
 		<dict>
 			<key>isa</key>
@@ -906,13 +996,14 @@
 			<key>children</key>
 			<array>
 				<string>8A1C9B68090CF9EC3BF00E03</string>
-				<string>CD30CCE4A34F006D70CC05E8</string>
 				<string>58082E44E6C06764D52E1DD7</string>
+				<string>389682EFB429072B64101425</string>
 				<string>55138BB89AD0F42AA656C991</string>
 				<string>7FFB9C3824D5D12742BB27B3</string>
 				<string>26ECBB57E0E465EB30EFF084</string>
 				<string>2A88CBB9E73D0A0E48B9C71C</string>
 				<string>EA6A37D30699070A655CB24E</string>
+				<string>575985CDDA4DBE71F857D139</string>
 				<string>E9837CD9914E91D5750B82BD</string>
 				<string>E1B4CFB83055600EEABE19D0</string>
 				<string>5819C39293FCA9B70AE93D0E</string>
@@ -925,12 +1016,15 @@
 				<string>C7C083B320598DF853248CE7</string>
 				<string>0F00F9E6EFCE07893391938D</string>
 				<string>98CED4B3A5C97EFC85BEB56A</string>
+				<string>CF68800A261266D8B7FAE975</string>
 				<string>D65FBF6BA5AB19F660046967</string>
+				<string>E4A6130A16DFE8999FB570D0</string>
 				<string>E54706938FEB6E4E3EB76450</string>
 				<string>71ED38E1A22A53FC09CC788E</string>
 				<string>709F77BB5F9974865AC45CF4</string>
 				<string>AEB089C058AC26CF1AB99B52</string>
 				<string>E19C3B9C9D4C96E790AFE745</string>
+				<string>D49B00CFA40DD23E9D1BCB63</string>
 				<string>62F2B30EADC9532F27B629D9</string>
 				<string>CEFEDFD4E31E49F4A1E14286</string>
 				<string>E4537F5D14830A127945A908</string>
@@ -951,6 +1045,7 @@
 				<string>D6B3E48F2D5F9A78B16590C0</string>
 				<string>1DD381AB02DE9B858DEA0D7D</string>
 				<string>8EE19AFD73856104EEE50822</string>
+				<string>03B0AAE7E258B2787B178101</string>
 				<string>F1EEAC1AABD95DE2505EEBCD</string>
 				<string>FBDC4F23F93125BBEEAE800C</string>
 			</array>
@@ -996,12 +1091,13 @@
 			<key>files</key>
 			<array>
 				<string>6028FB5DE9020B01ED4401D3</string>
-				<string>87E1C50AE6666844D88732DE</string>
+				<string>E08D13C4A79B214B6C93A7E8</string>
 				<string>AF2981C8D415CDED6EA81231</string>
 				<string>23C4BE1CC27D3C948AF14841</string>
 				<string>E1FE09D28E34B5F60D61E9C1</string>
 				<string>E0E7870EA5D095C9234442AA</string>
 				<string>4258CB1E66946A2A57F938EC</string>
+				<string>DB06D738042C6762A381055D</string>
 				<string>CD546E1A338CABB67FC83DE5</string>
 				<string>A39272BA477257773A42D1B1</string>
 				<string>41EC7785CCE9D09B2D4FA7B1</string>
@@ -1014,17 +1110,21 @@
 				<string>748F4987748ED592A1870175</string>
 				<string>E1ABA6BD0D809094C5E6E816</string>
 				<string>3483221D2BB5C1A5B6A79D8D</string>
+				<string>E7F44333818D0C1F695D8584</string>
 				<string>1E23CEB4C82ED008FF66EE27</string>
+				<string>9B15EC43A7052836950CBFB3</string>
 				<string>AE024CFD9B7E72C3CD28BCD8</string>
 				<string>195C31670E982970F5E5921F</string>
 				<string>E990D3D09BB177A7DFFE6EEE</string>
 				<string>3CF39DB11D0ACCB7EDF7BF16</string>
 				<string>B6FD6E0B91E4341452F8BF65</string>
+				<string>A8E8D5151E72BF383840C9F6</string>
 				<string>6679307645738DA919E28E26</string>
 				<string>DABFDAF3DA54B71E77115C79</string>
 				<string>E02CFC5074F0F3AE2CC43C5B</string>
 				<string>C63FD7F25C65273D3CA18C5B</string>
 				<string>AA03910F0752AC3AA16025A4</string>
+				<string>9BA0E3B3C5A57ACBC1732299</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
 			<integer>0</integer>

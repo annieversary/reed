@@ -39,12 +39,13 @@ Builds for `generic/platform=iOS`, then installs and launches over `devicectl`. 
 - Retry failures, recover interrupted downloads on launch, and delete saved articles.
 - Deduplicate normalized URLs without stripping meaningful query parameters.
 - Save PDFs as articles, reflowed into paragraphs with their headings, captions and code, and their figures, tables and displayed equations cropped from the page (macOS 26 or iOS 26). arXiv papers without an HTML rendering are read from their PDF.
+- Add EPUB books to a shelf of their own, from the shelf's add button, by dropping them on it, or from the share sheet. A book is read a chapter at a time, with the same reader, notes and narration as an article; each chapter ends with a card for the next, and listening carries on into it. Books are favorited whole; chapters are marked finished one by one, and the shelf shows how far through each book you are. Books locked to a store's app can't be read.
 
 The library starts empty. Test fixtures are kept separate from the user's library.
 
 ## Sharing to Reed
 
-The `ReedShare` extension (`Sources/ReedShare`) appears in the share sheet for a web link or a PDF. It doesn't download anything, since extensions are short-lived and memory-capped. It writes the link as a file into an inbox in the App Group container (`group.town.versary.reed` on iOS, `KR4TU3GTWZ.town.versary.reed` on macOS) and posts a Darwin notification; a shared PDF is copied into the inbox under its own name. Reed adds inbox links and PDFs to the library on launch, when it becomes active, and immediately on that notification if it's running. Downloads then proceed as usual, so a shared article is saved the next time Reed is open. Reed keeps its own copy of a shared PDF beside the article, `Shared.pdf`, to read it again on a retry or refresh, and knows it by its contents, so sharing the same file twice saves it once. A PDF open in Safari is shared as its link instead.
+The `ReedShare` extension (`Sources/ReedShare`) appears in the share sheet for a web link, a PDF or an EPUB. It doesn't download anything, since extensions are short-lived and memory-capped. It writes the link as a file into an inbox in the App Group container (`group.town.versary.reed` on iOS, `KR4TU3GTWZ.town.versary.reed` on macOS) and posts a Darwin notification; a shared PDF or EPUB is copied into the inbox under its own name. Reed adds inbox links, PDFs and EPUBs to the library on launch, when it becomes active, and immediately on that notification if it's running. Downloads then proceed as usual, so a shared article is saved the next time Reed is open. Reed keeps its own copy of a shared PDF beside the article, `Shared.pdf`, to read it again on a retry or refresh, and knows it by its contents, so sharing the same file twice saves it once. A PDF open in Safari is shared as its link instead.
 
 On macOS, enable the extension once under System Settings → General → Login Items & Extensions → Sharing (or `pluginkit -e use -i town.versary.reed.share`). On iOS it shows in the share sheet's app row, or under More.
 
@@ -70,12 +71,22 @@ Articles/<id>/Notes.json        Notes, each anchored to its paragraph's opening 
 Articles/<id>/Shared.pdf        A PDF shared as a file, kept to read it again
 Articles/<id>/Audio/<version>/<voice>/
   0.m4a, 1.m4a, …               Narration, one file per passage
+Books/<id>/Book.epub            The EPUB a book was added from, kept to convert it again
+Books/<id>/<version>/
+  0.html, 1.html, …             One reader document per chapter
+  book-OEBPS_Images_cover.jpg   Images, shared by the chapters, named after their place in the EPUB
+Books/<id>/Notes/<chapter>.json
+Books/<id>/Audio/<version>/<voice>/<chapter>/
 Staging/                        Incomplete downloads, cleaned after restart
 ```
 
 Article packages are assembled in staging and moved into place before metadata points to them. A failed replacement leaves the earlier package intact. Saved articles are durable files, not a browser cache. On iOS this directory is inside the app container.
 
 The extractor runs bundled JavaScript against an inert DOM in a network-blocked WebKit shell. When the served HTML holds almost no text, as with pages that assemble their article in the browser, `PageRenderer` loads the page once in a throwaway WebKit view (no stored data, no images, media, frames or new windows), lets its scripts run until the text settles, and extracts from the result the same way. Publisher scripts never run in the reader. The reader uses sanitized HTML, disabled page JavaScript, a restrictive content security policy, and local files only; following a link explicitly opens the system browser.
+
+Articles and book chapters are both `Readable`: the reader, narration, notes and reading position work on either, and `ReadableLocation` says where each one's files are.
+
+`EPUB` reads a book's package file for its title, author, cover and reading order, and its table of contents (EPUB 3 navigation, or an EPUB 2 NCX) for its chapters. A chapter may run across several files, or share a file with others, as Project Gutenberg's do, and is then cut out of it at the element its entry points to; entries nested under one for the same file are sections, not chapters. Pages before the first entry are kept only if they have something to read, so a cover page isn't a chapter. Each chapter goes through the extraction script without Readability, since it's already only the text: it's sanitized the same way, its images are copied out of the book, links to other chapters point at their saved files, and a heading repeating the chapter's title is dropped, keeping any illustration in it. A book is converted whole into one version and committed at once, so it's never half there. `ZipArchive` reads the EPUB itself, which needs only stored and deflated files.
 
 `PDFArticle` turns a PDF into the same kind of article. PDFKit's text layer gives the exact words, line by line, with their fonts; Vision's `RecognizeDocumentsRequest` gives the reading order, so two-column papers read down one column and then the next. Lines become paragraphs by their spacing, indents and short last lines, and become headings, captions, code or running heads by their size, weight and wording. What doesn't reflow (drawings, charts, tables and displayed equations) is cropped from the page at four times its size: drawings are found as ink between the text, and a caption claims the cells or labels beside it. Scanned pages are read with Vision's own text recognition.
 
@@ -88,7 +99,7 @@ swift test
 python3 scripts/smoke_test.py
 ```
 
-The integration script requires a built Debug Mac app. It starts a temporary local website, launches Reed with an isolated library, verifies extraction, sanitization, redirects, image downloads and failure handling, then stops the website and relaunches Reed to verify actual offline rendering of text and images. It writes JSON reports and a reader screenshot into a temporary directory. It does not launch a simulator or alter the normal library.
+The integration script requires a built Debug Mac app. It starts a temporary local website, launches Reed with an isolated library, verifies extraction, sanitization, redirects, image downloads, failure handling and converting an EPUB, then stops the website and relaunches Reed to verify actual offline rendering of text and images. It writes JSON reports and screenshots of the reader, the library, a book and one of its chapters into a temporary directory. It does not launch a simulator or alter the normal library.
 
 After adding source or resource files, run `python3 scripts/generate_project.py` to regenerate the checked-in Xcode project. FluidAudio is the only Swift package dependency, pinned to an exact version in both `Package.swift` and the generator.
 

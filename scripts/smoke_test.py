@@ -83,7 +83,8 @@ print(f"Test artifacts: {scratch}", flush=True)
 
 def run(phase, extra):
     report = scratch / f"{phase}.json"
-    command = ["open", "-n", "-W", str(args.app.resolve()), "--args", "-ApplePersistenceIgnoreState", "YES", "--smoke-test", "--library-root", str(scratch / "library"), "--smoke-report", str(report)] + extra
+    command = ["open", "-n", "-W", str(args.app.resolve()), "--args", "-ApplePersistenceIgnoreState", "YES", "--smoke-test", "--library-root", str(scratch / "library"), "--smoke-report", str(report),
+               "--smoke-book", str(ROOT / "Tests/ReedCoreTests/Fixtures/book-epub3.epub")] + extra
     log_file = (scratch / f"{phase}.log").open("w")
     process = subprocess.Popen(command, stdout=log_file, stderr=log_file)
     deadline = time.monotonic() + 120

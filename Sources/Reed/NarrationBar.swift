@@ -9,14 +9,14 @@ struct NarrationBar: View {
         HStack(spacing: 16) {
             Button(action: onOpen) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(narrator.title).font(.caption.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+                    Text(narrator.book.map { "\($0) · \(narrator.title)" } ?? narrator.title).font(.caption.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
                     status.font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Open Article")
+            .help(narrator.book == nil ? "Open Article" : "Open Chapter")
             if narrator.errorMessage != nil {
                 Button("Retry") { narrator.retry() }.foregroundStyle(ReedStyle.accent)
             }

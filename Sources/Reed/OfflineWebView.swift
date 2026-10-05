@@ -35,6 +35,8 @@ enum NarrationDirection: String {
     let url: URL
     let fontSize: Double
     let progress: Double
+    /// An element to open at, by ID, rather than where reading was left.
+    var anchor: String?
     /// The article's text as narration reads it, sentence by sentence within each passage, so it can be found on the page.
     var passages: [[String]]?
     /// What's being read aloud, if this article is being narrated.
@@ -49,6 +51,8 @@ enum NarrationDirection: String {
     var onNarrationAway: (NarrationDirection?) -> Void = { _ in }
     var onNotesOpen: (Bool) -> Void = { _ in }
     var onNoteChange: (Int, String) -> Void = { _, _ in }
+    /// Another saved document beside this one, such as a book's next chapter, by file name and element ID.
+    var onOpenSibling: (String, String?) -> Void = { _, _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -80,7 +84,10 @@ enum NarrationDirection: String {
         """, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient)
         configuration.userContentController.addUserScript(paper)
         // While narrating, the reader follows the narration rather than returning to where it was left.
-        if narrating == nil, progress > 0 {
+        if let anchor {
+            configuration.userContentController.addUserScript(WKUserScript(source: Self.anchorScript(anchor), injectionTime: .atDocumentEnd,
+                                                                           forMainFrameOnly: true, in: .defaultClient))
+        } else if narrating == nil, progress > 0 {
             configuration.userContentController.addUserScript(WKUserScript(source: Self.restoreScript(progress), injectionTime: .atDocumentEnd,
                                                                            forMainFrameOnly: true, in: .defaultClient))
         }
@@ -134,6 +141,11 @@ enum NarrationDirection: String {
     }
 
     /// Returns to where reading left off before the text fades in, so it doesn't appear at the top first.
+    private static func anchorScript(_ anchor: String) -> String {
+        let id = (try? String(data: JSONEncoder().encode(anchor), encoding: .utf8)) ?? "\"\""
+        return "document.getElementById(\(id))?.scrollIntoView();"
+    }
+
     /// Images change the page's height as they load, so it's restored again once they have, unless you've started scrolling;
     /// a slow image only keeps the page hidden briefly.
     private static func restoreScript(_ progress: Double) -> String {
@@ -696,6 +708,10 @@ enum NarrationDirection: String {
             guard let url = navigationAction.request.url else { return .cancel }
             if navigationAction.navigationType == .linkActivated {
                 if url.fragment != nil, url.isFileURL, url.standardizedFileURL.path == parent.url.standardizedFileURL.path { return .allow }
+                if url.isFileURL, url.deletingLastPathComponent().standardizedFileURL == parent.url.deletingLastPathComponent().standardizedFileURL {
+                    parent.onOpenSibling(url.lastPathComponent, url.fragment)
+                    return .cancel
+                }
                 if Self.isWeb(url) {
                     #if os(macOS)
                     NSWorkspace.shared.open(url)

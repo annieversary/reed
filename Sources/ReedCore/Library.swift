@@ -24,6 +24,8 @@ public final class Library {
     /// When the feeds were last looked at, so what has arrived since can be told apart.
     public private(set) var feedsVisitedAt: Date?
     public private(set) var refreshingFeeds = false
+    /// Books added from EPUB files, most recently added first.
+    public private(set) var books: [Book] = []
     /// Saved articles grouped into series, in the order they were made.
     public private(set) var series: [Series] = []
     /// Advances whenever the search index changes, so searches can be rerun.
@@ -44,7 +46,7 @@ public final class Library {
         storage = try ArticleStorage(root: root)
         self.downloader = downloader
         let configuration = ModelConfiguration(url: root.appendingPathComponent("Library.store"))
-        container = try ModelContainer(for: Article.self, configurations: configuration)
+        container = try ModelContainer(for: Article.self, Book.self, BookChapter.self, configurations: configuration)
         searchIndex = try SearchIndex(url: root.appendingPathComponent("Search.sqlite"))
         let stored = try container.mainContext.fetch(FetchDescriptor<Article>(sortBy: [SortDescriptor(\.savedAt, order: .reverse)]))
         articles = stored.filter { !$0.isCached }
@@ -56,6 +58,12 @@ public final class Library {
                 article.state = .failed
                 article.failureMessage = ReedError.damagedArticle.localizedDescription
             }
+        }
+        books = try container.mainContext.fetch(FetchDescriptor<Book>(sortBy: [SortDescriptor(\.addedAt, order: .reverse)]))
+        for book in books {
+            if book.state == .downloading { book.state = .queued }
+            // Converted again from the EPUB kept with it.
+            if book.state.isReadable && !hasContent(book) { book.state = .queued }
         }
         try container.mainContext.save()
         for source in ExternalSource.allCases {
@@ -363,6 +371,11 @@ public final class Library {
                 switch item {
                 case .link(let input): do { try add(input) } catch ReedError.invalidURL {}
                 case .pdf(let file, let name): do { try add(pdfAt: file, name: name) } catch ReedError.unsupportedContent {}
+                case .book(let file, let name):
+                    // Said why, since it was chosen to read, then dropped like the rest.
+                    do { try add(bookAt: file, name: name) }
+                    catch ReedError.unreadableBook { errorMessage = ReedError.unreadableBook.localizedDescription }
+                    catch ReedError.protectedBook { errorMessage = ReedError.protectedBook.localizedDescription }
                 }
             }
         } catch { errorMessage = error.localizedDescription }
@@ -373,9 +386,12 @@ public final class Library {
         worker = Task { [weak self] in
             guard let self else { return }
             defer { self.worker = nil; self.activity = nil; self.imageActivity = nil }
-            while let article = self.articles.last(where: { $0.state == .queued }) ?? self.cached.first(where: { $0.state == .queued }) {
-                if Task.isCancelled { break }
-                await self.download(article)
+            while !Task.isCancelled {
+                if let article = self.articles.last(where: { $0.state == .queued }) ?? self.cached.first(where: { $0.state == .queued }) {
+                    await self.download(article)
+                } else if let book = self.books.last(where: { $0.state == .queued }) {
+                    await self.convert(book)
+                } else { break }
             }
         }
     }
@@ -536,16 +552,17 @@ public final class Library {
         article.isFavorite.toggle()
         if article.isFavorite && article.isCached { keep(article) } else { save() }
     }
-    public func toggleRead(_ article: Article) { article.isRead.toggle(); save() }
     public func setRead(_ read: Bool, for articles: [Article]) {
         for article in articles { article.isRead = read }
         save()
     }
 
-    public func updateProgress(_ article: Article, value: Double) {
+    public func toggleRead(_ readable: any Readable) { readable.isRead.toggle(); save() }
+
+    public func updateProgress(_ readable: any Readable, value: Double) {
         guard value.isFinite else { return }
-        article.progress = min(max(value, 0), 1)
-        if value >= 0.95 { article.isRead = true }
+        readable.progress = min(max(value, 0), 1)
+        if value >= 0.95 { readable.isRead = true }
         progressSave?.cancel()
         progressSave = Task { [weak self] in
             do { try await Task.sleep(for: .milliseconds(700)) } catch { return }
@@ -557,49 +574,53 @@ public final class Library {
         do { try container.mainContext.save() } catch { errorMessage = error.localizedDescription }
     }
 
-    public func contentURL(for article: Article) -> URL? {
-        guard let version = article.contentVersion else { return nil }
-        let url = storage.contentURL(article.id, version: version)
+    public func contentURL(for readable: any Readable) -> URL? {
+        guard let version = readable.contentVersion else { return nil }
+        let url = storage.contentURL(readable.location, version: version)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
-    /// The saved article's text to read aloud, or nil if it isn't saved.
-    public func passages(for article: Article) -> [String]? {
-        guard let url = contentURL(for: article), let html = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-        return ArticleSpeech.passages(title: article.title, html: html)
+    /// The saved text to read aloud, or nil if it isn't saved.
+    public func passages(for readable: any Readable) -> [String]? {
+        guard let url = contentURL(for: readable), let html = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        return ArticleSpeech.passages(title: readable.title, html: html)
     }
 
-    /// The notes written beside the saved article's passages, as `passages(for:)` gives them.
-    public func notes(for article: Article, passages: [String]) -> [ArticleNote] {
-        ArticleNotes.placed(storedNotes(for: article), in: passages)
+    /// The notes written beside the saved passages, as `passages(for:)` gives them.
+    public func notes(for readable: any Readable, passages: [String]) -> [ArticleNote] {
+        ArticleNotes.placed(storedNotes(for: readable), in: passages)
     }
 
     /// Replaces the note beside a passage; empty text removes it. Writing a note keeps a cached article,
     /// so the note isn't evicted with it.
-    public func setNote(_ text: String, at passage: Int, for article: Article) {
-        guard let passages = passages(for: article), passages.indices.contains(passage) else { return }
-        var notes = ArticleNotes.placed(storedNotes(for: article), in: passages).filter { $0.passage != passage }
+    public func setNote(_ text: String, at passage: Int, for readable: any Readable) {
+        guard let passages = passages(for: readable), passages.indices.contains(passage) else { return }
+        var notes = ArticleNotes.placed(storedNotes(for: readable), in: passages).filter { $0.passage != passage }
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !text.isEmpty {
             notes.append(ArticleNote(passage: passage, anchor: ArticleNotes.anchor(for: passages[passage]), text: text))
             notes.sort { $0.passage < $1.passage }
-            keep(article)
+            if let article = readable as? Article { keep(article) }
         }
-        let url = storage.notesURL(article.id)
+        let url = storage.notesURL(readable.location)
         do {
-            if !notes.isEmpty { try JSONEncoder().encode(notes).write(to: url, options: .atomic) }
+            if !notes.isEmpty {
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try JSONEncoder().encode(notes).write(to: url, options: .atomic)
+            }
             else if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
         } catch { errorMessage = error.localizedDescription }
     }
 
-    private func storedNotes(for article: Article) -> [ArticleNote] {
-        guard let data = try? Data(contentsOf: storage.notesURL(article.id)) else { return [] }
+    private func storedNotes(for readable: any Readable) -> [ArticleNote] {
+        guard let data = try? Data(contentsOf: storage.notesURL(readable.location)) else { return [] }
         return (try? JSONDecoder().decode([ArticleNote].self, from: data)) ?? []
     }
 
-    /// The first image saved with the article, if any.
-    public func leadImage(for article: Article) -> URL? {
-        guard let url = contentURL(for: article), let html = try? String(contentsOf: url, encoding: .utf8),
+    /// The first image saved with the article, or a chapter's book cover, if any.
+    public func leadImage(for readable: any Readable) -> URL? {
+        if let chapter = readable as? BookChapter { return chapter.book.flatMap(cover(of:)) }
+        guard let url = contentURL(for: readable), let html = try? String(contentsOf: url, encoding: .utf8),
               let source = ArticleHTML.firstImage(in: html) else { return nil }
         let image = url.deletingLastPathComponent().appendingPathComponent(source)
         return FileManager.default.fileExists(atPath: image.path) ? image : nil
@@ -769,6 +790,155 @@ public final class Library {
             save()
         }
         if discarded.remove(article.id) != nil { erase(article) }
+    }
+
+    // MARK: Books
+
+    /// Adds the EPUB at `file`. Reed keeps a copy to convert the book from; adding the same file again finds the copy kept.
+    @discardableResult public func add(bookAt file: URL, name: String) throws -> Book {
+        let data = try Data(contentsOf: file)
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        if let existing = books.first(where: { $0.fileHash == digest }) { return existing }
+        let epub = try EPUB(data: data)
+        let book = Book(fileHash: digest, title: epub.title ?? (name as NSString).deletingPathExtension)
+        book.author = epub.author
+        let copy = storage.bookFileURL(book.id)
+        try FileManager.default.createDirectory(at: copy.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: copy, options: .atomic)
+        container.mainContext.insert(book)
+        do { try container.mainContext.save() }
+        catch { container.mainContext.delete(book); try? storage.removeBook(book.id); throw error }
+        books.insert(book, at: 0)
+        resumeDownloads()
+        return book
+    }
+
+    public func retry(_ book: Book) {
+        guard book.state != .downloading && book.state != .queued else { return }
+        book.state = .queued
+        book.failureMessage = nil
+        save()
+        resumeDownloads()
+    }
+
+    public func delete(_ book: Book) {
+        guard book.state != .downloading, let index = books.firstIndex(where: { $0.id == book.id }) else { return }
+        let id = book.id
+        container.mainContext.delete(book)
+        do { try container.mainContext.save() } catch { errorMessage = error.localizedDescription; return }
+        books.remove(at: index)
+        do { try storage.removeBook(id) } catch { errorMessage = error.localizedDescription }
+    }
+
+    public func toggleFavorite(_ book: Book) { book.isFavorite.toggle(); save() }
+
+    /// Remembers the chapter being read, so the book opens there next time.
+    public func open(_ chapter: BookChapter) {
+        guard let book = chapter.book else { return }
+        book.currentChapter = chapter.index
+        book.openedAt = .now
+        save()
+    }
+
+    /// What follows `readable` in its book, if it's a chapter that isn't the last.
+    public func next(after readable: any Readable) -> (any Readable)? {
+        guard let chapter = readable as? BookChapter else { return nil }
+        return chapter.book?.orderedChapters.first { $0.index > chapter.index }
+    }
+
+    public func cover(of book: Book) -> URL? {
+        guard let version = book.contentVersion, let file = book.coverFile else { return nil }
+        let url = storage.bookDirectory(book.id).appendingPathComponent(version, isDirectory: true).appendingPathComponent(file)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    private func hasContent(_ book: Book) -> Bool {
+        guard let version = book.contentVersion else { return false }
+        return FileManager.default.fileExists(atPath: storage.bookDirectory(book.id).appendingPathComponent(version).path)
+    }
+
+    /// Converts the book's EPUB into a reader document per chapter, sharing its images, and replaces any earlier version.
+    private func convert(_ book: Book) async {
+        book.state = .downloading
+        save()
+        var staging: URL?
+        defer { if let staging { try? FileManager.default.removeItem(at: staging) } }
+        do {
+            activity = "Opening \(book.title)…"
+            guard let data = try? Data(contentsOf: storage.bookFileURL(book.id)) else { throw ReedError.damagedArticle }
+            let epub = try EPUB(data: data)
+            let directory = try storage.createStagingDirectory()
+            staging = directory
+            var chapters = epub.chapters
+            func links() throws -> [String: Int] { try epub.links(for: chapters) }
+            func extract(_ index: Int, links: [String: Int]) async throws -> ExtractedArticle {
+                activity = "Converting chapter \(index + 1) of \(chapters.count)…"
+                let files = try chapters[index].parts.compactMap { part in
+                    try epub.file(part.path).map { (part: part, html: String(decoding: $0, as: UTF8.self)) }
+                }
+                return try await extractor.chapter(files: files, title: chapters[index].title, index: index, links: links)
+            }
+            var extracted: [ExtractedArticle] = []
+            // Pages before the table of contents' first entry are kept only if they have something to read, unlike a cover.
+            if chapters.count > 1, chapters[0].title == nil {
+                let opening = try await extract(0, links: try links())
+                if opening.wordCount < 20 { chapters.removeFirst() } else { extracted.append(opening) }
+            }
+            let links = try links()
+            for index in extracted.count..<chapters.count {
+                try Task.checkCancellation()
+                extracted.append(try await extract(index, links: links))
+            }
+            guard extracted.contains(where: { $0.wordCount > 0 }) else { throw ReedError.unreadableBook }
+            var missing = 0
+            var written = Set<String>()
+            func write(_ path: String, as filename: String) {
+                guard written.insert(filename).inserted else { return }
+                do {
+                    guard let image = try epub.file(path) else { throw ReedError.unreadableBook }
+                    try image.write(to: directory.appendingPathComponent(filename), options: .atomic)
+                } catch { missing += 1 }
+            }
+            for (index, chapter) in extracted.enumerated() {
+                activity = "Saving chapter \(index + 1) of \(extracted.count)…"
+                for image in chapter.images { write(image.url, as: image.filename) }
+                let after = extracted.indices.contains(index + 1) ? BookFiles.nextChapterCard(index: index + 1, title: extracted[index + 1].title) : ""
+                let document = ArticleHTML.document(title: chapter.title, author: nil, domain: book.title,
+                                                    minutes: max(1, Int(ceil(Double(chapter.wordCount) / 230))), body: chapter.html, after: after)
+                try document.write(to: directory.appendingPathComponent(BookFiles.chapter(index)), atomically: true, encoding: .utf8)
+            }
+            var coverFile: String?
+            if let cover = epub.cover {
+                let filename = BookFiles.imageName(for: cover)
+                write(cover, as: filename)
+                if FileManager.default.fileExists(atPath: directory.appendingPathComponent(filename).path) { coverFile = filename }
+            }
+            let version = UUID().uuidString
+            try storage.commitBook(staging: directory, id: book.id, version: version)
+            staging = nil
+            let previous = book.contentVersion
+            let finished = Dictionary(book.chapters.map { ($0.title, $0) }) { first, _ in first }
+            for chapter in book.chapters { container.mainContext.delete(chapter) }
+            book.chapters = extracted.enumerated().map { index, chapter in
+                let new = BookChapter(index: index, title: chapter.title, wordCount: chapter.wordCount)
+                // Converting again keeps how far each chapter was read.
+                if let old = finished[chapter.title] { new.isRead = old.isRead; new.progress = old.progress }
+                return new
+            }
+            book.title = epub.title ?? book.title
+            book.author = epub.author
+            book.coverFile = coverFile
+            book.contentVersion = version
+            book.state = missing > 0 ? .partial : .ready
+            book.failureMessage = nil
+            try container.mainContext.save()
+            if let previous { try? storage.removeBookVersion(book.id, version: previous) }
+        } catch {
+            book.state = hasContent(book) ? .ready : .failed
+            book.failureMessage = hasContent(book) ? nil : error.localizedDescription
+            if hasContent(book), !(error is CancellationError) { errorMessage = error.localizedDescription }
+            save()
+        }
     }
 }
 

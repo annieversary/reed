@@ -9,7 +9,7 @@ typealias PlatformViewController = UIViewController
 typealias PlatformHostingController = UIHostingController
 #endif
 
-/// Queues the shared link or PDF in the inbox and gets out of the way; the app saves it next time it runs.
+/// Queues the shared link, PDF or EPUB in the inbox and gets out of the way; the app saves it next time it runs.
 /// Extensions are short-lived and memory-capped, so no fetching or extraction happens here.
 final class ShareViewController: PlatformViewController {
     private let status = ShareStatus()
@@ -47,8 +47,8 @@ final class ShareViewController: PlatformViewController {
             // A PDF open in Safari comes with its link too, which saves it and keeps where it came from.
             if let url = await sharedURL() {
                 try inbox.deposit(url)
-            } else if try await depositSharedPDF(in: inbox) == false {
-                status.phase = .failed("Reed can only save web links and PDFs.")
+            } else if try await depositSharedFile(in: inbox) == false {
+                status.phase = .failed("Reed can only save web links, PDFs and EPUBs.")
                 return
             }
         } catch {
@@ -73,18 +73,19 @@ final class ShareViewController: PlatformViewController {
         return nil
     }
 
-    /// Copies the first shared PDF into the inbox, while the file handed over still exists.
-    private func depositSharedPDF(in inbox: ShareInbox) async throws -> Bool {
-        let provider = (extensionContext?.inputItems ?? [])
-            .compactMap { ($0 as? NSExtensionItem)?.attachments }.joined()
-            .first { $0.hasItemConformingToTypeIdentifier(UTType.pdf.identifier) }
-        guard let provider else { return false }
+    /// Copies the first shared PDF or EPUB into the inbox, while the file handed over still exists.
+    private func depositSharedFile(in inbox: ShareInbox) async throws -> Bool {
+        let providers = (extensionContext?.inputItems ?? []).compactMap { ($0 as? NSExtensionItem)?.attachments }.joined()
+        guard let (provider, type) = [UTType.pdf, .epub].lazy.compactMap({ type in
+            providers.first { $0.hasItemConformingToTypeIdentifier(type.identifier) }.map { ($0, type) }
+        }).first else { return false }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            _ = provider.loadFileRepresentation(forTypeIdentifier: UTType.pdf.identifier) { file, error in
+            _ = provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { file, error in
                 guard let file else { return continuation.resume(throwing: error ?? CocoaError(.fileReadUnknown)) }
                 do {
                     // Files and Mail suggest the document's own name; the copy handed over may be named otherwise.
-                    try inbox.deposit(pdfAt: file, name: provider.suggestedName)
+                    if type == .epub { try inbox.deposit(bookAt: file, name: provider.suggestedName) }
+                    else { try inbox.deposit(pdfAt: file, name: provider.suggestedName) }
                     continuation.resume()
                 } catch { continuation.resume(throwing: error) }
             }

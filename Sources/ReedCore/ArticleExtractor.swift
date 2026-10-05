@@ -51,6 +51,24 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
         }
     }
 
+    /// A book's chapter from its parts of XHTML files. `links` gives each file's chapter, and each element's where a file
+    /// is shared, so links between chapters can point at their saved files. Its images' URLs are their paths in the archive.
+    public func chapter(files: [(part: EPUB.Part, html: String)], title: String?, index: Int, links: [String: Int]) async throws -> ExtractedArticle {
+        guard let first = files.first else { throw ReedError.unreadableBook }
+        return try await withWebView { view in
+            let script = try ["Readability", "purify.min", "temml.min", "MathMarkup", "SiteRules", "PageLinks", "ExtractArticle"]
+                .map { try resource($0, extension: "js") }.joined(separator: "\n")
+            let parts = files.map { ["path": $0.part.path, "html": $0.html, "from": $0.part.from ?? NSNull(), "to": $0.part.to ?? NSNull()] as [String: Any] }
+            let chapter: [String: Any] = ["files": parts, "title": title ?? NSNull(),
+                                          "index": index, "links": links]
+            let sourceURL = "epub:///" + (first.part.path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? first.part.path)
+            let json = try await evaluate(script, arguments: ["html": "", "sourceURL": sourceURL, "resources": [String: String](), "chapter": chapter], in: view)
+            var article = try JSONDecoder().decode(ExtractedArticle.self, from: Data(json.utf8))
+            if article.html.contains("<math") { article.html = await wordFormulas(in: article.html, view: view) }
+            return article
+        }
+    }
+
     /// The page's title and links, without extracting its article.
     public func pageLinks(html: String, url: URL) async throws -> PageLinks {
         try await withWebView { view in

@@ -25,7 +25,7 @@ enum CollectionFilter: String, CaseIterable, Identifiable {
 }
 
 enum SidebarItem: Hashable {
-    case collection(CollectionFilter), discover(Discover)
+    case collection(CollectionFilter), books(BookFilter), discover(Discover)
 }
 
 struct LibraryView: View {
@@ -37,6 +37,10 @@ struct LibraryView: View {
     /// Set once the layout is known: on iPhone a selection would open straight past the sidebar.
     @State private var selection: SidebarItem?
     @State private var selectedID: UUID?
+    @State private var selectedBookID: UUID?
+    /// The chapter open in the selected book, if any.
+    @State private var bookPath: [BookPage] = []
+    @State private var bookToDelete: Book?
     @State private var query = ""
     @State private var matches: [SearchIndex.Match] = []
     @State private var showingAdd = false
@@ -148,6 +152,8 @@ struct LibraryView: View {
                 if case .discover(let origin) = selection {
                     SourceListView(library: library, origin: origin) { selectedID = $0.id }
                         .id(origin)
+                } else if case .books(let filter) = selection {
+                    BookShelfView(library: library, filter: filter, selection: $selectedBookID) { bookToDelete = $0 }
                 } else {
                     articleList
                 }
@@ -156,8 +162,15 @@ struct LibraryView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) { narrationBar(when: columnsStack) }
         } detail: {
             Group {
-                if let article = selectedArticle {
-                    ArticleDetailView(library: library, article: article)
+                if case .books = selection {
+                    if let book = library.books.first(where: { $0.id == selectedBookID }) {
+                        BookView(library: library, book: book, path: $bookPath) { bookToDelete = $0 }
+                            .id(book.id)
+                    } else {
+                        bookPlaceholder
+                    }
+                } else if let article = selectedArticle {
+                    ReaderView(library: library, readable: article)
                 } else {
                     readerPlaceholder
                 }
@@ -174,7 +187,8 @@ struct LibraryView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .reedAddArticle)) { _ in showingAdd = true }
         .onAppear { if !columnsStack { selection = .collection(.all) } }
-        .onChange(of: [selectedID, narrator.articleID], initial: true) { _, ids in library.retained = Set(ids.compactMap { $0 }) }
+        .onChange(of: [selectedID, narrator.readableID], initial: true) { _, ids in library.retained = Set(ids.compactMap { $0 }) }
+        .onChange(of: selectedBookID) { bookPath = [] }
         .onChange(of: SubstackAccount.shared.isSignedIn, initial: true) { _, signedIn in
             guard !signedIn else { return }
             library.forgetFrontPage(of: .substack)
@@ -187,6 +201,13 @@ struct LibraryView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("reed.smokeSelectArticle"))) { notification in
             selectedID = notification.object as? UUID
         }
+        // A book, and the chapter to open in it, if any.
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("reed.smokeSelectBook"))) { notification in
+            guard let ids = notification.object as? [UUID], let book = ids.first else { return }
+            selection = .books(.all)
+            selectedBookID = book
+            Task { bookPath = ids.dropFirst().map { BookPage(chapter: $0) } }
+        }
         #endif
         .alert("Library error", isPresented: Binding(get: { library.errorMessage != nil }, set: { if !$0 { library.errorMessage = nil } })) {
             Button("OK") { library.errorMessage = nil }
@@ -195,12 +216,22 @@ struct LibraryView: View {
             Button("Delete Article", role: .destructive) {
                 if let article = articleToDelete {
                     if selectedID == article.id { selectedID = nil }
-                    if narrator.articleID == article.id { narrator.stop() }
+                    if narrator.readableID == article.id { narrator.stop() }
                     library.delete(article)
                 }
                 articleToDelete = nil
             }
         } message: { Text("Its offline copy will be removed from this device.") }
+        .confirmationDialog("Delete this book?", isPresented: Binding(get: { bookToDelete != nil }, set: { if !$0 { bookToDelete = nil } }), titleVisibility: .visible) {
+            Button("Delete Book", role: .destructive) {
+                if let book = bookToDelete {
+                    if selectedBookID == book.id { selectedBookID = nil }
+                    if book.chapters.contains(where: { $0.id == narrator.readableID }) { narrator.stop() }
+                    library.delete(book)
+                }
+                bookToDelete = nil
+            }
+        } message: { Text("Its chapters and the notes written beside them will be removed from this device.") }
         .sheet(item: $seriesStart) { article in
             MakeSeriesView(library: library, start: article) { expandedSeries.insert($0.id) }
         }
@@ -224,7 +255,7 @@ struct LibraryView: View {
     /// Narration controls, attached to each column's own content: an inset around the whole split view
     /// doesn't reach into the columns on iOS, which would leave the reader running underneath it.
     @ViewBuilder private func narrationBar(when shown: Bool) -> some View {
-        if shown, narrator.articleID != nil {
+        if shown, narrator.readableID != nil {
             NarrationBar(narrator: narrator, onOpen: openNarrated)
         }
     }
@@ -232,7 +263,14 @@ struct LibraryView: View {
     /// When the columns stack, the article is pushed from the article list's selection, so that list
     /// must be the one showing, and hold the article, from the sidebar, Discover or another collection.
     private func openNarrated() {
-        guard let id = narrator.articleID else { return }
+        guard let id = narrator.readableID else { return }
+        if let book = library.books.first(where: { $0.chapters.contains { $0.id == id } }) {
+            if case .books = selection {} else { selection = .books(.all) }
+            if selectedBookID != book.id { selectedBookID = book.id }
+            // After the book's selection has reset what's open in it.
+            Task { bookPath = [BookPage(chapter: id)] }
+            return
+        }
         if let article = library.articles.first(where: { $0.id == id }), let series = library.series(of: article) {
             expandedSeries.insert(series.id)
         }
@@ -271,6 +309,20 @@ struct LibraryView: View {
                         }
                     }
                 } header: { Text("LIBRARY").font(.system(size: 10, weight: .medium)).tracking(1.7) }
+                Section {
+                    ForEach(BookFilter.allCases) { item in
+                        NavigationLink(value: SidebarItem.books(item)) {
+                            HStack(spacing: 10) {
+                                Image(systemName: item.symbol).frame(width: 18)
+                                Text(item.rawValue)
+                                Spacer(minLength: 2)
+                                Text("\(library.books.filter { item.includes($0) }.count)")
+                                    .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 5)
+                        }
+                    }
+                } header: { Text("BOOKS").font(.system(size: 10, weight: .medium)).tracking(1.7) }
                 Section {
                     ForEach(ExternalSource.allCases.filter { $0 != .substack || SubstackAccount.shared.isSignedIn }) { source in
                         discoverLink(.frontPage(source), symbol: source.symbol)
@@ -525,6 +577,12 @@ struct LibraryView: View {
     private var articleCount: String {
         let count = entries.reduce(0) { $0 + $1.articleCount }
         return "\(count) \(count == 1 ? "article" : "articles")"
+    }
+
+    private var bookPlaceholder: some View {
+        Text(library.books.isEmpty ? "No books yet." : "No book selected.")
+            .font(.system(size: 13)).foregroundStyle(.secondary)
+            .padding(30).frame(maxWidth: .infinity, maxHeight: .infinity).background(ReedStyle.warm)
     }
 
     private var readerPlaceholder: some View {

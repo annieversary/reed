@@ -7,16 +7,19 @@ import SwiftUI
 import ReedCore
 #endif
 
-/// Reads saved articles aloud with Kokoro, synthesized on device.
+/// Reads saved articles and book chapters aloud with Kokoro, synthesized on device.
 ///
 /// Each passage is synthesized once, a sentence at a time so the one being heard can be followed, cached as
 /// a small audio file beside the article, and queued for gapless playback as soon as it's ready. Synthesis runs ahead of playback to the end of the article,
 /// so replaying or skipping back never waits.
 @MainActor @Observable
 final class Narrator {
-    private(set) var articleID: UUID?
+    private(set) var readableID: UUID?
     private(set) var title = ""
-    private(set) var domain = ""
+    /// What's being read is from, such as its website or book.
+    private(set) var source = ""
+    /// The book, when a chapter is being read, whose title alone may say little, like "III".
+    private(set) var book: String?
     private(set) var passageCount = 0
     /// The passage being heard, or waited for.
     private(set) var current = 0
@@ -43,8 +46,8 @@ final class Narrator {
         didSet {
             guard voice != oldValue else { return }
             UserDefaults.standard.set(voice, forKey: "narrationVoice")
-            guard let article, let library, let version = article.contentVersion else { return }
-            directory = library.storage.audioDirectory(article.id, version: version, voice: voice)
+            guard let item, let library, let version = item.contentVersion else { return }
+            directory = library.storage.audioDirectory(item.location, version: version, voice: voice)
             durations = [:]
             sentenceStarts = [:]
             let wasPlaying = isPlaying
@@ -59,11 +62,11 @@ final class Narrator {
     private(set) var previewError: String?
 
     /// Playback has reached a passage that isn't synthesized yet.
-    var isWaiting: Bool { articleID != nil && scheduled < current && errorMessage == nil }
+    var isWaiting: Bool { readableID != nil && scheduled < current && errorMessage == nil }
 
     @ObservationIgnored private var passages: [String] = []
     @ObservationIgnored private var sentences: [[String]] = []
-    @ObservationIgnored private var article: Article?
+    @ObservationIgnored private var item: (any Readable)?
     @ObservationIgnored private var library: Library?
     @ObservationIgnored private var directory: URL?
     @ObservationIgnored private var kokoro: KokoroAneManager?
@@ -118,28 +121,29 @@ final class Narrator {
         installRemoteCommands()
     }
 
-    /// Reads `article` from `passage`, or from where it was last left off.
-    func play(_ article: Article, from passage: Int? = nil, in library: Library) {
-        if article.id == articleID {
+    /// Reads `item` from `passage`, or from where it was last left off.
+    func play(_ item: any Readable, from passage: Int? = nil, in library: Library) {
+        if item.id == readableID {
             if let passage, passage != current { start(at: min(max(passage, 0), passageCount - 1)) } else { resume() }
             return
         }
-        guard let version = article.contentVersion, let passages = library.passages(for: article), !passages.isEmpty else {
+        guard let version = item.contentVersion, let passages = library.passages(for: item), !passages.isEmpty else {
             library.errorMessage = ReedError.damagedArticle.localizedDescription
             return
         }
         stop()
-        self.article = article
+        self.item = item
         self.library = library
-        articleID = article.id
-        title = article.title
-        domain = article.domain
+        readableID = item.id
+        title = item.title
+        source = item.source
+        book = item is BookChapter ? item.source : nil
         self.passages = passages
         sentences = passages.map(ArticleSpeech.sentences(in:))
         passageCount = passages.count
-        directory = library.storage.audioDirectory(article.id, version: version, voice: voice)
-        artwork = Self.artwork(from: library.leadImage(for: article))
-        start(at: min(max(passage ?? article.narrationPassage ?? 0, 0), passages.count - 1))
+        directory = library.storage.audioDirectory(item.location, version: version, voice: voice)
+        artwork = Self.artwork(from: library.leadImage(for: item))
+        start(at: min(max(passage ?? item.narrationPassage ?? 0, 0), passages.count - 1))
     }
 
     func pause() {
@@ -151,7 +155,7 @@ final class Narrator {
     }
 
     func resume() {
-        guard articleID != nil, !isPlaying else { return }
+        guard readableID != nil, !isPlaying else { return }
         if engine.isRunning {
             isPlaying = true
             player.play()
@@ -166,19 +170,19 @@ final class Narrator {
     func togglePlayback() { isPlaying ? pause() : resume() }
 
     func skip(by offset: Int) {
-        guard articleID != nil else { return }
+        guard readableID != nil else { return }
         start(at: min(max(current + offset, 0), passageCount - 1))
     }
 
     /// Back to the start of the passage, or to the one before if it has only just begun.
     func previous() {
-        guard articleID != nil else { return }
+        guard readableID != nil else { return }
         if elapsedInPassage > Self.restartThreshold || current == 0 { start(at: current) } else { skip(by: -1) }
     }
 
     /// Jumps to a point in the whole article, as when scrubbing on the lock screen.
     func seek(to time: Double) {
-        guard articleID != nil else { return }
+        guard readableID != nil else { return }
         var remaining = max(time, 0)
         for index in 0..<passageCount {
             let length = duration(of: index)
@@ -192,7 +196,7 @@ final class Narrator {
 
     /// Picks synthesis up again after it stopped, from the passage being heard.
     func retry() {
-        guard articleID != nil else { return }
+        guard readableID != nil else { return }
         errorMessage = nil
         if generator == nil { generate(from: current) }
     }
@@ -204,7 +208,7 @@ final class Narrator {
         player.stop()
         engine.stop()
         stopTracking()
-        articleID = nil
+        readableID = nil
         passages = []
         sentences = []
         passageCount = 0
@@ -214,7 +218,7 @@ final class Narrator {
         isPlaying = false
         errorMessage = nil
         directory = nil
-        article = nil
+        item = nil
         library = nil
         artwork = nil
         durations = [:]
@@ -402,11 +406,16 @@ final class Narrator {
     private func finished(_ index: Int, epoch: Int) {
         guard epoch == self.epoch, index == current else { return }
         guard current + 1 < passageCount else {
-            if let article, let library {
-                article.narrationPassage = nil
-                library.updateProgress(article, value: 1)
+            guard let item, let library else { stop(); return }
+            item.narrationPassage = nil
+            library.updateProgress(item, value: 1)
+            // A book carries on into its next chapter.
+            if let next = library.next(after: item) {
+                stop()
+                play(next, from: 0, in: library)
+            } else {
+                stop()
             }
-            stop()
             return
         }
         current += 1
@@ -417,10 +426,10 @@ final class Narrator {
         updateNowPlaying()
     }
 
-    /// Kept on the article, so listening resumes there next time, even after relaunching.
+    /// Kept on what's being read, so listening resumes there next time, even after relaunching.
     private func rememberPosition() {
-        guard let article, let library else { return }
-        article.narrationPassage = current
+        guard let item, let library else { return }
+        item.narrationPassage = current
         library.save()
     }
 
@@ -586,7 +595,7 @@ final class Narrator {
 
     private func updateNowPlaying() {
         let center = MPNowPlayingInfoCenter.default()
-        guard articleID != nil else {
+        guard readableID != nil else {
             center.nowPlayingInfo = nil
             #if os(macOS)
             center.playbackState = .stopped
@@ -595,7 +604,7 @@ final class Narrator {
         }
         let elapsed = (0..<current).reduce(0) { $0 + duration(of: $1) } + elapsedInPassage
         let total = (0..<passageCount).reduce(0) { $0 + duration(of: $1) }
-        var info: [String: Any] = [MPMediaItemPropertyTitle: title, MPMediaItemPropertyArtist: domain,
+        var info: [String: Any] = [MPMediaItemPropertyTitle: title, MPMediaItemPropertyArtist: source,
                                    MPMediaItemPropertyPlaybackDuration: total,
                                    MPNowPlayingInfoPropertyElapsedPlaybackTime: min(elapsed, total),
                                    MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? Double(rate) : 0.0,

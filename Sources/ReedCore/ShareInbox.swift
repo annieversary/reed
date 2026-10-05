@@ -1,6 +1,6 @@
 import Foundation
 
-/// Links and PDFs handed from the share extension to the app, kept in the App Group container they share.
+/// Links, PDFs and EPUBs handed from the share extension to the app, kept in the App Group container they share.
 /// Each is its own file, so the two processes never write to the same file.
 public struct ShareInbox: Sendable {
     public let directory: URL
@@ -9,6 +9,8 @@ public struct ShareInbox: Sendable {
         case link(String)
         /// A shared PDF, and the name it was shared under.
         case pdf(URL, name: String)
+        /// A shared EPUB, and the name it was shared under.
+        case book(URL, name: String)
     }
 
     #if os(macOS)
@@ -36,9 +38,18 @@ public struct ShareInbox: Sendable {
 
     /// Copies the PDF at `file`, which may be gone once the share extension finishes, under `name` or its own.
     public func deposit(pdfAt file: URL, name: String? = nil) throws {
+        try deposit(file, name: name, extension: "pdf")
+    }
+
+    /// Copies the EPUB at `file`, as `deposit(pdfAt:name:)` does a PDF.
+    public func deposit(bookAt file: URL, name: String? = nil) throws {
+        try deposit(file, name: name, extension: "epub")
+    }
+
+    private func deposit(_ file: URL, name: String?, extension pathExtension: String) throws {
         var name = (name ?? file.lastPathComponent).replacingOccurrences(of: "/", with: "-")
-        if !name.lowercased().hasSuffix(".pdf") { name += ".pdf" }
-        let destination = try nextFile(extension: "pdf", named: name)
+        if !name.lowercased().hasSuffix("." + pathExtension) { name += "." + pathExtension }
+        let destination = try nextFile(extension: pathExtension, named: name)
         // Copied under another extension and then renamed, so the app never reads half a file.
         let partial = destination.appendingPathExtension("partial")
         try FileManager.default.copyItem(at: file, to: partial)
@@ -67,15 +78,16 @@ public struct ShareInbox: Sendable {
     public func drain(_ save: (Item) throws -> Void) throws {
         guard FileManager.default.fileExists(atPath: directory.path) else { return }
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-            .filter { ["link", "pdf"].contains($0.pathExtension.lowercased()) }
+            .filter { ["link", "pdf", "epub"].contains($0.pathExtension.lowercased()) }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         for file in files {
             if file.pathExtension == "link" {
                 try save(.link(String(decoding: try Data(contentsOf: file), as: UTF8.self)))
             } else {
                 // The name follows the stamp, the UUID and a space.
-                let name = String(file.lastPathComponent.drop { $0 != " " }.dropFirst())
-                try save(.pdf(file, name: name.isEmpty ? file.lastPathComponent : name))
+                let shared = String(file.lastPathComponent.drop { $0 != " " }.dropFirst())
+                let name = shared.isEmpty ? file.lastPathComponent : shared
+                try save(file.pathExtension.lowercased() == "epub" ? .book(file, name: name) : .pdf(file, name: name))
             }
             try FileManager.default.removeItem(at: file)
         }

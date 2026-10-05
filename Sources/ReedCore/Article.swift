@@ -94,6 +94,7 @@ public final class Article {
 public enum ReedError: LocalizedError {
     case invalidURL, unsupportedContent, emptyArticle, oversizedDownload, httpStatus(Int), extractionTimeout
     case damagedArticle, noFeed, unreadableFeed, substackSignedOut, noTranscript, unavailableVideo(reason: String?)
+    case unreadableBook, protectedBook
     case unreadablePDF, pdfNeedsNewerSystem
 
     public var errorDescription: String? {
@@ -110,6 +111,8 @@ public enum ReedError: LocalizedError {
         case .substackSignedOut: "Sign in to Substack in Settings to see the posts it picks for you."
         case .noTranscript: "This video has no captions to make a transcript from."
         case .unavailableVideo(let reason): "YouTube won't play this video" + (reason.map { ": \($0)" } ?? ".")
+        case .unreadableBook: "This file isn't an EPUB that Reed can read."
+        case .protectedBook: "This book is locked to the store it was bought from, so only that store's app can open it."
         case .unreadablePDF: "This PDF couldn't be read. It may be damaged or password-protected."
         case .pdfNeedsNewerSystem: "Saving PDFs needs macOS 26 or iOS 26."
         }

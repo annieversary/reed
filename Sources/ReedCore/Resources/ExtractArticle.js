@@ -1,11 +1,13 @@
 // Executed only against an inert document, inside Reed's network-blocked WebKit shell.
-const doc = new DOMParser().parseFromString(html, "text/html");
+// A book's chapter arrives as its files, already in the archive; anything else is a web page to find the article in.
+const book = typeof chapter === "undefined" ? null : chapter;
+const doc = book ? chapterDocument(book) : new DOMParser().parseFromString(html, "text/html");
 doc.querySelectorAll("base").forEach(node => node.remove());
 const base = doc.createElement("base");
 base.href = sourceURL;
 doc.head.prepend(base);
 // Taken before Readability, which drops the navigation between chapters.
-const navigation = pageLinks(doc, sourceURL);
+const navigation = book ? { title: "", links: [] } : pageLinks(doc, sourceURL);
 for (const img of doc.querySelectorAll("img")) {
     const lazy = img.getAttribute("data-src") || img.getAttribute("data-original") || img.getAttribute("data-lazy-src");
     if (lazy) img.setAttribute("src", lazy);
@@ -26,9 +28,11 @@ for (const node of doc.querySelectorAll("tt, kbd, samp")) {
 prepareMath(doc);
 // Readability drops what's hidden from screen readers, which includes the keys to charts; icons are dropped later.
 doc.querySelectorAll('svg[aria-hidden="true"]').forEach(svg => svg.removeAttribute("aria-hidden"));
-const site = applySiteRule(doc, new URL(sourceURL), resources);
+const site = book ? null : applySiteRule(doc, new URL(sourceURL), resources);
 if (site?.needs) return JSON.stringify({ needs: site.needs });
 let result = site;
+const images = [];
+if (book) result = chapterContent(doc, book, images);
 if (!result) {
     result = new Readability(doc, { maxElemsToParse: 60000 }).parse();
     if (!result || !result.textContent || result.textContent.trim().length < 100) return null;
@@ -92,9 +96,8 @@ for (const node of output.querySelectorAll("svg use, svg image")) {
     // Symbols are drawn from within the article; other files aren't fetched.
     if (node.localName === "use" && !href?.startsWith("#")) node.remove();
 }
-const images = [];
 const seen = new Map();
-for (const img of output.querySelectorAll("img, svg image")) {
+for (const img of book ? [] : output.querySelectorAll("img, svg image")) {
     const attribute = img.localName === "img" ? "src" : "href";
     let url;
     try { url = new URL(img.getAttribute(attribute), sourceURL); } catch { img.remove(); continue; }
@@ -108,7 +111,7 @@ for (const img of output.querySelectorAll("img, svg image")) {
     }
     img.setAttribute(attribute, filename);
 }
-for (const link of output.querySelectorAll("a")) {
+for (const link of book ? [] : output.querySelectorAll("a")) {
     const href = link.getAttribute("href");
     if (!href) continue;
     try {
@@ -125,7 +128,129 @@ return JSON.stringify({
     publishedAt: Date.parse(result.publishedTime) || null,
     excerpt: excerpt.slice(0, 280),
     html: output.body.innerHTML,
-    wordCount: result.textContent.trim().split(/\s+/).length,
+    wordCount: result.textContent.trim() ? result.textContent.trim().split(/\s+/).length : 0,
     images,
     page: navigation
 });
+
+// One document of a chapter's parts of files, each a section, with its links and images made absolute within the book.
+function chapterDocument(book) {
+    const doc = document.implementation.createHTMLDocument("");
+    for (const file of book.files) {
+        let source = new DOMParser().parseFromString(file.html, "application/xhtml+xml");
+        if (source.querySelector("parsererror")) source = new DOMParser().parseFromString(file.html, "text/html");
+        const body = source.body || source.querySelector("body");
+        if (!body) continue;
+        const base = bookURL(file.path);
+        for (const node of body.querySelectorAll("[src], [href], [*|href]")) {
+            for (const name of ["src", "href", "xlink:href"]) {
+                const value = node.getAttribute(name);
+                if (value === null) continue;
+                node.removeAttribute(name);
+                try { node.setAttribute(name === "src" ? "src" : "href", new URL(value, base).href); } catch {}
+            }
+        }
+        const section = doc.createElement("section");
+        if (file.from || file.to) section.append(doc.importNode(slice(source, body, file.from, file.to), true));
+        else section.append(...Array.from(body.childNodes, node => doc.importNode(node, true)));
+        doc.body.append(section);
+    }
+    return doc;
+}
+
+// The part of a file from the element with ID `from` to the one with ID `to`, either of which may be absent.
+// An element opening its parent stands for the parent, so a chapter starting at a heading's anchor takes the heading.
+function slice(source, body, from, to) {
+    const opensParent = node => {
+        for (let sibling = node.parentNode.firstChild; sibling !== node; sibling = sibling.nextSibling) {
+            if (sibling.nodeType !== Node.TEXT_NODE || sibling.textContent.trim()) return false;
+        }
+        return true;
+    };
+    const element = id => {
+        let node = id ? source.getElementById(id) : null;
+        while (node && node.parentNode && node.parentNode !== body && opensParent(node)) node = node.parentNode;
+        return node;
+    };
+    const range = source.createRange();
+    range.selectNodeContents(body);
+    const start = element(from), end = element(to);
+    if (start) range.setStartBefore(start);
+    if (end) range.setEndBefore(end);
+    return range.cloneContents();
+}
+
+function bookURL(path) {
+    return "epub:///" + path.split("/").map(encodeURIComponent).join("/");
+}
+
+// The path within the book that an absolute book URL points to.
+function bookPath(url) {
+    return url.pathname.slice(1).split("/").map(decodeURIComponent).join("/");
+}
+
+// The chapter as Readability would give an article. Images are named after their place in the book, so a version's
+// chapters can share them, and links to other chapters point at their saved files.
+function chapterContent(doc, book, images) {
+    // A drop cap drawn as a picture of its letter is the letter, so the word reads and is heard whole.
+    for (const img of doc.querySelectorAll("img[alt]")) {
+        if (/^\p{L}$/u.test(img.getAttribute("alt"))) img.replaceWith(img.getAttribute("alt"));
+    }
+    for (const img of doc.querySelectorAll("img, image")) {
+        const attribute = img.localName === "img" ? "src" : "href";
+        let url;
+        try { url = new URL(img.getAttribute(attribute)); } catch { img.remove(); continue; }
+        if (url.protocol !== "epub:") { img.remove(); continue; }
+        const path = bookPath(url);
+        const filename = bookImageName(path);
+        if (!images.some(image => image.filename === filename)) {
+            images.push({ url: path, filename, alt: img.getAttribute("alt") || img.getAttribute("aria-label") || "" });
+        }
+        img.setAttribute(attribute, filename);
+    }
+    for (const link of doc.querySelectorAll("a[href]")) {
+        let url;
+        try { url = new URL(link.getAttribute("href")); } catch { link.removeAttribute("href"); continue; }
+        if (["https:", "http:"].includes(url.protocol)) continue;
+        const target = url.protocol === "epub:" ? book.links[bookPath(url)] : undefined;
+        if (target === undefined) link.removeAttribute("href");
+        else if (target === book.index) {
+            if (url.hash) link.setAttribute("href", url.hash); else link.removeAttribute("href");
+        } else link.setAttribute("href", target + ".html" + url.hash);
+    }
+    // The reader shows the chapter's title above it, so the same heading opening the text would repeat it.
+    const normalize = text => text.replace(/\s+/g, " ").trim().toLowerCase();
+    const heading = doc.body.querySelector("h1, h2, h3, h4, h5, h6");
+    let headingText = "", named = "";
+    if (heading) {
+        headingText = heading.textContent.replace(/\s+/g, " ").trim();
+        // An illustration's caption may share the heading; the chapter's name is the rest.
+        const bare = heading.cloneNode(true);
+        bare.querySelectorAll(".caption").forEach(caption => caption.remove());
+        named = bare.textContent.replace(/\s+/g, " ").trim();
+    }
+    let title = book.title || named;
+    if (named && (normalize(title) === normalize(headingText) || normalize(title).endsWith(" " + normalize(named)))) title = named;
+    if (heading && [headingText, named].some(text => text && normalize(text) === normalize(book.title || title))) {
+        // Its illustration stays, with its caption.
+        const pictures = Array.from(heading.querySelectorAll("img, svg"));
+        const caption = Array.from(heading.querySelectorAll(".caption"), node => node.textContent.trim()).join(" ");
+        if (pictures.length) {
+            const figure = doc.createElement("figure");
+            figure.append(...pictures);
+            if (caption) {
+                const text = doc.createElement("figcaption");
+                text.textContent = caption;
+                figure.append(text);
+            }
+            heading.replaceWith(figure);
+        } else heading.remove();
+    }
+    const textContent = doc.body.textContent;
+    return { title: title || "Chapter " + (book.index + 1), byline: null, content: doc.body.innerHTML, textContent };
+}
+
+// A name for an image file in a saved book, from its path in the archive.
+function bookImageName(path) {
+    return "book-" + path.replace(/[^A-Za-z0-9.-]/g, "_");
+}

@@ -57,8 +57,19 @@ import ReedCore
                 library.toggleFavorite(article)
                 library.updateProgress(article, value: 0.4)
                 library.save()
+                if let file = argument("--smoke-book") {
+                    let book = try library.add(bookAt: URL(fileURLWithPath: file), name: "book.epub")
+                    while (book.state == .queued || book.state == .downloading) && Date() < deadline { try await Task.sleep(for: .milliseconds(100)) }
+                    try check(book.state == .ready && book.orderedChapters.map(\.title) == ["Chapter One: The Mill", "Chapter Two"],
+                              "EPUBs are converted a chapter at a time (\(book.failureMessage ?? book.state.rawValue))")
+                    library.updateProgress(book.orderedChapters[0], value: 1)
+                    library.save()
+                }
             } else {
                 try check(library.articles.count == 5, "Library survives a full app restart")
+                if argument("--smoke-book") != nil {
+                    try check(library.books.count == 1 && library.books[0].orderedChapters.first?.isRead == true, "Books and their reading survive a restart")
+                }
             }
             guard let article = library.articles.first(where: { $0.state.isReadable && $0.isFavorite }), let url = library.contentURL(for: article) else {
                 throw Failure(message: "No readable local article")
@@ -90,13 +101,17 @@ import ReedCore
                 if let window = NSApplication.shared.windows.first(where: { $0.contentView != nil && $0.canBecomeMain }) {
                     window.makeKeyAndOrderFront(nil)
                     NSApplication.shared.activate(ignoringOtherApps: true)
+                    let folder = URL(fileURLWithPath: snapshot).deletingLastPathComponent()
                     NotificationCenter.default.post(name: Notification.Name("reed.smokeSelectArticle"), object: article.id)
                     try await Task.sleep(for: .seconds(1))
-                    if let content = window.contentView, let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
-                        content.cacheDisplay(in: content.bounds, to: bitmap)
-                        if let png = bitmap.representation(using: .png, properties: [:]) {
-                            try png.write(to: URL(fileURLWithPath: snapshot).deletingLastPathComponent().appendingPathComponent("library.png"))
-                        }
+                    try capture(window, to: folder.appendingPathComponent("library.png"))
+                    if let book = library.books.first, let chapter = book.orderedChapters.first {
+                        NotificationCenter.default.post(name: Notification.Name("reed.smokeSelectBook"), object: [book.id])
+                        try await Task.sleep(for: .seconds(1))
+                        try capture(window, to: folder.appendingPathComponent("book.png"))
+                        NotificationCenter.default.post(name: Notification.Name("reed.smokeSelectBook"), object: [book.id, chapter.id])
+                        try await Task.sleep(for: .seconds(1))
+                        try capture(window, to: folder.appendingPathComponent("chapter.png"))
                     }
                 }
             }
@@ -107,6 +122,13 @@ import ReedCore
             catch { NSLog("Smoke report failed: %@", error.localizedDescription) }
         }
         NSApplication.shared.terminate(nil)
+    }
+
+    /// The window as drawn, which needs no permission to record the screen.
+    private static func capture(_ window: NSWindow, to url: URL) throws {
+        guard let content = window.contentView, let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { return }
+        content.cacheDisplay(in: content.bounds, to: bitmap)
+        try bitmap.representation(using: .png, properties: [:])?.write(to: url)
     }
 
     @MainActor final class ReaderProbe: NSObject, WKNavigationDelegate {
