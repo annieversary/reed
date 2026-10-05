@@ -32,20 +32,9 @@ struct BookShelfView: View {
     var body: some View {
         VStack(spacing: 0) {
             #if os(macOS)
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(filter.rawValue).font(.system(size: 26, design: .serif))
-                    Text(count).font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button { importing = true } label: {
-                    Image(systemName: "plus").font(.system(size: 15, weight: .medium)).frame(width: 32, height: 32)
-                }
-                .buttonStyle(.reedSecondaryIcon)
-                .help("Add a book").accessibilityLabel("Add a book")
+            ColumnHeader(title: filter.rawValue, subtitle: count) {
+                HeaderButton(help: "Add a book", symbol: "plus") { importing = true }
             }
-            .padding(20)
-            Divider()
             #endif
             List(selection: $selection) {
                 #if os(iOS)
@@ -84,15 +73,7 @@ struct BookShelfView: View {
                     .multilineTextAlignment(.center).padding(30)
                 }
             }
-            if let activity = library.activity {
-                Divider()
-                HStack(spacing: 7) {
-                    ProgressView().controlSize(.mini)
-                    Text(activity).lineLimit(1)
-                    Spacer(minLength: 0)
-                }
-                .font(.system(size: 10)).foregroundStyle(.secondary).padding(14)
-            }
+            ActivityFooter(library: library)
         }
         .dropDestination(for: URL.self) { urls, _ in
             let books = urls.filter { $0.pathExtension.lowercased() == "epub" }
@@ -105,20 +86,9 @@ struct BookShelfView: View {
             case .failure(let error): library.errorMessage = error.localizedDescription
             }
         }
-        .navigationTitle(filter.rawValue)
-        #if os(macOS)
-        .toolbar(removing: .title)
-        #else
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text(filter.rawValue).font(.system(size: 19, design: .serif))
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button("Add a book", systemImage: "plus") { importing = true }
-            }
+        .columnTitle(filter.rawValue) {
+            Button("Add a book", systemImage: "plus") { importing = true }
         }
-        #endif
     }
 
     private var count: String { "\(books.count) \(books.count == 1 ? "book" : "books")" }

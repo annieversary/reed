@@ -64,6 +64,24 @@
 			<key>fileRef</key>
 			<string>389682EFB429072B64101425</string>
 		</dict>
+		<key>034FE1EE9318264B0F1FA10A</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/ColumnViews.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>444CEA85E84BBF78FDD18442</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>034FE1EE9318264B0F1FA10A</string>
+		</dict>
 		<key>C0F42409C53726155A6A445F</key>
 		<dict>
 			<key>isa</key>
@@ -243,6 +261,24 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>5819C39293FCA9B70AE93D0E</string>
+		</dict>
+		<key>20F7301962E6D512D8A19D6F</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/SheetViews.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>A5E45E3E6F5DEC839568E032</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>20F7301962E6D512D8A19D6F</string>
 		</dict>
 		<key>B71B90F4906B3A73F8C70F6A</key>
 		<dict>
@@ -424,6 +460,24 @@
 			<key>fileRef</key>
 			<string>CF68800A261266D8B7FAE975</string>
 		</dict>
+		<key>0A0FB3570FFB094287672D94</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/BundledResource.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>910DA1457CBCEC1B70904877</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>0A0FB3570FFB094287672D94</string>
+		</dict>
 		<key>D65FBF6BA5AB19F660046967</key>
 		<dict>
 			<key>isa</key>
@@ -513,6 +567,132 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>71ED38E1A22A53FC09CC788E</string>
+		</dict>
+		<key>DB944204E2FEB778CDB616DC</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Library+Books.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>7627AD043CECD8EF91CDA093</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>DB944204E2FEB778CDB616DC</string>
+		</dict>
+		<key>C7334BDF84E29576C6C4E4ED</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Library+Discussions.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>48CF34AF83C990DBB39FFCC8</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>C7334BDF84E29576C6C4E4ED</string>
+		</dict>
+		<key>F7323063390746F9AE9A2C6D</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Library+Downloads.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>887ED466798B04436A6054A7</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>F7323063390746F9AE9A2C6D</string>
+		</dict>
+		<key>C393B7967311B7C1E69D80FB</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Library+Import.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>57C4B17BCBD7A5FB618D6CAA</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>C393B7967311B7C1E69D80FB</string>
+		</dict>
+		<key>3E88B271D3464773A764C62B</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Library+Passages.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>64983A7A31593353663CA57E</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>3E88B271D3464773A764C62B</string>
+		</dict>
+		<key>97AA2CBAACA34527483091CA</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Library+Series.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>971AC1654D567094D67AC2B0</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>97AA2CBAACA34527483091CA</string>
+		</dict>
+		<key>0F17BCA2BD33875F778339B4</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Library+Sources.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>3F347380774507BBCED376DF</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>0F17BCA2BD33875F778339B4</string>
 		</dict>
 		<key>709F77BB5F9974865AC45CF4</key>
 		<dict>
@@ -711,6 +891,78 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>794BE653DD175AFB4AD9B138</string>
+		</dict>
+		<key>FFB1874159FDB2BF33BC92F7</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/ReaderCards.js</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>443B3678810B6A49936EC397</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>FFB1874159FDB2BF33BC92F7</string>
+		</dict>
+		<key>994CEE9615F1AD9731B18FE4</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/ReaderNarration.js</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>1A6D98B2F4C34A40A4532C70</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>994CEE9615F1AD9731B18FE4</string>
+		</dict>
+		<key>73A6D04AC98AF842E5B3C0EB</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/ReaderNotes.js</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>A25A04C3EF4546B5BDF87818</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>73A6D04AC98AF842E5B3C0EB</string>
+		</dict>
+		<key>6FA398BE76EC039DB7E4A940</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/ReaderProgress.js</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>AF5669E186A5DDE2758266AA</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>6FA398BE76EC039DB7E4A940</string>
 		</dict>
 		<key>06E25CC4B1EF40148A6D4D98</key>
 		<dict>
@@ -1034,6 +1286,7 @@
 				<string>8A1C9B68090CF9EC3BF00E03</string>
 				<string>58082E44E6C06764D52E1DD7</string>
 				<string>389682EFB429072B64101425</string>
+				<string>034FE1EE9318264B0F1FA10A</string>
 				<string>C0F42409C53726155A6A445F</string>
 				<string>55138BB89AD0F42AA656C991</string>
 				<string>7FFB9C3824D5D12742BB27B3</string>
@@ -1044,6 +1297,7 @@
 				<string>E9837CD9914E91D5750B82BD</string>
 				<string>E1B4CFB83055600EEABE19D0</string>
 				<string>5819C39293FCA9B70AE93D0E</string>
+				<string>20F7301962E6D512D8A19D6F</string>
 				<string>B71B90F4906B3A73F8C70F6A</string>
 				<string>E0D1E03E3838001C7278D202</string>
 				<string>D7C3EFD9EEA43938E577AB06</string>
@@ -1054,11 +1308,19 @@
 				<string>0F00F9E6EFCE07893391938D</string>
 				<string>98CED4B3A5C97EFC85BEB56A</string>
 				<string>CF68800A261266D8B7FAE975</string>
+				<string>0A0FB3570FFB094287672D94</string>
 				<string>D65FBF6BA5AB19F660046967</string>
 				<string>10AD7FCCD699597A6E456FDB</string>
 				<string>E4A6130A16DFE8999FB570D0</string>
 				<string>E54706938FEB6E4E3EB76450</string>
 				<string>71ED38E1A22A53FC09CC788E</string>
+				<string>DB944204E2FEB778CDB616DC</string>
+				<string>C7334BDF84E29576C6C4E4ED</string>
+				<string>F7323063390746F9AE9A2C6D</string>
+				<string>C393B7967311B7C1E69D80FB</string>
+				<string>3E88B271D3464773A764C62B</string>
+				<string>97AA2CBAACA34527483091CA</string>
+				<string>0F17BCA2BD33875F778339B4</string>
 				<string>709F77BB5F9974865AC45CF4</string>
 				<string>AEB089C058AC26CF1AB99B52</string>
 				<string>E19C3B9C9D4C96E790AFE745</string>
@@ -1070,6 +1332,10 @@
 				<string>8A5CE7021C135F9894E6C4F1</string>
 				<string>F0BA769FF6C009D39AF6272F</string>
 				<string>794BE653DD175AFB4AD9B138</string>
+				<string>FFB1874159FDB2BF33BC92F7</string>
+				<string>994CEE9615F1AD9731B18FE4</string>
+				<string>73A6D04AC98AF842E5B3C0EB</string>
+				<string>6FA398BE76EC039DB7E4A940</string>
 				<string>06E25CC4B1EF40148A6D4D98</string>
 				<string>8EF4AB5F8AA59D154E6B70F5</string>
 				<string>994BE7706E01A300DB0EDE8C</string>
@@ -1130,6 +1396,7 @@
 			<array>
 				<string>6028FB5DE9020B01ED4401D3</string>
 				<string>E08D13C4A79B214B6C93A7E8</string>
+				<string>444CEA85E84BBF78FDD18442</string>
 				<string>8AFB1B09473B34E125DA987F</string>
 				<string>AF2981C8D415CDED6EA81231</string>
 				<string>23C4BE1CC27D3C948AF14841</string>
@@ -1140,6 +1407,7 @@
 				<string>CD546E1A338CABB67FC83DE5</string>
 				<string>A39272BA477257773A42D1B1</string>
 				<string>41EC7785CCE9D09B2D4FA7B1</string>
+				<string>A5E45E3E6F5DEC839568E032</string>
 				<string>6BF7FEFFFD817D6E50733FDA</string>
 				<string>97B769EE3A4FECEA35AF013F</string>
 				<string>EA5311C60EBB1B1ABAE98631</string>
@@ -1150,11 +1418,19 @@
 				<string>E1ABA6BD0D809094C5E6E816</string>
 				<string>3483221D2BB5C1A5B6A79D8D</string>
 				<string>E7F44333818D0C1F695D8584</string>
+				<string>910DA1457CBCEC1B70904877</string>
 				<string>1E23CEB4C82ED008FF66EE27</string>
 				<string>28F47E9609AE1D401F736759</string>
 				<string>9B15EC43A7052836950CBFB3</string>
 				<string>AE024CFD9B7E72C3CD28BCD8</string>
 				<string>195C31670E982970F5E5921F</string>
+				<string>7627AD043CECD8EF91CDA093</string>
+				<string>48CF34AF83C990DBB39FFCC8</string>
+				<string>887ED466798B04436A6054A7</string>
+				<string>57C4B17BCBD7A5FB618D6CAA</string>
+				<string>64983A7A31593353663CA57E</string>
+				<string>971AC1654D567094D67AC2B0</string>
+				<string>3F347380774507BBCED376DF</string>
 				<string>E990D3D09BB177A7DFFE6EEE</string>
 				<string>3CF39DB11D0ACCB7EDF7BF16</string>
 				<string>B6FD6E0B91E4341452F8BF65</string>
@@ -1185,6 +1461,10 @@
 				<string>C4B01BD465F9ACCBC396F81A</string>
 				<string>28237ABACD757084E075B439</string>
 				<string>4A73C7488519AA95EFE0670F</string>
+				<string>443B3678810B6A49936EC397</string>
+				<string>1A6D98B2F4C34A40A4532C70</string>
+				<string>A25A04C3EF4546B5BDF87818</string>
+				<string>AF5669E186A5DDE2758266AA</string>
 				<string>57712CA757F1D4E0806AFC1C</string>
 				<string>184ABD530BD7135AA8ECF6BC</string>
 				<string>3B061ADC390787EBB46C7D96</string>

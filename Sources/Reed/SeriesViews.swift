@@ -143,16 +143,10 @@ struct MakeSeriesView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            Image(systemName: "square.stack").font(.system(size: 30, weight: .light)).foregroundStyle(ReedStyle.accent)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Make a series.").font(.system(size: 30, design: .serif))
-                Text("Choose its parts from the articles saved from \(start.domain). They're put in order by the part numbers in their titles, or else by date, and can be reordered later.")
-                    .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
+            SheetHeading(symbol: "square.stack", title: "Make a series.",
+                         detail: "Choose its parts from the articles saved from \(start.domain). They're put in order by the part numbers in their titles, or else by date, and can be reordered later.")
             TextField("Name", text: Binding(get: { name }, set: { name = $0; named = true }), prompt: Text("Series name"))
-                .textFieldStyle(.plain).padding(13)
-                .background(ReedStyle.warm, in: RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(.primary.opacity(0.12)))
+                .warmField()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(candidates) { article in
@@ -178,10 +172,7 @@ struct MakeSeriesView: View {
                     .disabled(chosen.isEmpty || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
-        .padding(32)
-        #if os(macOS)
-        .frame(width: 510)
-        #endif
+        .sheetLayout()
         .onChange(of: chosen, initial: true) {
             if !named { name = SeriesTitle.name(for: candidates.filter { chosen.contains($0.id) }.map(\.title)) }
         }
@@ -216,16 +207,9 @@ struct FindChaptersView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            Image(systemName: "square.stack").font(.system(size: 30, weight: .light)).foregroundStyle(ReedStyle.accent)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Other chapters.").font(.system(size: 30, design: .serif))
-                Text(summary).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
+            SheetHeading(symbol: "square.stack", title: "Other chapters.", detail: summary)
             if !searching && chapters.count > 1 {
-                TextField("Name", text: $name, prompt: Text("Series name"))
-                    .textFieldStyle(.plain).padding(13)
-                    .background(ReedStyle.warm, in: RoundedRectangle(cornerRadius: 9))
-                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(.primary.opacity(0.12)))
+                TextField("Name", text: $name, prompt: Text("Series name")).warmField()
             }
             ScrollViewReader { scroller in
                 ScrollView {
@@ -253,10 +237,7 @@ struct FindChaptersView: View {
                     .disabled(searching || parts.count < 2 || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
-        .padding(32)
-        #if os(macOS)
-        .frame(width: 510)
-        #endif
+        .sheetLayout()
         .task { await find() }
     }
 

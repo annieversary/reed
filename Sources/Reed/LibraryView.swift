@@ -242,37 +242,33 @@ struct LibraryView: View {
             selectedID = notification.object as? UUID
         }
         #endif
-        .alert("Library error", isPresented: Binding(get: { library.errorMessage != nil }, set: { if !$0 { library.errorMessage = nil } })) {
+        .alert("Library error", isPresented: Bindable(library).errorMessage.isPresent(), presenting: library.errorMessage) { _ in
             Button("OK") { library.errorMessage = nil }
-        } message: { Text(library.errorMessage ?? "") }
-        .confirmationDialog("Delete this saved article?", isPresented: Binding(get: { articleToDelete != nil }, set: { if !$0 { articleToDelete = nil } }), titleVisibility: .visible) {
+        } message: { Text($0) }
+        .confirmationDialog("Delete this saved article?", isPresented: $articleToDelete.isPresent(), titleVisibility: .visible,
+                            presenting: articleToDelete) { article in
             Button("Delete Article", role: .destructive) {
-                if let article = articleToDelete {
-                    if selectedID == article.id { selectedID = nil }
-                    if narrator.readableID == article.id { narrator.stop() }
-                    library.delete(article)
-                }
-                articleToDelete = nil
+                if selectedID == article.id { selectedID = nil }
+                if narrator.readableID == article.id { narrator.stop() }
+                library.delete(article)
             }
-        } message: { Text("Its offline copy will be removed from this device.") }
-        .confirmationDialog("Delete this book?", isPresented: Binding(get: { bookToDelete != nil }, set: { if !$0 { bookToDelete = nil } }), titleVisibility: .visible) {
+        } message: { _ in Text("Its offline copy will be removed from this device.") }
+        .confirmationDialog("Delete this book?", isPresented: $bookToDelete.isPresent(), titleVisibility: .visible,
+                            presenting: bookToDelete) { book in
             Button("Delete Book", role: .destructive) {
-                if let book = bookToDelete {
-                    if selectedBookID == book.id { selectedBookID = nil }
-                    if book.chapters.contains(where: { $0.id == narrator.readableID }) { narrator.stop() }
-                    library.delete(book)
-                }
-                bookToDelete = nil
+                if selectedBookID == book.id { selectedBookID = nil }
+                if book.chapters.contains(where: { $0.id == narrator.readableID }) { narrator.stop() }
+                library.delete(book)
             }
-        } message: { Text("Its chapters and the notes written beside them will be removed from this device.") }
+        } message: { _ in Text("Its chapters and the notes written beside them will be removed from this device.") }
         .sheet(item: $seriesStart) { article in
             MakeSeriesView(library: library, start: article) { expandedSeries.insert($0.id) }
         }
         .sheet(item: $chaptersStart) { article in FindChaptersView(library: library, start: article) }
-        .alert("Rename series", isPresented: Binding(get: { seriesToRename != nil }, set: { if !$0 { seriesToRename = nil } })) {
+        .alert("Rename series", isPresented: $seriesToRename.isPresent(), presenting: seriesToRename) { series in
             TextField("Name", text: $seriesName)
             Button("Cancel", role: .cancel) {}
-            Button("Rename") { if let series = seriesToRename { library.rename(series, to: seriesName) } }
+            Button("Rename") { library.rename(series, to: seriesName) }
         }
     }
 
@@ -388,23 +384,11 @@ struct LibraryView: View {
         let articleCount = Self.count(of: entries)
         return VStack(spacing: 0) {
             #if os(macOS)
-            VStack(alignment: .leading, spacing: 17) {
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text((filter ?? .all).rawValue).font(.system(size: 26, design: .serif))
-                        Text(articleCount).font(.system(size: 11)).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button { showingAdd = true } label: {
-                        Image(systemName: "plus").font(.system(size: 15, weight: .medium)).frame(width: 32, height: 32)
-                    }
-                    .buttonStyle(.reedSecondaryIcon)
-                    .help("Save an article (⌘N)").accessibilityLabel("Save an article")
-                }
+            ColumnHeader(title: (filter ?? .all).rawValue, subtitle: articleCount) {
+                HeaderButton(help: "Save an article (⌘N)", label: "Save an article", symbol: "plus") { showingAdd = true }
+            } below: {
                 searchField
             }
-            .padding(20)
-            Divider()
             #endif
             List(selection: $selectedID) {
                 #if os(iOS)
@@ -451,30 +435,11 @@ struct LibraryView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            if let activity = library.activity {
-                Divider()
-                HStack(spacing: 7) {
-                    ProgressView().controlSize(.mini)
-                    Text(activity).lineLimit(1)
-                    Spacer(minLength: 0)
-                }
-                .font(.system(size: 10)).foregroundStyle(.secondary).padding(14)
-            }
+            ActivityFooter(library: library)
         }
-        .navigationTitle((filter ?? .all).rawValue)
-        #if os(macOS)
-        .toolbar(removing: .title)
-        #else
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text((filter ?? .all).rawValue).font(.system(size: 19, design: .serif))
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button("Save an article", systemImage: "plus") { showingAdd = true }
-            }
+        .columnTitle((filter ?? .all).rawValue) {
+            Button("Save an article", systemImage: "plus") { showingAdd = true }
         }
-        #endif
     }
 
     #if os(iOS)

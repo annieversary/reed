@@ -17,28 +17,8 @@ struct AddFeedView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            Image(systemName: "dot.radiowaves.up.forward").font(.system(size: 30, weight: .light)).foregroundStyle(ReedStyle.accent)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Add feed.").font(.system(size: 30, design: .serif))
-                Text("Enter a site or its feed. New posts will show up in Feeds.")
-                    .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            HStack(spacing: 8) {
-                // A verbatim prompt, since a string literal would be parsed as Markdown and the URL styled as a link.
-                TextField("Site or feed address", text: $address, prompt: Text(verbatim: "example.com"))
-                    .textFieldStyle(.plain).padding(13)
-                    .background(ReedStyle.warm, in: RoundedRectangle(cornerRadius: 9))
-                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(.primary.opacity(0.12)))
-                    .focused($focused).onSubmit(find)
-                    #if os(iOS)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                    #endif
-                PasteButton(payloadType: String.self) { strings in
-                    guard let string = strings.first else { return }
-                    Task { @MainActor in address = string.trimmingCharacters(in: .whitespacesAndNewlines) }
-                }
-                .labelStyle(.iconOnly).buttonBorderShape(.roundedRectangle(radius: 9)).controlSize(.large)
-            }
+            SheetHeading(symbol: "dot.radiowaves.up.forward", title: "Add feed.", detail: "Enter a site or its feed. New posts will show up in Feeds.")
+            AddressField(label: "Site or feed address", prompt: "example.com", text: $address, focused: $focused, onSubmit: find)
             .onChange(of: address) { candidates = []; error = nil }
             if !candidates.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -72,10 +52,7 @@ struct AddFeedView: View {
                     .disabled(address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || working)
             }
         }
-        .padding(32)
-        #if os(macOS)
-        .frame(width: 510)
-        #endif
+        .sheetLayout()
         .onAppear { focused = true }
         // Closing the sheet abandons the search, rather than subscribing later.
         .onDisappear { task?.cancel() }

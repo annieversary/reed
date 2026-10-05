@@ -29,8 +29,7 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
     /// `fetch` loads the same-origin JSON a site rule asks for, such as a README rendered client-side.
     public func extract(html: String, url: URL, fetch: (URL) async throws -> String) async throws -> ExtractedArticle {
         try await withWebView { view in
-            let script = try ["Readability", "purify.min", "temml.min", "MathMarkup", "SiteRules", "PageLinks", "ExtractArticle"]
-                .map { try resource($0, extension: "js") }.joined(separator: "\n")
+            let script = try BundledResource.extractionScript()
             var resources: [String: String] = [:]
             for _ in 0..<3 {
                 let data = Data(try await evaluate(script, arguments: ["html": html, "sourceURL": url.absoluteString, "resources": resources], in: view).utf8)
@@ -56,8 +55,7 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
     public func chapter(files: [(part: EPUB.Part, html: String)], title: String?, index: Int, links: [String: Int]) async throws -> ExtractedArticle {
         guard let first = files.first else { throw ReedError.unreadableBook }
         return try await withWebView { view in
-            let script = try ["Readability", "purify.min", "temml.min", "MathMarkup", "SiteRules", "PageLinks", "ExtractArticle"]
-                .map { try resource($0, extension: "js") }.joined(separator: "\n")
+            let script = try BundledResource.extractionScript()
             let parts = files.map { ["path": $0.part.path, "html": $0.html, "from": $0.part.from ?? NSNull(), "to": $0.part.to ?? NSNull()] as [String: Any] }
             let chapter: [String: Any] = ["files": parts, "title": title ?? NSNull(),
                                           "index": index, "links": links]
@@ -72,7 +70,7 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
     /// The page's title and links, without extracting its article.
     public func pageLinks(html: String, url: URL) async throws -> PageLinks {
         try await withWebView { view in
-            let script = try resource("PageLinks", extension: "js") + """
+            let script = try BundledResource.text("PageLinks", extension: "js") + """
 
                 return JSON.stringify(pageLinks(new DOMParser().parseFromString(html, "text/html"), sourceURL));
                 """
@@ -114,8 +112,8 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
     /// formula-heavy paper takes a few seconds; the article is kept as it was if it fails.
     private func wordFormulas(in html: String, view: WKWebView) async -> String {
         do {
-            let script = try ["SpeechRuleEngine", "MathSpeech"].map { try resource($0, extension: "js") }.joined(separator: "\n")
-            let maps = ["en": try resource("SpeechRuleEngine-en", extension: "json"), "base": try resource("SpeechRuleEngine-base", extension: "json")]
+            let script = try ["SpeechRuleEngine", "MathSpeech"].map { try BundledResource.text($0, extension: "js") }.joined(separator: "\n")
+            let maps = ["en": try BundledResource.text("SpeechRuleEngine-en", extension: "json"), "base": try BundledResource.text("SpeechRuleEngine-base", extension: "json")]
             return try await evaluate(script, arguments: ["html": html, "mathMaps": maps], in: view)
         } catch {
             return html
@@ -153,18 +151,6 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
             continuation = nil
             callback?.resume(with: result)
         }
-    }
-
-    private func resource(_ name: String, extension ext: String) throws -> String {
-        #if SWIFT_PACKAGE
-        let bundle = Bundle.module
-        #else
-        let bundle = Bundle.main
-        #endif
-        guard let url = bundle.url(forResource: name, withExtension: ext) else {
-            throw CocoaError(.fileNoSuchFile)
-        }
-        return try String(contentsOf: url, encoding: .utf8)
     }
 
     private func finishLoading(_ result: Result<Void, Error>) {

@@ -50,20 +50,13 @@ struct SourceListView: View {
     var body: some View {
         VStack(spacing: 0) {
             #if os(macOS)
-            HStack(alignment: .center, spacing: 8) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(origin.title).font(.system(size: 26, design: .serif))
-                    Text(summary).font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-                Spacer()
+            ColumnHeader(title: origin.title, subtitle: summary) {
                 if origin == .feeds {
-                    headerButton("Manage feeds", symbol: "list.bullet") { showingFeeds = true }
+                    HeaderButton(help: "Manage feeds", symbol: "list.bullet") { showingFeeds = true }
                 }
-                headerButton("Refresh (⌘R)", symbol: "arrow.clockwise") { Task { await load() } }
+                HeaderButton(help: "Refresh (⌘R)", symbol: "arrow.clockwise") { Task { await load() } }
                     .disabled(isLoading).keyboardShortcut("r")
             }
-            .padding(20)
-            Divider()
             #endif
             if origin == .feeds && library.feeds.count > 1 { feedChips }
             List(selection: Binding(get: { openedID }, set: choose)) {
@@ -111,33 +104,12 @@ struct SourceListView: View {
                 #endif
             }
         }
-        .navigationTitle(origin.title)
-        #if os(macOS)
-        .toolbar(removing: .title)
-        #else
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text(origin.title).font(.system(size: 19, design: .serif))
-            }
+        .columnTitle(origin.title) {
             if origin == .feeds {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Manage feeds", systemImage: "list.bullet") { showingFeeds = true }
-                }
+                Button("Manage feeds", systemImage: "list.bullet") { showingFeeds = true }
             }
         }
-        #endif
     }
-
-    #if os(macOS)
-    private func headerButton(_ help: String, symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 14, weight: .medium)).frame(width: 32, height: 32)
-        }
-        .buttonStyle(.reedSecondaryIcon)
-        .help(help).accessibilityLabel(help)
-    }
-    #endif
 
     private func row(for item: SourceItem) -> some View {
         let saved = library.article(at: item.url)
