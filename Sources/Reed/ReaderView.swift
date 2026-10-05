@@ -11,6 +11,9 @@ struct ReaderView: View {
     var anchor: String?
     /// Opens another chapter of the book, at an element if given.
     var onOpenChapter: (BookChapter, String?) -> Void = { _, _ in }
+    /// The article after this one in the list it was opened from.
+    var next: Article?
+    var onOpenNext: () -> Void = {}
     @AppStorage("readerFontSize") private var fontSize = 19.0
     @Environment(\.openURL) private var openURL
     @Environment(Narrator.self) private var narrator
@@ -52,7 +55,7 @@ struct ReaderView: View {
                 }
                 OfflineWebView(url: url, fontSize: fontSize, progress: readable.progress, anchor: anchor, passages: passages,
                                narrating: isNarrating ? NarrationPosition(passage: narrator.current, sentence: narrator.sentence) : nil,
-                               proxy: reader, notes: notes, notesOpen: notesOpen) { value in
+                               proxy: reader, notes: notes, notesOpen: notesOpen, next: nextCard) { value in
                     library.updateProgress(readable, value: value)
                 } onAddLink: { link in
                     do { try library.add(link.absoluteString) }
@@ -69,6 +72,8 @@ struct ReaderView: View {
                     guard let index = BookFiles.chapterIndex(of: file),
                           let target = chapter?.book?.orderedChapters.first(where: { $0.index == index }) else { return }
                     onOpenChapter(target, anchor)
+                } onOpenNext: {
+                    onOpenNext()
                 }
                 .id(readable.id.uuidString + (readable.contentVersion ?? "") + (anchor ?? ""))
                 // Text runs under the home indicator, but not under the narration controls.
@@ -119,6 +124,12 @@ struct ReaderView: View {
         .sheet(isPresented: $findingChapters) { if let article { FindChaptersView(library: library, start: article) } }
         .onAppear { if let chapter { library.open(chapter) } }
         .onDisappear { library.save() }
+    }
+
+    private var nextCard: NextCard? {
+        guard let next else { return nil }
+        let detail = [next.author, next.state.isReadable ? "\(next.readingMinutes) min read" : nil].compactMap { $0 }.filter { !$0.isEmpty }
+        return NextCard(kicker: "NEXT ARTICLE", source: next.domain.uppercased(), title: next.title, detail: detail.joined(separator: " · "))
     }
 
     private var progressLabel: some View {

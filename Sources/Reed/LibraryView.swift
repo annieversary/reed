@@ -59,6 +59,8 @@ struct LibraryView: View {
     @State private var chaptersStart: Article?
     @State private var seriesToRename: Series?
     @State private var seriesName = ""
+    /// The article after the open one in the list, kept while the open one lingers out of it, as when finishing it in Unread.
+    @State private var nextID: UUID?
 
     private var filter: CollectionFilter? {
         if case .collection(let filter) = selection { filter } else { nil }
@@ -109,6 +111,30 @@ struct LibraryView: View {
             }
         }
         return entries
+    }
+
+    private struct Following: Equatable {
+        let current: UUID?
+        /// Nil when the open article isn't in the list.
+        let next: UUID??
+    }
+    /// What comes after the open article in the article list, reading each series' parts in place of its row.
+    private var following: Following {
+        guard filter != nil, let selectedID else { return Following(current: selectedID, next: nil) }
+        let ids = entries.flatMap { entry -> [UUID] in
+            switch entry {
+            case .article(let article): [article.id]
+            case .series(_, let parts): parts.map(\.id)
+            }
+        }
+        guard let index = ids.firstIndex(of: selectedID) else { return Following(current: selectedID, next: nil) }
+        return Following(current: selectedID, next: .some(ids.indices.contains(index + 1) ? ids[index + 1] : nil))
+    }
+
+    private func openNext() {
+        guard let next = library.articles.first(where: { $0.id == nextID }) else { return }
+        if let series = library.series(of: next) { expandedSeries.insert(series.id) }
+        selectedID = next.id
     }
 
     private var snippets: [UUID: String] {
@@ -170,7 +196,7 @@ struct LibraryView: View {
                         bookPlaceholder
                     }
                 } else if let article = selectedArticle {
-                    ReaderView(library: library, readable: article)
+                    ReaderView(library: library, readable: article, next: library.articles.first { $0.id == nextID }, onOpenNext: openNext)
                 } else {
                     readerPlaceholder
                 }
@@ -196,6 +222,9 @@ struct LibraryView: View {
         .onAppear { if !columnsStack { selection = .collection(.all) } }
         .onChange(of: [selectedID, narrator.readableID], initial: true) { _, ids in library.retained = Set(ids.compactMap { $0 }) }
         .onChange(of: selectedBookID) { bookPath = [] }
+        .onChange(of: following, initial: true) { old, new in
+            if let next = new.next { nextID = next } else if old.current != new.current { nextID = nil }
+        }
         .onChange(of: SubstackAccount.shared.isSignedIn, initial: true) { _, signedIn in
             guard !signedIn else { return }
             library.forgetFrontPage(of: .substack)
