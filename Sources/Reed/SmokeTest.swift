@@ -58,7 +58,7 @@ import ReedCore
                 library.updateProgress(article, value: 0.4)
                 library.save()
                 if let file = argument("--smoke-book") {
-                    let book = try library.add(bookAt: URL(fileURLWithPath: file), name: "book.epub")
+                    let book = try await library.add(bookAt: URL(fileURLWithPath: file), name: "book.epub")
                     while (book.state == .queued || book.state == .downloading) && Date() < deadline { try await Task.sleep(for: .milliseconds(100)) }
                     try check(book.state == .ready && book.orderedChapters.map(\.title) == ["Chapter One: The Mill", "Chapter Two"],
                               "EPUBs are converted a chapter at a time (\(book.failureMessage ?? book.state.rawValue))")

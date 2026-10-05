@@ -3,8 +3,8 @@ import Foundation
 
 /// Reads the files in a zip archive held in memory, as EPUBs are. Only what EPUBs use is supported:
 /// stored and deflated entries, without encryption or ZIP64.
-struct ZipArchive {
-    struct Entry {
+struct ZipArchive: Sendable {
+    struct Entry: Sendable {
         let method: UInt16
         let compressedSize: Int
         let size: Int

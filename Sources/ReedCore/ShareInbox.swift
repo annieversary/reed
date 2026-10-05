@@ -75,14 +75,14 @@ public struct ShareInbox: Sendable {
 
     /// Hands each item to `save`, oldest first, removing it once saved. An item that fails is left for next time,
     /// or set aside in `Failed` if `giveUp` says so, and the rest carry on. The first error is thrown once all are tried.
-    public func drain(giveUp: (URL) -> Bool = { _ in false }, _ save: (Item) throws -> Void) throws {
+    @MainActor public func drain(giveUp: (URL) -> Bool = { _ in false }, _ save: (Item) async throws -> Void) async throws {
         guard FileManager.default.fileExists(atPath: directory.path) else { return }
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
             .filter { ["link", "pdf", "epub"].contains($0.pathExtension.lowercased()) }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         var failure: (any Error)?
         for file in files {
-            do { try take(file, save) } catch {
+            do { try await take(file, save) } catch {
                 failure = failure ?? error
                 if giveUp(file) {
                     let failed = directory.appendingPathComponent("Failed", isDirectory: true)
@@ -94,14 +94,14 @@ public struct ShareInbox: Sendable {
         if let failure { throw failure }
     }
 
-    private func take(_ file: URL, _ save: (Item) throws -> Void) throws {
+    @MainActor private func take(_ file: URL, _ save: (Item) async throws -> Void) async throws {
         if file.pathExtension == "link" {
-            try save(.link(String(decoding: try Data(contentsOf: file), as: UTF8.self)))
+            try await save(.link(String(decoding: try Data(contentsOf: file), as: UTF8.self)))
         } else {
             // The name follows the stamp, the UUID and a space.
             let shared = String(file.lastPathComponent.drop { $0 != " " }.dropFirst())
             let name = shared.isEmpty ? file.lastPathComponent : shared
-            try save(file.pathExtension.lowercased() == "epub" ? .book(file, name: name) : .pdf(file, name: name))
+            try await save(file.pathExtension.lowercased() == "epub" ? .book(file, name: name) : .pdf(file, name: name))
         }
         try FileManager.default.removeItem(at: file)
     }

@@ -100,10 +100,13 @@ struct LibraryView: View {
         guard query.isEmpty, filter != .favorites else { return visibleArticles.map(Entry.article) }
         var shown = Set<UUID>()
         var entries: [Entry] = []
+        // Looked up once, rather than searching every series and article for each row.
+        let byID = Dictionary(uniqueKeysWithValues: library.articles.map { ($0.id, $0) })
+        let seriesOf = Dictionary(library.series.flatMap { series in series.parts.map { ($0, series) } }) { first, _ in first }
         for article in filter == .unread ? Array(library.articles.reversed()) : library.articles {
-            if let series = library.series(of: article) {
+            if let series = seriesOf[article.id] {
                 guard shown.insert(series.id).inserted else { continue }
-                let parts = library.parts(of: series)
+                let parts = series.parts.compactMap { byID[$0] }
                 let included = filter == .read ? parts.allSatisfy(filter.includes) : parts.contains(where: filter.includes)
                 if included || parts.contains(where: { lingering.contains($0.id) }) { entries.append(.series(series, parts)) }
             } else if filter.includes(article) || lingering.contains(article.id) {
@@ -381,7 +384,9 @@ struct LibraryView: View {
     }
 
     private var articleList: some View {
-        VStack(spacing: 0) {
+        let entries = entries
+        let articleCount = Self.count(of: entries)
+        return VStack(spacing: 0) {
             #if os(macOS)
             VStack(alignment: .leading, spacing: 17) {
                 HStack(alignment: .center) {
@@ -604,7 +609,7 @@ struct LibraryView: View {
         }
     }
 
-    private var articleCount: String {
+    private static func count(of entries: [Entry]) -> String {
         let count = entries.reduce(0) { $0 + $1.articleCount }
         return "\(count) \(count == 1 ? "article" : "articles")"
     }

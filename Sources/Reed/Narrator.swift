@@ -49,6 +49,7 @@ final class Narrator {
             guard let item, let library, let version = item.contentVersion else { return }
             directory = library.storage.audioDirectory(item.location, version: version, voice: voice)
             durations = [:]
+            probed = []
             sentenceStarts = [:]
             heard = 0
             if isPlaying {
@@ -98,6 +99,10 @@ final class Narrator {
     @ObservationIgnored private var interruptedWhilePlaying = false
     /// Lengths of synthesized passages, in seconds.
     @ObservationIgnored private var durations: [Int: Double] = [:]
+    /// Passages whose audio has been looked for, so one not made yet isn't looked for again until it is.
+    @ObservationIgnored private var probed: Set<Int> = []
+    /// Estimated lengths of every passage, from its words, until it's synthesized.
+    @ObservationIgnored private var estimates: [Double] = []
     /// When each sentence of a synthesized passage begins, in seconds into it.
     @ObservationIgnored private var sentenceStarts: [Int: [Double]] = [:]
     /// Keeps `sentence` in step with playback.
@@ -153,7 +158,8 @@ final class Narrator {
         source = item.source
         book = item is BookChapter ? item.source : nil
         self.passages = passages
-        sentences = passages.map(ArticleSpeech.sentences(in:))
+        sentences = library.sentences(for: item) ?? passages.map(ArticleSpeech.sentences(in:))
+        estimates = passages.map { Double($0.split(whereSeparator: \.isWhitespace).count) / Self.wordsPerSecond + Self.pause }
         passageCount = passages.count
         directory = library.storage.audioDirectory(item.location, version: version, voice: voice)
         artwork = Self.artwork(from: library.leadImage(for: item))
@@ -237,6 +243,8 @@ final class Narrator {
         library = nil
         artwork = nil
         durations = [:]
+        probed = []
+        estimates = []
         sentenceStarts = [:]
         startFrames = [:]
         #if os(iOS)
@@ -367,11 +375,11 @@ final class Narrator {
     /// Exact once a passage is synthesized, estimated from its words until then.
     private func duration(of index: Int) -> Double {
         if let known = durations[index] { return known }
-        if let directory, let file = try? AVAudioFile(forReading: Self.audioURL(index, in: directory)) {
+        if let directory, probed.insert(index).inserted, let file = try? AVAudioFile(forReading: Self.audioURL(index, in: directory)) {
             durations[index] = Double(file.length) / file.fileFormat.sampleRate
             return durations[index]!
         }
-        return Double(passages[index].split(whereSeparator: \.isWhitespace).count) / Self.wordsPerSecond + Self.pause
+        return estimates[index]
     }
 
     /// The sentence of the current passage playing `time` seconds into it.
@@ -477,6 +485,7 @@ final class Narrator {
                     // Written first, so a passage's audio is never there without its sentence times.
                     try JSONEncoder().encode(starts).write(to: Self.sentencesURL(index, in: directory), options: .atomic)
                     try await Self.write(samples, to: url)
+                    self?.probed.remove(index)
                     self?.scheduleReady()
                 }
                 if !Task.isCancelled { self?.generator = nil }

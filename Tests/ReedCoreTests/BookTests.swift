@@ -60,8 +60,8 @@ private func fixture(_ name: String) throws -> URL {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
     let library = try Library(root: root)
-    let book = try library.add(bookAt: fixture("book-epub3"), name: "book-epub3.epub")
-    #expect(try library.add(bookAt: fixture("book-epub3"), name: "again.epub") === book)
+    let book = try await library.add(bookAt: fixture("book-epub3"), name: "book-epub3.epub")
+    #expect(try await library.add(bookAt: fixture("book-epub3"), name: "again.epub") === book)
     #expect(library.books.count == 1 && library.articles.isEmpty)
 
     let deadline = Date().addingTimeInterval(60)
@@ -98,15 +98,16 @@ private func fixture(_ name: String) throws -> URL {
     #expect(library.books.isEmpty && !FileManager.default.fileExists(atPath: directory.path))
 }
 
-@Test @MainActor func sharedBooksAreAddedFromTheInbox() throws {
+@Test @MainActor func sharedBooksAreAddedFromTheInbox() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
     let inbox = ShareInbox(directory: root.appendingPathComponent("Inbox"))
     try inbox.deposit(bookAt: fixture("book-epub2"), name: "Old Book")
     try inbox.deposit(bookAt: fixture("book-protected"))
     let library = try Library(root: root.appendingPathComponent("Library"))
-    library.addShared(from: inbox)
+    await library.addShared(from: inbox)
     #expect(library.books.map(\.title) == ["An Old Book"])
     #expect(library.errorMessage == ReedError.protectedBook.localizedDescription)
     #expect(try FileManager.default.contentsOfDirectory(atPath: inbox.directory.path).isEmpty)
+    await library.idle()
 }

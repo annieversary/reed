@@ -124,11 +124,13 @@ struct BookShelfView: View {
     private var count: String { "\(books.count) \(books.count == 1 ? "book" : "books")" }
 
     private func add(_ urls: [URL]) {
-        for url in urls {
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            do { selection = try library.add(bookAt: url, name: url.lastPathComponent).id }
-            catch { library.errorMessage = error.localizedDescription }
+        Task {
+            for url in urls {
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                do { selection = try await library.add(bookAt: url, name: url.lastPathComponent).id }
+                catch { library.errorMessage = error.localizedDescription }
+            }
         }
     }
 }

@@ -1,7 +1,7 @@
 import Foundation
 
 /// An EPUB's metadata and its chapters, read from the package file and table of contents.
-public struct EPUB {
+public struct EPUB: Sendable {
     public struct Chapter: Equatable, Sendable {
         /// The table of contents' name for it; nil for pages before the first entry, or a book without one.
         public var title: String?
@@ -23,7 +23,7 @@ public struct EPUB {
     }
 
     /// An entry in the table of contents.
-    struct Entry: Equatable {
+    struct Entry: Equatable, Sendable {
         var title: String
         var path: String
         var fragment: String?

@@ -127,14 +127,16 @@ public actor ArticleDownloader {
     }
 
     private enum Kind { case html, document, image, json, resource, feed }
+    private static let chunkSize = 64 * 1024
     private static let htmlTypes = ["text/html", "application/xhtml+xml"]
     private static let pdfTypes = ["application/pdf", "application/x-pdf", "application/octet-stream", "binary/octet-stream"]
 
-    private func fetch(_ url: URL, limit: Int, kind: Kind) async throws -> (Data, HTTPURLResponse) {
+    private nonisolated func fetch(_ url: URL, limit: Int, kind: Kind) async throws -> (Data, HTTPURLResponse) {
         try await fetch(URLRequest(url: url), limit: limit, kind: kind)
     }
 
-    private func fetch(_ request: URLRequest, limit: Int, kind: Kind) async throws -> (Data, HTTPURLResponse) {
+    /// Off the actor, so downloads running side by side don't take turns reading their responses.
+    private nonisolated func fetch(_ request: URLRequest, limit: Int, kind: Kind) async throws -> (Data, HTTPURLResponse) {
         _ = try ArticleURL.parse(request.url?.absoluteString ?? "")
         let (bytes, response) = try await session.bytes(for: request)
         guard let response = response as? HTTPURLResponse else { throw ReedError.unsupportedContent }
@@ -160,11 +162,19 @@ public actor ArticleDownloader {
         guard response.expectedContentLength <= limit else { throw ReedError.oversizedDownload }
         var data = Data()
         data.reserveCapacity(min(max(Int(response.expectedContentLength), 0), limit))
+        // Gathered a chunk at a time, since appending each byte to `data` on its own is slow.
+        var chunk = [UInt8]()
+        chunk.reserveCapacity(Self.chunkSize)
         for try await byte in bytes {
-            if data.count % 16384 == 0 { try Task.checkCancellation() }
-            guard data.count < limit else { throw ReedError.oversizedDownload }
-            data.append(byte)
+            chunk.append(byte)
+            guard chunk.count == Self.chunkSize else { continue }
+            guard data.count + chunk.count <= limit else { throw ReedError.oversizedDownload }
+            data.append(contentsOf: chunk)
+            chunk.removeAll(keepingCapacity: true)
+            try Task.checkCancellation()
         }
+        guard data.count + chunk.count <= limit else { throw ReedError.oversizedDownload }
+        data.append(contentsOf: chunk)
         return (data, response)
     }
 }

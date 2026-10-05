@@ -17,17 +17,19 @@ import ReedCore
 @MainActor private let shareInbox = ProcessInfo.processInfo.arguments.contains("--library-root") ? nil : ShareInbox.shared
 
 @MainActor private func addShared(to library: Library) {
-    if let shareInbox { library.addShared(from: shareInbox) }
+    if let shareInbox { Task { await library.addShared(from: shareInbox) } }
 }
 
 /// Adds an EPUB opened with Reed from elsewhere, such as Finder or Files, and shows it.
 @MainActor private func openBook(at url: URL, in library: Library) {
-    let scoped = url.startAccessingSecurityScopedResource()
-    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-    do {
-        let book = try library.add(bookAt: url, name: url.lastPathComponent)
-        NotificationCenter.default.post(name: .reedShowBook, object: [book.id])
-    } catch { library.errorMessage = error.localizedDescription }
+    Task {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let book = try await library.add(bookAt: url, name: url.lastPathComponent)
+            NotificationCenter.default.post(name: .reedShowBook, object: [book.id])
+        } catch { library.errorMessage = error.localizedDescription }
+    }
 }
 
 #if os(macOS)

@@ -92,7 +92,7 @@ func drawnPDF(_ paragraphs: [Paragraph]) -> Data {
     try inbox.deposit(pdfAt: text)
 
     let library = try Library(root: root.appendingPathComponent("Library"))
-    library.addShared(from: inbox)
+    await library.addShared(from: inbox)
     #expect(library.errorMessage == nil)
     #expect(try FileManager.default.contentsOfDirectory(atPath: inbox.directory.path).isEmpty)
     #expect(library.articles.count == 2)
@@ -106,4 +106,5 @@ func drawnPDF(_ paragraphs: [Paragraph]) -> Data {
     #expect(shared.title == "Shared Without a Link" && shared.wordCount > 50)
     let html = try String(contentsOf: try #require(library.contentURL(for: shared)), encoding: .utf8)
     #expect(html.contains("A paper shared from the Files app"))
+    await library.idle()
 }

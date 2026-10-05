@@ -41,7 +41,13 @@ public final class Library {
     /// Articles removed while downloading, deleted once their download settles.
     private var discarded: Set<UUID> = []
     /// How many times each shared item has failed to be added, by its file name in the inbox.
-    private var inboxFailures: [String: Int] = [:]
+    @ObservationIgnored private var inboxFailures: [String: Int] = [:]
+    private struct PassageKey: Hashable { let content: URL, title: String }
+    @ObservationIgnored private var passageCache: [PassageKey: [String]] = [:]
+    @ObservationIgnored private var sentenceCache: [PassageKey: [[String]]] = [:]
+    @ObservationIgnored private var addingShared = false
+    /// Something more was shared while the inbox was being emptied.
+    @ObservationIgnored private var inboxChanged = false
     private static let inboxAttempts = 3
 
     public init(root: URL? = nil, downloader: ArticleDownloader = ArticleDownloader()) throws {
@@ -112,10 +118,12 @@ public final class Library {
     }
 
     /// Saves the PDF at `file`, shared as a file rather than a link. Reed keeps a copy to read it from.
-    @discardableResult public func add(pdfAt file: URL, name: String) throws -> Article {
-        let data = try Data(contentsOf: file)
-        guard data.starts(with: Data("%PDF".utf8)) else { throw ReedError.unsupportedContent }
-        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    @discardableResult public func add(pdfAt file: URL, name: String) async throws -> Article {
+        let staging = try storage.createStagingDirectory()
+        defer { try? FileManager.default.removeItem(at: staging) }
+        let imported = try await Self.importFile(file, into: staging)
+        guard imported.head.starts(with: Data("%PDF".utf8)) else { throw ReedError.unsupportedContent }
+        let digest = imported.digest
         if let existing = articles.first(where: { $0.isFile && URL(string: $0.originalURL)?.pathComponents.dropFirst().first == digest }) {
             return existing
         }
@@ -123,7 +131,7 @@ public final class Library {
         article.title = (name as NSString).deletingPathExtension
         let copy = storage.sharedFileURL(article.id)
         try FileManager.default.createDirectory(at: copy.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try data.write(to: copy, options: .atomic)
+        try FileManager.default.moveItem(at: imported.copy, to: copy)
         container.mainContext.insert(article)
         do { try container.mainContext.save() }
         catch { container.mainContext.delete(article); try? storage.removeArticle(article.id); throw error }
@@ -135,11 +143,13 @@ public final class Library {
 
     /// The saved article for `url`, whether saved from that link or redirected to it.
     public func article(at url: URL) -> Article? {
-        articles.first { $0.isAt(url) }
+        let address = url.absoluteString
+        return articles.first { $0.isAt(address) }
     }
 
     public func cachedArticle(at url: URL) -> Article? {
-        cached.first { $0.isAt(url) }
+        let address = url.absoluteString
+        return cached.first { $0.isAt(address) }
     }
 
     /// The copy of `url` to read: the saved one, else the cached one, cached now if need be.
@@ -239,23 +249,33 @@ public final class Library {
     private func syncCache() {
         var kept: [Article] = []
         let wanted = ExternalSource.allCases.flatMap { frontPages[$0]?.items ?? [] } + feedItems.prefix(Self.cachedFeedEntries)
-        for item in wanted { if let saved = article(at: item.url) { note(item.discussionURL, of: saved) } }
-        for item in wanted
-        where article(at: item.url) == nil && !kept.contains(where: { $0.isAt(item.url) }) {
-            if let existing = cachedArticle(at: item.url) {
+        // Looked up by address once, rather than searching every article for each item.
+        func byAddress(_ articles: [Article]) -> [String: Article] {
+            Dictionary(articles.flatMap { article in article.addresses.map { ($0, article) } }) { first, _ in first }
+        }
+        let saved = byAddress(articles), cachedByAddress = byAddress(cached)
+        var keptAddresses = Set<String>()
+        for item in wanted {
+            let address = item.url.absoluteString
+            if let saved = saved[address] { note(item.discussionURL, of: saved); continue }
+            guard !keptAddresses.contains(address) else { continue }
+            if let existing = cachedByAddress[address] {
                 // Earlier failures are often just being offline.
                 if existing.state == .failed { existing.state = .queued; existing.failureMessage = nil }
                 note(item.discussionURL, of: existing)
                 kept.append(existing)
+                keptAddresses.formUnion(existing.addresses)
             } else {
                 let article = Article(url: item.url)
                 note(item.discussionURL, of: article)
                 article.isCached = true
                 container.mainContext.insert(article)
                 kept.append(article)
+                keptAddresses.formUnion(article.addresses)
             }
         }
-        for article in cached where !kept.contains(where: { $0.id == article.id }) {
+        let keptIDs = Set(kept.map(\.id))
+        for article in cached where !keptIDs.contains(article.id) {
             if retained.contains(article.id) { kept.append(article) }
             else if article.state == .downloading { discarded.insert(article.id) }
             else { erase(article) }
@@ -411,25 +431,41 @@ public final class Library {
 
     static func feedsURL(root: URL) -> URL { root.appendingPathComponent("Feeds.json") }
 
-    public func addShared(from inbox: ShareInbox) {
+    /// Adds what's waiting in the inbox. Called again while it's at work, it goes round once more when done.
+    public func addShared(from inbox: ShareInbox) async {
+        guard !addingShared else { inboxChanged = true; return }
+        addingShared = true
+        defer { addingShared = false }
+        repeat {
+            inboxChanged = false
+            await drain(inbox)
+        } while inboxChanged
+    }
+
+    private func drain(_ inbox: ShareInbox) async {
         do {
             // An item that keeps failing is set aside, so it doesn't report the same error every time Reed is opened.
-            try inbox.drain(giveUp: { file in
+            try await inbox.drain(giveUp: { file in
                 inboxFailures[file.lastPathComponent, default: 0] += 1
                 return inboxFailures[file.lastPathComponent]! >= Self.inboxAttempts
             }) { item in
                 // What can never be saved is dropped rather than retried forever.
                 switch item {
                 case .link(let input): do { try add(input) } catch ReedError.invalidURL {}
-                case .pdf(let file, let name): do { try add(pdfAt: file, name: name) } catch ReedError.unsupportedContent {}
+                case .pdf(let file, let name): do { try await add(pdfAt: file, name: name) } catch ReedError.unsupportedContent {}
                 case .book(let file, let name):
                     // Said why, since it was chosen to read, then dropped like the rest.
-                    do { try add(bookAt: file, name: name) }
+                    do { try await add(bookAt: file, name: name) }
                     catch ReedError.unreadableBook { errorMessage = ReedError.unreadableBook.localizedDescription }
                     catch ReedError.protectedBook { errorMessage = ReedError.protectedBook.localizedDescription }
                 }
             }
         } catch { errorMessage = error.localizedDescription }
+    }
+
+    /// Waits until nothing is queued to download or convert.
+    func idle() async {
+        while let worker { await worker.value }
     }
 
     public func resumeDownloads() {
@@ -633,8 +669,27 @@ public final class Library {
 
     /// The saved text to read aloud, or nil if it isn't saved.
     public func passages(for readable: any Readable) -> [String]? {
-        guard let url = contentURL(for: readable), let html = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-        return ArticleSpeech.passages(title: readable.title, html: html)
+        guard let url = contentURL(for: readable) else { return nil }
+        // A saved version never changes, so its passages are kept while it's being read, noted and listened to.
+        let key = PassageKey(content: url, title: readable.title)
+        if let known = passageCache[key] { return known }
+        guard let html = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let passages = ArticleSpeech.passages(title: readable.title, html: html)
+        if passageCache.count >= 4 { passageCache.removeAll() }
+        passageCache[key] = passages
+        return passages
+    }
+
+    /// Each passage's sentences, as narration follows them.
+    public func sentences(for readable: any Readable) -> [[String]]? {
+        guard let url = contentURL(for: readable) else { return nil }
+        let key = PassageKey(content: url, title: readable.title)
+        if let known = sentenceCache[key] { return known }
+        guard let passages = passages(for: readable) else { return nil }
+        let sentences = passages.map(ArticleSpeech.sentences(in:))
+        if sentenceCache.count >= 4 { sentenceCache.removeAll() }
+        sentenceCache[key] = sentences
+        return sentences
     }
 
     /// The notes written beside the saved passages, as `passages(for:)` gives them.
@@ -771,19 +826,18 @@ public final class Library {
             } else {
                 report("Reading the PDF…")
                 guard let url = URL(string: article.originalURL),
-                      let data = try? Data(contentsOf: storage.sharedFileURL(article.id)) else { throw ReedError.damagedArticle }
+                      let data = await Self.read(storage.sharedFileURL(article.id)) else { throw ReedError.damagedArticle }
                 (extracted, pictures) = try await readPDF(data, url: url)
                 pageURL = url
             }
             let directory = try storage.createStagingDirectory()
             staging = directory
-            var body = extracted.html
-            var missing = 0
+            var missing: [ExtractedArticle.Image] = []
             var totalBytes = 0
             for (index, image) in extracted.images.enumerated() {
                 try Task.checkCancellation()
                 if let data = pictures[image.filename] {
-                    try data.write(to: directory.appendingPathComponent(image.filename), options: .atomic)
+                    try await Self.write(data, to: directory.appendingPathComponent(image.filename))
                     continue
                 }
                 let message = "Saving image \(index + 1) of \(extracted.images.count)…"
@@ -795,22 +849,15 @@ public final class Library {
                     }
                     let data = try await downloader.image(at: url)
                     guard totalBytes + data.count <= 64 * 1024 * 1024 else { throw ReedError.oversizedDownload }
-                    try data.write(to: directory.appendingPathComponent(image.filename), options: .atomic)
+                    try await Self.write(data, to: directory.appendingPathComponent(image.filename))
                     totalBytes += data.count
                 } catch is CancellationError { throw CancellationError() }
-                catch {
-                    missing += 1
-                    // Preserve alt text, but never leave a remote or broken image request in the reader.
-                    let pattern = "<img\\b[^>]*\\bsrc=\"" + NSRegularExpression.escapedPattern(for: image.filename) + "\"[^>]*>"
-                    let replacement = "<span class=\"missing-image\">[Image unavailable\(image.alt.isEmpty ? "" : ": " + ArticleHTML.escape(image.alt))]</span>"
-                    let regex = try NSRegularExpression(pattern: pattern)
-                    body = regex.stringByReplacingMatches(in: body, range: NSRange(body.startIndex..., in: body),
-                                                          withTemplate: NSRegularExpression.escapedTemplate(for: replacement))
-                }
+                catch { missing.append(image) }
             }
+            let body = await Self.replacing(missing, in: extracted.html)
             let document = ArticleHTML.document(title: extracted.title, author: extracted.author,
                                                 domain: Article.domain(of: pageURL) ?? "", minutes: max(1, Int(ceil(Double(extracted.wordCount) / 230))), body: body)
-            try document.write(to: directory.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
+            try await Self.write(Data(document.utf8), to: directory.appendingPathComponent("index.html"))
             let version = UUID().uuidString
             try storage.commit(staging: directory, id: article.id, version: version)
             staging = nil
@@ -820,13 +867,13 @@ public final class Library {
             article.excerpt = extracted.excerpt
             article.resolvedURL = pageURL.absoluteString
             article.wordCount = extracted.wordCount
-            article.imageCount = extracted.images.count - missing
-            article.missingImageCount = missing
+            article.imageCount = extracted.images.count - missing.count
+            article.missingImageCount = missing.count
             article.leadsToOtherChapters = ChapterLinks(page: extracted.page, url: pageURL).leadsToOtherChapters
             let previous = article.contentVersion
             article.contentVersion = version
             article.downloadedAt = .now
-            article.state = missing > 0 ? .partial : .ready
+            article.state = missing.isEmpty ? .ready : .partial
             article.failureMessage = nil
             try container.mainContext.save()
             if let previous { try? storage.removeArticleVersion(article.id, version: previous) }
@@ -848,16 +895,19 @@ public final class Library {
     // MARK: Books
 
     /// Adds the EPUB at `file`. Reed keeps a copy to convert the book from; adding the same file again finds the copy kept.
-    @discardableResult public func add(bookAt file: URL, name: String) throws -> Book {
-        let data = try Data(contentsOf: file)
-        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-        if let existing = books.first(where: { $0.fileHash == digest }) { return existing }
-        let epub = try EPUB(data: data)
-        let book = Book(fileHash: digest, title: epub.title ?? (name as NSString).deletingPathExtension)
+    @discardableResult public func add(bookAt file: URL, name: String) async throws -> Book {
+        let staging = try storage.createStagingDirectory()
+        defer { try? FileManager.default.removeItem(at: staging) }
+        let imported = try await Self.importFile(file, into: staging)
+        if let existing = books.first(where: { $0.fileHash == imported.digest }) { return existing }
+        let epub = try await Self.openBook(at: imported.copy)
+        // Added while this one was being read.
+        if let existing = books.first(where: { $0.fileHash == imported.digest }) { return existing }
+        let book = Book(fileHash: imported.digest, title: epub.title ?? (name as NSString).deletingPathExtension)
         book.author = epub.author
         let copy = storage.bookFileURL(book.id)
         try FileManager.default.createDirectory(at: copy.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try data.write(to: copy, options: .atomic)
+        try FileManager.default.moveItem(at: imported.copy, to: copy)
         container.mainContext.insert(book)
         do { try container.mainContext.save() }
         catch { container.mainContext.delete(book); try? storage.removeBook(book.id); throw error }
@@ -918,8 +968,7 @@ public final class Library {
         defer { if let staging { try? FileManager.default.removeItem(at: staging) } }
         do {
             activity = "Opening \(book.title)…"
-            guard let data = try? Data(contentsOf: storage.bookFileURL(book.id)) else { throw ReedError.damagedArticle }
-            let epub = try EPUB(data: data)
+            let epub = try await Self.openBook(at: storage.bookFileURL(book.id))
             let directory = try storage.createStagingDirectory()
             staging = directory
             var chapters = epub.chapters
@@ -943,29 +992,18 @@ public final class Library {
                 extracted.append(try await extract(index, links: links))
             }
             guard extracted.contains(where: { $0.wordCount > 0 }) else { throw ReedError.unreadableBook }
-            var missing = 0
-            var written = Set<String>()
-            func write(_ path: String, as filename: String) {
-                guard written.insert(filename).inserted else { return }
-                do {
-                    guard let image = try epub.file(path) else { throw ReedError.unreadableBook }
-                    try image.write(to: directory.appendingPathComponent(filename), options: .atomic)
-                } catch { missing += 1 }
-            }
+            activity = "Saving \(book.title)…"
+            var images = extracted.flatMap { $0.images.map { (path: $0.url, filename: $0.filename) } }
+            let cover = epub.cover.map { (path: $0, filename: BookFiles.imageName(for: $0)) }
+            if let cover { images.append(cover) }
+            let (saved, missing) = await Self.unpack(images, from: epub, to: directory)
             for (index, chapter) in extracted.enumerated() {
-                activity = "Saving chapter \(index + 1) of \(extracted.count)…"
-                for image in chapter.images { write(image.url, as: image.filename) }
                 let after = extracted.indices.contains(index + 1) ? BookFiles.nextChapterCard(index: index + 1, title: extracted[index + 1].title) : ""
                 let document = ArticleHTML.document(title: chapter.title, author: nil, domain: book.title,
                                                     minutes: max(1, Int(ceil(Double(chapter.wordCount) / 230))), body: chapter.html, after: after)
-                try document.write(to: directory.appendingPathComponent(BookFiles.chapter(index)), atomically: true, encoding: .utf8)
+                try await Self.write(Data(document.utf8), to: directory.appendingPathComponent(BookFiles.chapter(index)))
             }
-            var coverFile: String?
-            if let cover = epub.cover {
-                let filename = BookFiles.imageName(for: cover)
-                write(cover, as: filename)
-                if FileManager.default.fileExists(atPath: directory.appendingPathComponent(filename).path) { coverFile = filename }
-            }
+            let coverFile = cover.flatMap { saved.contains($0.filename) ? $0.filename : nil }
             let version = UUID().uuidString
             try storage.commitBook(staging: directory, id: book.id, version: version)
             staging = nil
@@ -1029,6 +1067,75 @@ extension Library {
     }
 }
 
+/// A file being added, copied into staging and hashed away from the main actor.
+private struct ImportedFile: Sendable {
+    let copy: URL
+    let digest: String
+    /// Its first bytes, to tell what it is.
+    let head: Data
+}
+
+extension Library {
+    /// Copies `file` into `staging` and hashes the copy, a chunk at a time, so a large file needn't be read whole.
+    fileprivate nonisolated static func importFile(_ file: URL, into staging: URL) async throws -> ImportedFile {
+        let copy = staging.appendingPathComponent("Import", isDirectory: false)
+        try FileManager.default.copyItem(at: file, to: copy)
+        let handle = try FileHandle(forReadingFrom: copy)
+        defer { try? handle.close() }
+        var hash = SHA256()
+        var head = Data()
+        while let chunk = try handle.read(upToCount: 1024 * 1024), !chunk.isEmpty {
+            try Task.checkCancellation()
+            if head.isEmpty { head = chunk.prefix(16) }
+            hash.update(data: chunk)
+        }
+        return ImportedFile(copy: copy, digest: hash.finalize().map { String(format: "%02x", $0) }.joined(), head: head)
+    }
+
+    nonisolated static func read(_ url: URL) async -> Data? { try? Data(contentsOf: url) }
+
+    nonisolated static func write(_ data: Data, to url: URL) async throws { try data.write(to: url, options: .atomic) }
+
+    /// `html` with each of `images` replaced by a note that it's unavailable, keeping its alt text, so the reader
+    /// never makes a remote or broken image request.
+    nonisolated static func replacing(_ images: [ExtractedArticle.Image], in html: String) async -> String {
+        guard !images.isEmpty else { return html }
+        let notes = Dictionary(images.map { image in
+            (image.filename, "<span class=\"missing-image\">[Image unavailable\(image.alt.isEmpty ? "" : ": " + ArticleHTML.escape(image.alt))]</span>")
+        }) { first, _ in first }
+        let names = images.map { NSRegularExpression.escapedPattern(for: $0.filename) }.joined(separator: "|")
+        guard let regex = try? NSRegularExpression(pattern: "<img\\b[^>]*\\bsrc=\"(" + names + ")\"[^>]*>") else { return html }
+        var result = "", last = html.startIndex
+        for match in regex.matches(in: html, range: NSRange(html.startIndex..., in: html)) {
+            guard let whole = Range(match.range, in: html), let name = Range(match.range(at: 1), in: html) else { continue }
+            result += html[last..<whole.lowerBound] + (notes[String(html[name])] ?? "")
+            last = whole.upperBound
+        }
+        return result + html[last...]
+    }
+
+    /// Writes each image from the book into `directory` once, returning the files written and how many couldn't be.
+    nonisolated static func unpack(_ images: [(path: String, filename: String)], from epub: EPUB,
+                                   to directory: URL) async -> (saved: Set<String>, missing: Int) {
+        var saved = Set<String>(), tried = Set<String>()
+        for image in images where tried.insert(image.filename).inserted {
+            guard let data = try? epub.file(image.path),
+                  (try? data.write(to: directory.appendingPathComponent(image.filename), options: .atomic)) != nil else { continue }
+            saved.insert(image.filename)
+        }
+        return (saved, tried.count - saved.count)
+    }
+
+    /// The EPUB at `url`, read away from the main actor.
+    nonisolated static func openBook(at url: URL) async throws -> EPUB {
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { throw ReedError.damagedArticle }
+        return try EPUB(data: data)
+    }
+}
+
 private extension Article {
-    func isAt(_ url: URL) -> Bool { originalURL == url.absoluteString || resolvedURL == url.absoluteString }
+    func isAt(_ address: String) -> Bool { originalURL == address || resolvedURL == address }
+
+    /// The addresses it's known by.
+    var addresses: [String] { [originalURL] + (resolvedURL.map { [$0] } ?? []) }
 }
