@@ -262,6 +262,10 @@ struct SourceListView: View {
             guard let page = library.frontPages[source] else { return loading ? "Loading…" : " " }
             if loading { return "Refreshing…" }
             if failure != nil { return "Couldn't refresh" }
+            let states = page.items.compactMap { (library.article(at: $0.url) ?? library.cachedArticle(at: $0.url))?.state }
+            if states.contains(where: { $0 == .queued || $0 == .downloading }) {
+                return "Downloaded \(states.filter(\.isReadable).count) of \(page.items.count) articles"
+            }
             return "Updated \(page.fetchedAt.formatted(.relative(presentation: .named)))"
         case .feeds:
             let feeds = library.feeds
