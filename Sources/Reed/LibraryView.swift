@@ -132,6 +132,11 @@ struct LibraryView: View {
         .onReceive(NotificationCenter.default.publisher(for: .reedAddArticle)) { _ in showingAdd = true }
         .onAppear { if !columnsStack { selection = .collection(.all) } }
         .onChange(of: [selectedID, narrator.articleID], initial: true) { _, ids in library.retained = Set(ids.compactMap { $0 }) }
+        .onChange(of: SubstackAccount.shared.isSignedIn, initial: true) { _, signedIn in
+            guard !signedIn else { return }
+            library.forgetFrontPage(of: .substack)
+            if selection == .discover(.frontPage(.substack)) { selection = .collection(.all) }
+        }
         #if os(iOS)
         .sheet(isPresented: $showingSettings) { NavigationStack { SettingsView() } }
         #endif
@@ -212,7 +217,7 @@ struct LibraryView: View {
                     }
                 } header: { Text("LIBRARY").font(.system(size: 10, weight: .medium)).tracking(1.7) }
                 Section {
-                    ForEach(ExternalSource.allCases) { source in
+                    ForEach(ExternalSource.allCases.filter { $0 != .substack || SubstackAccount.shared.isSignedIn }) { source in
                         discoverLink(.frontPage(source), symbol: source.symbol)
                     }
                     discoverLink(.feeds, symbol: "dot.radiowaves.up.forward")

@@ -1,10 +1,14 @@
 import SwiftUI
+#if SWIFT_PACKAGE
+import ReedCore
+#endif
 
 struct SettingsView: View {
     @Environment(Narrator.self) private var narrator
     #if os(iOS)
     @Environment(\.dismiss) private var dismiss
     #endif
+    @State private var showingSubstackSignIn = false
 
     var body: some View {
         @Bindable var narrator = narrator
@@ -39,8 +43,22 @@ struct SettingsView: View {
             } footer: {
                 Text("Each voice downloads the first time it reads.")
             }
+            Section {
+                if SubstackAccount.shared.isSignedIn {
+                    LabeledContent("Signed in") {
+                        Button("Sign Out") { SubstackAccount.shared.signOut() }
+                    }
+                } else {
+                    Button("Sign In to Substack…") { showingSubstackSignIn = true }
+                }
+            } header: {
+                Text("Substack")
+            } footer: {
+                Text("Once you're signed in, the posts Substack picks for you appear under Discover.")
+            }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $showingSubstackSignIn) { SubstackSignInView() }
         .onChange(of: narrator.voice) { if narrator.previewVoice != nil { narrator.stopPreview() } }
         .onDisappear { narrator.stopPreview() }
         #if os(macOS)

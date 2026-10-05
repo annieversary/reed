@@ -8,8 +8,12 @@ extension ExternalSource {
         switch self {
         case .hackerNews: "y.square"
         case .lobsters: "l.square"
+        case .substack: "s.square"
         }
     }
+
+    /// What the source calls a vote for a story.
+    var pointName: String { self == .substack ? "like" : "point" }
 }
 
 /// Where a list of links to browse comes from.
@@ -125,7 +129,7 @@ struct SourceListView: View {
 
     private func row(for item: SourceItem) -> some View {
         let saved = library.article(at: item.url)
-        return SourceRow(item: item, label: label(for: item), saved: saved != nil)
+        return SourceRow(item: item, label: label(for: item), saved: saved != nil, pointName: pointName)
             .background(NavigationLink(value: item.id) { EmptyView() }.opacity(0))
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
@@ -242,7 +246,12 @@ struct SourceListView: View {
         return index
     }
 
+    private var pointName: String {
+        if case .frontPage(let source) = origin { source.pointName } else { "point" }
+    }
+
     private func label(for item: SourceItem) -> String {
+        if let site = item.site { return site }
         guard let feedID = item.feedID, let feed = library.feeds.first(where: { $0.id == feedID }) else { return item.domain }
         return feed.title
     }
@@ -304,18 +313,14 @@ private struct SourceRow: View {
     /// The site or feed the link comes from.
     let label: String
     let saved: Bool
+    /// What the source calls a vote, such as "point".
+    let pointName: String
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
                 Text(label.lowercased()).font(.system(size: 9, weight: .semibold)).tracking(1.1).lineLimit(1)
                 Spacer()
-                if saved {
-                    HStack(spacing: 3) {
-                        Image(systemName: "checkmark")
-                        Text("Saved")
-                    }
-                    .font(.system(size: 9, weight: .medium))
-                }
+                tag
             }.foregroundStyle(ReedStyle.accent)
             Text(item.title).font(.system(size: 18, weight: .medium, design: .serif)).lineLimit(3).lineSpacing(2)
             if let excerpt = item.excerpt, excerpt != item.title {
@@ -324,17 +329,65 @@ private struct SourceRow: View {
             if !details.isEmpty {
                 Text(details).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
             }
+            if case .note(let author, let text) = item.reason {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(author).font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
+                    Text(text).font(.system(size: 11)).lineLimit(4).lineSpacing(2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .background(ReedStyle.warm, in: RoundedRectangle(cornerRadius: 10))
+            }
         }
         .padding(.vertical, 15).padding(.horizontal, 7)
         .accessibilityElement(children: .combine)
     }
 
+    /// One mark beside the label, the most useful first: whether it's saved, paid, or why it was picked.
+    @ViewBuilder private var tag: some View {
+        if saved {
+            HStack(spacing: 3) {
+                Image(systemName: "checkmark")
+                Text("Saved")
+            }
+            .font(.system(size: 9, weight: .medium))
+        } else if item.paid == true {
+            tag("paid", symbol: "lock", spoken: "Paid")
+        } else {
+            switch item.reason {
+            case .restacked(let name): tag(name, symbol: "arrow.2.squarepath", spoken: "Restacked by")
+            case .liked(let name): tag(name, symbol: "heart", spoken: "Liked by")
+            case .fromArchives: tag("from the archives")
+            case .note, nil: EmptyView()
+            }
+        }
+    }
+
+    private func tag(_ text: String, symbol: String? = nil, spoken: String? = nil) -> some View {
+        HStack(spacing: 3) {
+            if let symbol { Image(systemName: symbol).accessibilityLabel(spoken ?? "") }
+            Text(text.lowercased()).tracking(1.1).lineLimit(1)
+        }
+        .font(.system(size: 9, weight: .semibold))
+        .foregroundStyle(.secondary)
+    }
+
     private var details: String {
         var parts: [String] = []
-        if let points = item.points { parts.append("\(points) \(points == 1 ? "point" : "points")") }
-        if let comments = item.comments { parts.append("\(comments) \(comments == 1 ? "comment" : "comments")") }
+        // A paid post's counts are often missing, and only its preview can be read.
+        if item.paid != true {
+            if let points = item.points { parts.append("\(points) \(pointName)\(points == 1 ? "" : "s")") }
+            if let comments = item.comments { parts.append("\(comments) \(comments == 1 ? "comment" : "comments")") }
+        }
         if let author = item.author { parts.append("by \(author)") }
-        if let postedAt = item.postedAt { parts.append(postedAt.formatted(.relative(presentation: .named, unitsStyle: .abbreviated))) }
+        if let words = item.wordCount, words > 0 {
+            parts.append(item.paid == true ? "\(words.formatted()) words" : "\(max(1, Int((Double(words) / 230).rounded()))) min")
+        }
+        if let postedAt = item.postedAt {
+            parts.append(item.reason == .fromArchives
+                ? postedAt.formatted(date: .abbreviated, time: .omitted)
+                : postedAt.formatted(.relative(presentation: .named, unitsStyle: .abbreviated)))
+        }
         return parts.joined(separator: " · ")
     }
 }

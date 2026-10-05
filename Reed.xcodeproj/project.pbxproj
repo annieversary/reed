@@ -226,6 +226,24 @@
 			<key>fileRef</key>
 			<string>E0D1E03E3838001C7278D202</string>
 		</dict>
+		<key>D7C3EFD9EEA43938E577AB06</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/SubstackSignInView.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>EA5311C60EBB1B1ABAE98631</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>D7C3EFD9EEA43938E577AB06</string>
+		</dict>
 		<key>0D05B48E6BF1CF037AF4F282</key>
 		<dict>
 			<key>isa</key>
@@ -701,6 +719,24 @@
 			<key>fileRef</key>
 			<string>D6B3E48F2D5F9A78B16590C0</string>
 		</dict>
+		<key>1DD381AB02DE9B858DEA0D7D</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Substack.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>C63FD7F25C65273D3CA18C5B</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>1DD381AB02DE9B858DEA0D7D</string>
+		</dict>
 		<key>F1EEAC1AABD95DE2505EEBCD</key>
 		<dict>
 			<key>isa</key>
@@ -773,6 +809,7 @@
 				<string>5819C39293FCA9B70AE93D0E</string>
 				<string>B71B90F4906B3A73F8C70F6A</string>
 				<string>E0D1E03E3838001C7278D202</string>
+				<string>D7C3EFD9EEA43938E577AB06</string>
 				<string>0D05B48E6BF1CF037AF4F282</string>
 				<string>24D87A3D58399F91B70B69B5</string>
 				<string>AC56CDA6B28E18E3CF2AFE6C</string>
@@ -799,6 +836,7 @@
 				<string>CD9B04105A02C96A8DF2ACE0</string>
 				<string>F95186331235DB31A60CB636</string>
 				<string>D6B3E48F2D5F9A78B16590C0</string>
+				<string>1DD381AB02DE9B858DEA0D7D</string>
 				<string>F1EEAC1AABD95DE2505EEBCD</string>
 				<string>FBDC4F23F93125BBEEAE800C</string>
 			</array>
@@ -854,6 +892,7 @@
 				<string>41EC7785CCE9D09B2D4FA7B1</string>
 				<string>6BF7FEFFFD817D6E50733FDA</string>
 				<string>97B769EE3A4FECEA35AF013F</string>
+				<string>EA5311C60EBB1B1ABAE98631</string>
 				<string>7861EDA4ED9D7A92471A8A1D</string>
 				<string>86B08DB1E682A9773DFC9F34</string>
 				<string>749B8CD50EA225F8B99ED603</string>
@@ -866,6 +905,7 @@
 				<string>B6FD6E0B91E4341452F8BF65</string>
 				<string>6679307645738DA919E28E26</string>
 				<string>E02CFC5074F0F3AE2CC43C5B</string>
+				<string>C63FD7F25C65273D3CA18C5B</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
 			<integer>0</integer>

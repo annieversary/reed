@@ -189,6 +189,13 @@ public final class Library {
         try? JSONEncoder().encode(page).write(to: url, options: .atomic)
     }
 
+    /// Drops a source's front page and the stories cached from it, such as once signed out of it.
+    public func forgetFrontPage(of source: ExternalSource) {
+        guard frontPages.removeValue(forKey: source) != nil else { return }
+        syncCache()
+        try? FileManager.default.removeItem(at: Self.frontPageURL(root: storage.root, source: source))
+    }
+
     static func frontPageURL(root: URL, source: ExternalSource) -> URL {
         root.appendingPathComponent("FrontPages", isDirectory: true).appendingPathComponent(source.key + ".json")
     }

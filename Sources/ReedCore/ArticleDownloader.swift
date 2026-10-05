@@ -60,8 +60,14 @@ public actor ArticleDownloader {
         try await fetch(url, limit: 12 * 1024 * 1024, kind: .image).0
     }
 
-    public func json(at url: URL) async throws -> Data {
-        try await fetch(url, limit: 2 * 1024 * 1024, kind: .json).0
+    /// JSON, sent with `cookie` alone when one is given.
+    public func json(at url: URL, cookie: String? = nil) async throws -> Data {
+        var request = URLRequest(url: url)
+        if let cookie {
+            request.httpShouldHandleCookies = false
+            request.setValue(cookie, forHTTPHeaderField: "Cookie")
+        }
+        return try await fetch(request, limit: 2 * 1024 * 1024, kind: .json).0
     }
 
     /// A feed, or a page that may link to one; the content type isn't checked, since feeds are served under many.

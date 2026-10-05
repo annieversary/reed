@@ -70,7 +70,7 @@ public final class Article {
 
 public enum ReedError: LocalizedError {
     case invalidURL, unsupportedContent, emptyArticle, oversizedDownload, httpStatus(Int), extractionTimeout
-    case damagedArticle, noFeed, unreadableFeed
+    case damagedArticle, noFeed, unreadableFeed, substackSignedOut
 
     public var errorDescription: String? {
         switch self {
@@ -83,6 +83,7 @@ public enum ReedError: LocalizedError {
         case .damagedArticle: "The saved article files are missing. Retry to download them again."
         case .noFeed: "No feed was found at this address."
         case .unreadableFeed: "The feed couldn't be read."
+        case .substackSignedOut: "Sign in to Substack in Settings to see the posts it picks for you."
         }
     }
 }

@@ -3,6 +3,8 @@ import Foundation
 /// A site whose current links can be browsed and saved into the library.
 public enum ExternalSource: String, CaseIterable, Identifiable, Sendable {
     case hackerNews = "Hacker News", lobsters = "Lobste.rs"
+    /// The posts Substack picks for the signed-in reader.
+    case substack = "Substack"
     public var id: Self { self }
 
     /// A stable name for files kept about this source.
@@ -10,6 +12,7 @@ public enum ExternalSource: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .hackerNews: "hacker-news"
         case .lobsters: "lobsters"
+        case .substack: "substack"
         }
     }
 
@@ -35,6 +38,8 @@ public enum ExternalSource: String, CaseIterable, Identifiable, Sendable {
             return items
         case .lobsters:
             return try Self.lobstersItems(from: await downloader.json(at: URL(string: "https://lobste.rs/hottest.json")!))
+        case .substack:
+            return try await Self.substackItems(using: downloader)
         }
     }
 
@@ -87,6 +92,13 @@ public struct FrontPage: Codable, Sendable {
     public let fetchedAt: Date
 }
 
+/// Why a link was picked for the reader.
+public enum SourceReason: Hashable, Codable, Sendable {
+    case restacked(by: String), liked(by: String), fromArchives
+    /// Shared in a note, with what its author said about it.
+    case note(author: String, text: String)
+}
+
 public struct SourceItem: Identifiable, Hashable, Codable, Sendable {
     public let id: String
     public let title: String
@@ -100,6 +112,13 @@ public struct SourceItem: Identifiable, Hashable, Codable, Sendable {
     /// The subscribed feed it came from, if any.
     public var feedID: UUID? = nil
     public var excerpt: String? = nil
+    /// The publication it appeared in, for sources that name one.
+    public var site: String? = nil
+    /// Why the source picked it for the reader.
+    public var reason: SourceReason? = nil
+    /// Only paying subscribers can read all of it.
+    public var paid: Bool? = nil
+    public var wordCount: Int? = nil
 
     public var domain: String {
         let host = url.host() ?? ""

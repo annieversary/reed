@@ -271,6 +271,41 @@ import Testing
     #expect(items[1].url.absoluteString == "https://lobste.rs/s/abc123/text_post")
 }
 
+@Test func substackFeedKeepsPostsAndThoseSharedInNotes() throws {
+    let page = try ExternalSource.substackPage(from: Data("""
+    {"items":[
+     {"type":"post","context":{"type":"post_restack","users":[{"name":"Maia Mindel"}]},"publication":{"name":"The New Critic"},
+      "post":{"id":1,"title":"Safe at SlutCon","subtitle":"A subtitle","canonical_url":"https://www.thenewcritic.com/p/safe-at-slutcon",
+              "post_date":"2026-10-01T12:00:00.000Z","audience":"everyone","wordcount":3161,"reaction_count":373,"comment_count":78,
+              "publishedBylines":[{"name":"overlocked"}]}},
+     {"type":"comment","context":{"type":"note","users":[{"name":"Jack Lewars"}]},"post":null,
+      "comment":{"name":"Jack Lewars","body":"Changed my mind. ","attachments":[{"type":"image"},
+        {"type":"post","publication":{"name":"Works in Progress"},
+         "post":{"id":2,"title":"Just bury your trash","canonical_url":"https://www.worksinprogress.news/p/just-bury-your-trash",
+                 "publishedBylines":[{"name":"Alex Chalmers"},{"name":"Works in Progress"}]}}]}},
+     {"type":"post","context":{"type":"from_archives"},"publication":{"name":"Astral Codex Ten"},
+      "post":{"id":3,"title":"Why Does Ozempic Cure All Diseases?","subtitle":"...","canonical_url":"https://www.astralcodexten.com/p/ozempic",
+              "audience":"only_paid","publishedBylines":[{"name":"Scott Alexander"}]}},
+     {"type":"comment","context":{"type":"note"},"comment":{"name":"Someone","body":"Just a note","attachments":[]}},
+     {"type":"chat","context":{"type":"chat_recommended"}},
+     {"type":"post","post":{"id":"not a number"}}
+    ],"nextCursor":"abc+/="}
+    """.utf8))
+    #expect(page.nextCursor == "abc+/=")
+    #expect(page.items.map(\.id) == ["1", "2", "3"])
+    let restack = page.items[0]
+    #expect(restack.site == "The New Critic" && restack.author == "overlocked" && restack.excerpt == "A subtitle")
+    #expect(restack.reason == .restacked(by: "Maia Mindel") && restack.paid == nil && restack.wordCount == 3161)
+    #expect(restack.points == 373 && restack.comments == 78)
+    #expect(restack.discussionURL?.absoluteString == "https://www.thenewcritic.com/p/safe-at-slutcon/comments")
+    #expect(restack.postedAt == Date(timeIntervalSince1970: 1_790_856_000))
+    let shared = page.items[1]
+    #expect(shared.reason == .note(author: "Jack Lewars", text: "Changed my mind."))
+    #expect(shared.author == "Alex Chalmers" && shared.site == "Works in Progress")
+    let archived = page.items[2]
+    #expect(archived.reason == .fromArchives && archived.paid == true && archived.excerpt == nil)
+}
+
 @MainActor @Test func frontPagesAreKeptBetweenLaunches() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
