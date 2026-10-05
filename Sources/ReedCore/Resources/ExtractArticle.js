@@ -4,6 +4,8 @@ doc.querySelectorAll("base").forEach(node => node.remove());
 const base = doc.createElement("base");
 base.href = sourceURL;
 doc.head.prepend(base);
+// Taken before Readability, which drops the navigation between chapters.
+const navigation = pageLinks(doc, sourceURL);
 for (const img of doc.querySelectorAll("img")) {
     const lazy = img.getAttribute("data-src") || img.getAttribute("data-original") || img.getAttribute("data-lazy-src");
     if (lazy) img.setAttribute("src", lazy);
@@ -124,5 +126,6 @@ return JSON.stringify({
     excerpt: excerpt.slice(0, 280),
     html: output.body.innerHTML,
     wordCount: result.textContent.trim().split(/\s+/).length,
-    images
+    images,
+    page: navigation
 });

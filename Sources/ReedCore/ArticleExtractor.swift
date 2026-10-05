@@ -15,6 +15,7 @@ public struct ExtractedArticle: Codable, Sendable {
     public internal(set) var html: String
     public let wordCount: Int
     public let images: [Image]
+    public let page: PageLinks
 }
 
 @MainActor
@@ -27,6 +28,43 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
 
     /// `fetch` loads the same-origin JSON a site rule asks for, such as a README rendered client-side.
     public func extract(html: String, url: URL, fetch: (URL) async throws -> String) async throws -> ExtractedArticle {
+        try await withWebView { view in
+            let script = try ["Readability", "purify.min", "temml.min", "MathMarkup", "SiteRules", "PageLinks", "ExtractArticle"]
+                .map { try resource($0, extension: "js") }.joined(separator: "\n")
+            var resources: [String: String] = [:]
+            for _ in 0..<3 {
+                let data = Data(try await evaluate(script, arguments: ["html": html, "sourceURL": url.absoluteString, "resources": resources], in: view).utf8)
+                guard let needs = try? JSONDecoder().decode(Needs.self, from: data).needs else {
+                    var article = try JSONDecoder().decode(ExtractedArticle.self, from: data)
+                    if article.html.contains("<math") { article.html = await wordFormulas(in: article.html, view: view) }
+                    return article
+                }
+                for need in needs {
+                    try Task.checkCancellation()
+                    // A failed fetch leaves the rule to make do without it.
+                    var body = ""
+                    if let needURL = URL(string: need) { body = (try? await fetch(needURL)) ?? "" }
+                    resources[need] = body
+                }
+            }
+            throw ReedError.emptyArticle
+        }
+    }
+
+    /// The page's title and links, without extracting its article.
+    public func pageLinks(html: String, url: URL) async throws -> PageLinks {
+        try await withWebView { view in
+            let script = try resource("PageLinks", extension: "js") + """
+
+                return JSON.stringify(pageLinks(new DOMParser().parseFromString(html, "text/html"), sourceURL));
+                """
+            let json = try await evaluate(script, arguments: ["html": html, "sourceURL": url.absoluteString], in: view)
+            return try JSONDecoder().decode(PageLinks.self, from: Data(json.utf8))
+        }
+    }
+
+    /// Runs `body` with a blank page that can't reach the network, for scripts to work on documents in.
+    private func withWebView<T>(_ body: (WKWebView) async throws -> T) async throws -> T {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         let rules = try await WKContentRuleListStore.default().compileContentRuleList(
@@ -49,24 +87,7 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
             view.loadHTMLString("<html><head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'\"></head><body></body></html>", baseURL: nil)
         }
         try Task.checkCancellation()
-        let script = try ["Readability", "purify.min", "temml.min", "MathMarkup", "SiteRules", "ExtractArticle"].map { try resource($0, extension: "js") }.joined(separator: "\n")
-        var resources: [String: String] = [:]
-        for _ in 0..<3 {
-            let data = Data(try await evaluate(script, arguments: ["html": html, "sourceURL": url.absoluteString, "resources": resources], in: view).utf8)
-            guard let needs = try? JSONDecoder().decode(Needs.self, from: data).needs else {
-                var article = try JSONDecoder().decode(ExtractedArticle.self, from: data)
-                if article.html.contains("<math") { article.html = await wordFormulas(in: article.html, view: view) }
-                return article
-            }
-            for need in needs {
-                try Task.checkCancellation()
-                // A failed fetch leaves the rule to make do without it.
-                var body = ""
-                if let needURL = URL(string: need) { body = (try? await fetch(needURL)) ?? "" }
-                resources[need] = body
-            }
-        }
-        throw ReedError.emptyArticle
+        return try await body(view)
     }
 
     private struct Needs: Decodable { let needs: [String] }

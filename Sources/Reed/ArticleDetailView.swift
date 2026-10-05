@@ -14,6 +14,7 @@ struct ArticleDetailView: View {
     @State private var narrationAway: NarrationDirection?
     @State private var notes: [ArticleNote]?
     @State private var notesOpen = false
+    @State private var findingChapters = false
 
     private var isNarrating: Bool { narrator.articleID == article.id }
 
@@ -101,6 +102,7 @@ struct ArticleDetailView: View {
             ToolbarItem(placement: .primaryAction) { readerMenu }
         }
         #endif
+        .sheet(isPresented: $findingChapters) { FindChaptersView(library: library, start: article) }
         .onDisappear { library.save() }
     }
 
@@ -162,6 +164,9 @@ struct ArticleDetailView: View {
             #else
             Menu("Text Size", systemImage: "textformat.size") { textSizeButtons }
             #endif
+            if article.mayHaveOtherChapters {
+                Button("Find Other Chapters…", systemImage: "square.stack.3d.up") { findingChapters = true }
+            }
             if let url = article.sourceURL {
                 Divider()
                 Button("Open Original", systemImage: "safari") { openURL(url) }

@@ -197,3 +197,111 @@ struct MakeSeriesView: View {
         dismiss()
     }
 }
+
+/// Finds the other chapters of a serial from one of them, and saves those chosen as a series.
+struct FindChaptersView: View {
+    let library: Library
+    let start: Article
+    @Environment(\.dismiss) private var dismiss
+    @State private var chapters: [Chapter] = []
+    @State private var searching = true
+    @State private var chosen: Set<URL> = []
+    @State private var name = ""
+    @State private var error: String?
+
+    private func isSaved(_ chapter: Chapter) -> Bool { library.article(at: chapter.url) != nil }
+    private var unsaved: [Chapter] { chapters.filter { !isSaved($0) } }
+    /// The chapters that will make up the series: those saved already, and those chosen.
+    private var parts: [Chapter] { chapters.filter { isSaved($0) || chosen.contains($0.url) } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            Image(systemName: "square.stack").font(.system(size: 30, weight: .light)).foregroundStyle(ReedStyle.accent)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Other chapters.").font(.system(size: 30, design: .serif))
+                Text(summary).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            if !searching && chapters.count > 1 {
+                TextField("Name", text: $name, prompt: Text("Series name"))
+                    .textFieldStyle(.plain).padding(13)
+                    .background(ReedStyle.warm, in: RoundedRectangle(cornerRadius: 9))
+                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(.primary.opacity(0.12)))
+            }
+            ScrollViewReader { scroller in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(chapters) { chapter in row(chapter).id(chapter.url) }
+                    }
+                }
+                .frame(maxHeight: 320)
+                .onChange(of: chapters.count) { if searching, let last = chapters.last { scroller.scrollTo(last.url) } }
+            }
+            if let error { Text(error).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
+            HStack {
+                if searching {
+                    ProgressView().controlSize(.small)
+                } else if !unsaved.isEmpty {
+                    Button(chosen.count == unsaved.count ? "Choose None" : "Choose All") {
+                        chosen = chosen.count == unsaved.count ? [] : Set(unsaved.map(\.url))
+                    }
+                    .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(ReedStyle.accent)
+                }
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(chosen.isEmpty ? "Make Series" : "Save \(chosen.count)", action: save)
+                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                    .disabled(searching || parts.count < 2 || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(32)
+        #if os(macOS)
+        .frame(width: 510)
+        #endif
+        .task { await find() }
+    }
+
+    private var summary: String {
+        let site = start.domain
+        if searching { return chapters.count > 1 ? "Found \(chapters.count) chapters on \(site) so far…" : "Looking for the chapters around this one on \(site)…" }
+        if chapters.count < 2 { return "No other chapters were found on \(site)." }
+        return "Found \(chapters.count) chapters on \(site). Those chosen are saved, and all are gathered into a series in this order."
+    }
+
+    private func row(_ chapter: Chapter) -> some View {
+        let saved = isSaved(chapter)
+        let picked = saved || chosen.contains(chapter.url)
+        return Button { if chosen.remove(chapter.url) == nil { chosen.insert(chapter.url) } } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: picked ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(saved ? Color.secondary : picked ? ReedStyle.accent : .secondary)
+                Text(chapter.title.isEmpty ? chapter.url.lastPathComponent : chapter.title)
+                    .font(.system(size: 14, design: .serif)).multilineTextAlignment(.leading)
+                    .foregroundStyle(saved ? .secondary : .primary)
+                Spacer(minLength: 0)
+                if saved { Text("Saved").font(.system(size: 10)).foregroundStyle(.secondary) }
+            }
+            .padding(.vertical, 8).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(saved || searching)
+    }
+
+    private func find() async {
+        do {
+            let search = try await library.findChapters(around: start) { chapters = $0 }
+            chapters = search.chapters
+            chosen = Set(unsaved.map(\.url))
+            name = library.series(of: start)?.name ?? search.name
+        } catch is CancellationError {
+            return
+        } catch {
+            self.error = error.localizedDescription
+        }
+        searching = false
+    }
+
+    private func save() {
+        do { try library.save(parts, asSeriesNamed: name); dismiss() }
+        catch { self.error = error.localizedDescription }
+    }
+}

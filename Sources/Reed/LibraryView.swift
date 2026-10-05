@@ -52,6 +52,7 @@ struct LibraryView: View {
     @State private var expandedSeries: Set<UUID> = []
     /// The article a new series is being made from.
     @State private var seriesStart: Article?
+    @State private var chaptersStart: Article?
     @State private var seriesToRename: Series?
     @State private var seriesName = ""
 
@@ -203,6 +204,7 @@ struct LibraryView: View {
         .sheet(item: $seriesStart) { article in
             MakeSeriesView(library: library, start: article) { expandedSeries.insert($0.id) }
         }
+        .sheet(item: $chaptersStart) { article in FindChaptersView(library: library, start: article) }
         .alert("Rename series", isPresented: Binding(get: { seriesToRename != nil }, set: { if !$0 { seriesToRename = nil } })) {
             TextField("Name", text: $seriesName)
             Button("Cancel", role: .cancel) {}
@@ -409,6 +411,9 @@ struct LibraryView: View {
                         withAnimation(.snappy(duration: 0.25)) { expanded.wrappedValue.toggle() }
                     }
                     Button("Rename Series…", systemImage: "pencil") { seriesName = series.name; seriesToRename = series }
+                    if let last = parts.last(where: \.mayHaveOtherChapters) {
+                        Button("Find Other Chapters…", systemImage: "square.stack.3d.up") { chaptersStart = last }
+                    }
                     let finished = parts.allSatisfy(\.isRead)
                     Button(finished ? "Mark All Unread" : "Mark All Finished", systemImage: "checkmark.circle") {
                         library.setRead(!finished, for: parts)
@@ -487,6 +492,9 @@ struct LibraryView: View {
                 Divider()
                 Button("New Series…") { seriesStart = article }
             }
+        }
+        if article.mayHaveOtherChapters {
+            Button("Find Other Chapters…", systemImage: "square.stack.3d.up") { chaptersStart = article }
         }
     }
 

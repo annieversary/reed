@@ -370,6 +370,24 @@
 			<key>fileRef</key>
 			<string>98CED4B3A5C97EFC85BEB56A</string>
 		</dict>
+		<key>D65FBF6BA5AB19F660046967</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Chapters.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>1E23CEB4C82ED008FF66EE27</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>D65FBF6BA5AB19F660046967</string>
+		</dict>
 		<key>E54706938FEB6E4E3EB76450</key>
 		<dict>
 			<key>isa</key>
@@ -513,6 +531,24 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>EEB59B1F82DE7697DFA2EA5C</string>
+		</dict>
+		<key>8A5CE7021C135F9894E6C4F1</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/PageLinks.js</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>C4B01BD465F9ACCBC396F81A</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>8A5CE7021C135F9894E6C4F1</string>
 		</dict>
 		<key>F0BA769FF6C009D39AF6272F</key>
 		<dict>
@@ -853,6 +889,7 @@
 				<string>C7C083B320598DF853248CE7</string>
 				<string>0F00F9E6EFCE07893391938D</string>
 				<string>98CED4B3A5C97EFC85BEB56A</string>
+				<string>D65FBF6BA5AB19F660046967</string>
 				<string>E54706938FEB6E4E3EB76450</string>
 				<string>71ED38E1A22A53FC09CC788E</string>
 				<string>709F77BB5F9974865AC45CF4</string>
@@ -861,6 +898,7 @@
 				<string>CEFEDFD4E31E49F4A1E14286</string>
 				<string>E4537F5D14830A127945A908</string>
 				<string>EEB59B1F82DE7697DFA2EA5C</string>
+				<string>8A5CE7021C135F9894E6C4F1</string>
 				<string>F0BA769FF6C009D39AF6272F</string>
 				<string>794BE653DD175AFB4AD9B138</string>
 				<string>06E25CC4B1EF40148A6D4D98</string>
@@ -938,6 +976,7 @@
 				<string>748F4987748ED592A1870175</string>
 				<string>E1ABA6BD0D809094C5E6E816</string>
 				<string>3483221D2BB5C1A5B6A79D8D</string>
+				<string>1E23CEB4C82ED008FF66EE27</string>
 				<string>AE024CFD9B7E72C3CD28BCD8</string>
 				<string>195C31670E982970F5E5921F</string>
 				<string>E990D3D09BB177A7DFFE6EEE</string>
@@ -963,6 +1002,7 @@
 				<string>AEC029FEFB7F48EAA6D5738F</string>
 				<string>C47B733E82AC3618641BA5AE</string>
 				<string>5655465D5EE8F72D987F1856</string>
+				<string>C4B01BD465F9ACCBC396F81A</string>
 				<string>28237ABACD757084E075B439</string>
 				<string>4A73C7488519AA95EFE0670F</string>
 				<string>57712CA757F1D4E0806AFC1C</string>

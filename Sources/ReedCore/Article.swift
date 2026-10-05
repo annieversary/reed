@@ -41,6 +41,8 @@ public final class Article {
     public var narrationPassage: Int?
     /// Downloaded ahead from a front page or feed so it can be read offline, but not saved to the library.
     public var isCached: Bool = false
+    /// Whether the page links to chapters either side of it; nil if it was saved before that was looked for.
+    public var leadsToOtherChapters: Bool?
 
     public init(url: URL, id: UUID = UUID()) {
         self.id = id
@@ -65,6 +67,11 @@ public final class Article {
 
     public var sourceURL: URL? { URL(string: resolvedURL ?? originalURL) }
     public var domain: String { sourceURL?.host()?.replacingOccurrences(of: "www.", with: "") ?? originalURL }
+    /// Whether finding the chapters around this one is worth offering. Articles saved before chapter links were
+    /// looked for are guessed at from their titles.
+    public var mayHaveOtherChapters: Bool {
+        sourceURL != nil && (leadsToOtherChapters ?? (SeriesTitle.partNumber(in: title) != nil))
+    }
     public var readingMinutes: Int { max(1, Int(ceil(Double(wordCount) / 230))) }
 }
 

@@ -417,6 +417,40 @@ public final class Library {
         }
     }
 
+    /// Puts articles into one series in the order given: the series one of them is in already, or else a new
+    /// one. Parts already in that series but not given stay, after them.
+    @discardableResult public func gather(_ parts: [Article], named name: String) -> Series? {
+        guard !parts.isEmpty else { return nil }
+        let ids = parts.map(\.id)
+        var gathered = series.first { $0.parts.contains(where: ids.contains) }
+            ?? Series(name: name.trimmingCharacters(in: .whitespacesAndNewlines), parts: [])
+        gathered.parts = ids + gathered.parts.filter { !ids.contains($0) }
+        updateSeries { all in
+            for index in all.indices where all[index].id != gathered.id { all[index].parts.removeAll(where: ids.contains) }
+            all.removeAll { $0.parts.isEmpty }
+            if let index = all.firstIndex(where: { $0.id == gathered.id }) { all[index] = gathered } else { all.append(gathered) }
+        }
+        return gathered
+    }
+
+    /// The chapters of the serial the article is a chapter of, found from the links between them. `found` hears
+    /// of them as they're found.
+    public func findChapters(around article: Article, found: ([Chapter]) -> Void) async throws -> ChapterSearch {
+        guard let url = article.sourceURL else { throw ReedError.invalidURL }
+        // Its own, so finding chapters doesn't wait on an article being saved.
+        let extractor = ArticleExtractor()
+        let finder = ChapterFinder { [downloader] url in
+            let page = try await downloader.page(at: url)
+            return (page.url, try await extractor.pageLinks(html: page.html, url: page.url))
+        }
+        return try await finder.chapters(around: url, found: found)
+    }
+
+    /// Saves the chapters not saved yet, and gathers them all into one series in the order given.
+    @discardableResult public func save(_ chapters: [Chapter], asSeriesNamed name: String) throws -> Series? {
+        gather(try chapters.map { try add($0.url.absoluteString) }, named: name)
+    }
+
     /// Takes an article out of its series, which goes once it has no parts left.
     public func removeFromSeries(_ article: Article) {
         guard series(of: article) != nil else { return }
@@ -645,6 +679,7 @@ public final class Library {
             article.wordCount = extracted.wordCount
             article.imageCount = extracted.images.count - missing
             article.missingImageCount = missing
+            article.leadsToOtherChapters = ChapterLinks(page: extracted.page, url: page.url).leadsToOtherChapters
             article.contentVersion = version
             article.downloadedAt = .now
             article.state = missing > 0 ? .partial : .ready
