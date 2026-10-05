@@ -632,10 +632,20 @@ public final class Library {
             if let staging { try? FileManager.default.removeItem(at: staging) }
         }
         do {
-            report("Fetching \(article.domain)…")
-            let page = try await downloader.page(at: ArticleURL.parse(article.originalURL))
-            report("Finding the article…")
-            let extracted = try await extract(page, report: report)
+            let source = try ArticleURL.parse(article.originalURL)
+            let pageURL: URL
+            let extracted: ExtractedArticle
+            if let video = YouTube.videoID(in: source) {
+                report("Fetching the transcript…")
+                extracted = try await YouTube.transcript(of: video, using: downloader)
+                pageURL = YouTube.watchURL(video)
+            } else {
+                report("Fetching \(article.domain)…")
+                let page = try await downloader.page(at: source)
+                report("Finding the article…")
+                extracted = try await extract(page, report: report)
+                pageURL = page.url
+            }
             let directory = try storage.createStagingDirectory()
             staging = directory
             var body = extracted.html
@@ -666,7 +676,7 @@ public final class Library {
                 }
             }
             let document = ArticleHTML.document(title: extracted.title, author: extracted.author,
-                                                domain: Article.domain(of: page.url) ?? "", minutes: max(1, Int(ceil(Double(extracted.wordCount) / 230))), body: body)
+                                                domain: Article.domain(of: pageURL) ?? "", minutes: max(1, Int(ceil(Double(extracted.wordCount) / 230))), body: body)
             try document.write(to: directory.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
             let version = UUID().uuidString
             try storage.commit(staging: directory, id: article.id, version: version)
@@ -675,11 +685,11 @@ public final class Library {
             article.author = extracted.author
             article.publishedAt = extracted.publishedAt.map { Date(timeIntervalSince1970: $0 / 1000) }
             article.excerpt = extracted.excerpt
-            article.resolvedURL = page.url.absoluteString
+            article.resolvedURL = pageURL.absoluteString
             article.wordCount = extracted.wordCount
             article.imageCount = extracted.images.count - missing
             article.missingImageCount = missing
-            article.leadsToOtherChapters = ChapterLinks(page: extracted.page, url: page.url).leadsToOtherChapters
+            article.leadsToOtherChapters = ChapterLinks(page: extracted.page, url: pageURL).leadsToOtherChapters
             article.contentVersion = version
             article.downloadedAt = .now
             article.state = missing > 0 ? .partial : .ready

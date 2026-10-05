@@ -809,6 +809,24 @@
 			<key>fileRef</key>
 			<string>1DD381AB02DE9B858DEA0D7D</string>
 		</dict>
+		<key>8EE19AFD73856104EEE50822</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/YouTube.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>AA03910F0752AC3AA16025A4</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>8EE19AFD73856104EEE50822</string>
+		</dict>
 		<key>F1EEAC1AABD95DE2505EEBCD</key>
 		<dict>
 			<key>isa</key>
@@ -913,6 +931,7 @@
 				<string>CE88F19EEA1429E85B50DAE5</string>
 				<string>D6B3E48F2D5F9A78B16590C0</string>
 				<string>1DD381AB02DE9B858DEA0D7D</string>
+				<string>8EE19AFD73856104EEE50822</string>
 				<string>F1EEAC1AABD95DE2505EEBCD</string>
 				<string>FBDC4F23F93125BBEEAE800C</string>
 			</array>
@@ -985,6 +1004,7 @@
 				<string>DABFDAF3DA54B71E77115C79</string>
 				<string>E02CFC5074F0F3AE2CC43C5B</string>
 				<string>C63FD7F25C65273D3CA18C5B</string>
+				<string>AA03910F0752AC3AA16025A4</string>
 			</array>
 			<key>runOnlyForDeploymentPostprocessing</key>
 			<integer>0</integer>

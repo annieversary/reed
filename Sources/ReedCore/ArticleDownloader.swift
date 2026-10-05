@@ -70,6 +70,16 @@ public actor ArticleDownloader {
         return try await fetch(request, limit: 2 * 1024 * 1024, kind: .json).0
     }
 
+    /// The JSON answer to POSTing `body` as JSON.
+    public func json(posting body: Data, to url: URL, userAgent: String? = nil) async throws -> Data {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let userAgent { request.setValue(userAgent, forHTTPHeaderField: "User-Agent") }
+        return try await fetch(request, limit: 2 * 1024 * 1024, kind: .json).0
+    }
+
     /// A feed, or a page that may link to one; the content type isn't checked, since feeds are served under many.
     public func feed(at url: URL, etag: String? = nil, lastModified: String? = nil) async throws -> FeedDownload {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)

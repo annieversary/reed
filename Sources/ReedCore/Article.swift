@@ -81,7 +81,7 @@ public final class Article {
 
 public enum ReedError: LocalizedError {
     case invalidURL, unsupportedContent, emptyArticle, oversizedDownload, httpStatus(Int), extractionTimeout
-    case damagedArticle, noFeed, unreadableFeed, substackSignedOut
+    case damagedArticle, noFeed, unreadableFeed, substackSignedOut, noTranscript, unavailableVideo(reason: String?)
 
     public var errorDescription: String? {
         switch self {
@@ -95,6 +95,8 @@ public enum ReedError: LocalizedError {
         case .noFeed: "No feed was found at this address."
         case .unreadableFeed: "The feed couldn't be read."
         case .substackSignedOut: "Sign in to Substack in Settings to see the posts it picks for you."
+        case .noTranscript: "This video has no captions to make a transcript from."
+        case .unavailableVideo(let reason): "YouTube won't play this video" + (reason.map { ": \($0)" } ?? ".")
         }
     }
 }
@@ -116,6 +118,7 @@ public enum ArticleURL {
             components.port = nil
         }
         guard let url = components.url else { throw ReedError.invalidURL }
-        return url
+        // A video's many links all save as the one.
+        return YouTube.videoID(in: url).map { YouTube.watchURL($0) } ?? url
     }
 }
