@@ -186,6 +186,13 @@ struct LibraryView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .reedAddArticle)) { _ in showingAdd = true }
+        .onReceive(NotificationCenter.default.publisher(for: .reedShowBook)) { notification in
+            guard let ids = notification.object as? [UUID], let book = ids.first else { return }
+            selection = .books(.all)
+            selectedBookID = book
+            // After the book's selection has reset what's open in it.
+            Task { bookPath = ids.dropFirst().map { BookPage(chapter: $0) } }
+        }
         .onAppear { if !columnsStack { selection = .collection(.all) } }
         .onChange(of: [selectedID, narrator.readableID], initial: true) { _, ids in library.retained = Set(ids.compactMap { $0 }) }
         .onChange(of: selectedBookID) { bookPath = [] }
@@ -200,13 +207,6 @@ struct LibraryView: View {
         #if DEBUG && os(macOS)
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("reed.smokeSelectArticle"))) { notification in
             selectedID = notification.object as? UUID
-        }
-        // A book, and the chapter to open in it, if any.
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("reed.smokeSelectBook"))) { notification in
-            guard let ids = notification.object as? [UUID], let book = ids.first else { return }
-            selection = .books(.all)
-            selectedBookID = book
-            Task { bookPath = ids.dropFirst().map { BookPage(chapter: $0) } }
         }
         #endif
         .alert("Library error", isPresented: Binding(get: { library.errorMessage != nil }, set: { if !$0 { library.errorMessage = nil } })) {

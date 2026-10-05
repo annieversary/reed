@@ -39,7 +39,7 @@ Builds for `generic/platform=iOS`, then installs and launches over `devicectl`. 
 - Retry failures, recover interrupted downloads on launch, and delete saved articles.
 - Deduplicate normalized URLs without stripping meaningful query parameters.
 - Save PDFs as articles, reflowed into paragraphs with their headings, captions and code, and their figures, tables and displayed equations cropped from the page (macOS 26 or iOS 26). arXiv papers without an HTML rendering are read from their PDF.
-- Add EPUB books to a shelf of their own, from the shelf's add button, by dropping them on it, or from the share sheet. A book is read a chapter at a time, with the same reader, notes and narration as an article; each chapter ends with a card for the next, and listening carries on into it. Books are favorited whole; chapters are marked finished one by one, and the shelf shows how far through each book you are. Books locked to a store's app can't be read.
+- Add EPUB books to a shelf of their own, from the shelf's add button, by dropping them on it, from the share sheet, or by opening them with Reed from Finder or Files. A book is read a chapter at a time, with the same reader, notes and narration as an article; each chapter ends with a card for the next, and listening carries on into it. Books are favorited whole; chapters are marked finished one by one, and the shelf shows how far through each book you are. Books locked to a store's app can't be read.
 
 The library starts empty. Test fixtures are kept separate from the user's library.
 

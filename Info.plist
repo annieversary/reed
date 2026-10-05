@@ -14,6 +14,15 @@
     <key>LSMinimumSystemVersion</key><string>$(MACOSX_DEPLOYMENT_TARGET)</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoads</key><true/></dict>
+    <key>CFBundleDocumentTypes</key><array><dict>
+        <key>CFBundleTypeName</key><string>EPUB Book</string>
+        <key>CFBundleTypeRole</key><string>Viewer</string>
+        <!-- Offered as another app to open books with, without taking them from Books. -->
+        <key>LSHandlerRank</key><string>Alternate</string>
+        <key>LSItemContentTypes</key><array><string>org.idpf.epub-container</string></array>
+    </dict></array>
+    <!-- Opened books arrive as copies for Reed to keep its own copy of. -->
+    <key>LSSupportsOpeningDocumentsInPlace</key><false/>
     <key>UIBackgroundModes</key><array><string>audio</string></array>
     <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
     <key>UILaunchScreen</key><dict/>

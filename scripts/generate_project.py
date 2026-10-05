@@ -139,7 +139,7 @@ scheme_dir.mkdir(parents=True, exist_ok=True)
 print("Generated Reed.xcodeproj")
 
 mac_info = plistlib.loads((ROOT / "Info.plist").read_bytes())
-for key in ["UIApplicationSceneManifest", "UILaunchScreen", "UISupportedInterfaceOrientations", "UIBackgroundModes"]:
+for key in ["UIApplicationSceneManifest", "UILaunchScreen", "UISupportedInterfaceOrientations", "UIBackgroundModes", "LSSupportsOpeningDocumentsInPlace"]:
     mac_info.pop(key, None)
 mac_info["NSPrincipalClass"] = "NSApplication"
 (ROOT / "Info-macOS.plist").write_bytes(plistlib.dumps(mac_info, sort_keys=False))

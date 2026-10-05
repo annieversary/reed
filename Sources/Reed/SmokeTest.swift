@@ -106,10 +106,10 @@ import ReedCore
                     try await Task.sleep(for: .seconds(1))
                     try capture(window, to: folder.appendingPathComponent("library.png"))
                     if let book = library.books.first, let chapter = book.orderedChapters.first {
-                        NotificationCenter.default.post(name: Notification.Name("reed.smokeSelectBook"), object: [book.id])
+                        NotificationCenter.default.post(name: .reedShowBook, object: [book.id])
                         try await Task.sleep(for: .seconds(1))
                         try capture(window, to: folder.appendingPathComponent("book.png"))
-                        NotificationCenter.default.post(name: Notification.Name("reed.smokeSelectBook"), object: [book.id, chapter.id])
+                        NotificationCenter.default.post(name: .reedShowBook, object: [book.id, chapter.id])
                         try await Task.sleep(for: .seconds(1))
                         try capture(window, to: folder.appendingPathComponent("chapter.png"))
                     }

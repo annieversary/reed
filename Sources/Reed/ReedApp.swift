@@ -20,6 +20,16 @@ import ReedCore
     if let shareInbox { library.addShared(from: shareInbox) }
 }
 
+/// Adds an EPUB opened with Reed from elsewhere, such as Finder or Files, and shows it.
+@MainActor private func openBook(at url: URL, in library: Library) {
+    let scoped = url.startAccessingSecurityScopedResource()
+    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+    do {
+        let book = try library.add(bookAt: url, name: url.lastPathComponent)
+        NotificationCenter.default.post(name: .reedShowBook, object: [book.id])
+    } catch { library.errorMessage = error.localizedDescription }
+}
+
 #if os(macOS)
 // An explicit AppKit window gives the desktop prototype deterministic launch/reopen behavior.
 // Its entire content is the same SwiftUI LibraryView used on iOS.
@@ -35,6 +45,8 @@ import ReedCore
 
 @MainActor final class ReedDesktopDelegate: NSObject, NSApplicationDelegate {
     private var library: Library?
+    /// Files opened before the library was, as when Reed is launched to open one.
+    private var pendingFiles: [URL] = []
     private let narrator = Narrator()
     private var window: NSWindow?
     private var settingsWindow: NSWindow?
@@ -54,6 +66,8 @@ import ReedCore
                 #endif
                 addShared(to: library)
                 library.resumeDownloads()
+                for url in pendingFiles { openBook(at: url, in: library) }
+                pendingFiles = []
             }
             ShareInbox.forwardDeposits()
             NotificationCenter.default.addObserver(forName: ShareInbox.didDeposit, object: nil, queue: .main) { _ in
@@ -77,6 +91,13 @@ import ReedCore
         self.window = window
         window.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let books = urls.filter { $0.pathExtension.lowercased() == "epub" }
+        guard let library else { pendingFiles += books; return }
+        window?.makeKeyAndOrderFront(nil)
+        for url in books { openBook(at: url, in: library) }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -158,6 +179,12 @@ import ReedCore
                     LibraryView(library: library)
                         .task { addShared(to: library); library.resumeDownloads() }
                         .onReceive(NotificationCenter.default.publisher(for: ShareInbox.didDeposit)) { _ in addShared(to: library) }
+                        .onOpenURL { url in
+                            guard url.isFileURL, url.pathExtension.lowercased() == "epub" else { return }
+                            openBook(at: url, in: library)
+                            // Handed over as a copy in the app's Inbox, which Reed has copied in turn.
+                            if url.path.contains("/Documents/Inbox/") { try? FileManager.default.removeItem(at: url) }
+                        }
                 } else {
                     ContentUnavailableView("Couldn't open your library", systemImage: "externaldrive.badge.exclamationmark",
                                            description: Text(startupError ?? "An unknown storage error occurred."))
@@ -178,6 +205,8 @@ import ReedCore
 
 extension Notification.Name {
     static let reedAddArticle = Notification.Name("reed.addArticle")
+    /// Shows a book, and a chapter of it if given, as an array of their IDs.
+    static let reedShowBook = Notification.Name("reed.showBook")
 }
 
 enum ReedStyle {
