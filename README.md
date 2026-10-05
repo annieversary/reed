@@ -38,6 +38,7 @@ Builds for `generic/platform=iOS`, then installs and launches over `devicectl`. 
 - Distinguish queued, downloading, saved, partially saved, and failed downloads.
 - Retry failures, recover interrupted downloads on launch, and delete saved articles.
 - Deduplicate normalized URLs without stripping meaningful query parameters.
+- Save PDFs as articles, reflowed into paragraphs with their headings, captions and code, and their figures, tables and displayed equations cropped from the page (macOS 26 or iOS 26). arXiv papers without an HTML rendering are read from their PDF.
 
 The library starts empty. Test fixtures are kept separate from the user's library.
 
@@ -75,7 +76,9 @@ Article packages are assembled in staging and moved into place before metadata p
 
 The extractor runs bundled JavaScript against an inert DOM in a network-blocked WebKit shell. When the served HTML holds almost no text, as with pages that assemble their article in the browser, `PageRenderer` loads the page once in a throwaway WebKit view (no stored data, no images, media, frames or new windows), lets its scripts run until the text settles, and extracts from the result the same way. Publisher scripts never run in the reader. The reader uses sanitized HTML, disabled page JavaScript, a restrictive content security policy, and local files only; following a link explicitly opens the system browser.
 
-Downloads are sequential and bounded: 8 MiB of HTML, 12 MiB per image, up to 40 images and 64 MiB of image data per article. Image failures preserve the text and display a partial-save status. Images may be raster or SVG files, and drawings inlined in the page as SVG are kept too (without icons); remote embeds are excluded.
+`PDFArticle` turns a PDF into the same kind of article. PDFKit's text layer gives the exact words, line by line, with their fonts; Vision's `RecognizeDocumentsRequest` gives the reading order, so two-column papers read down one column and then the next. Lines become paragraphs by their spacing, indents and short last lines, and become headings, captions, code or running heads by their size, weight and wording. What doesn't reflow (drawings, charts, tables and displayed equations) is cropped from the page at four times its size: drawings are found as ink between the text, and a caption claims the cells or labels beside it. Scanned pages are read with Vision's own text recognition.
+
+Downloads are sequential and bounded: 8 MiB of HTML, 12 MiB per image, up to 40 images and 64 MiB of image data per article, and 64 MiB per PDF. Image failures preserve the text and display a partial-save status. Images may be raster or SVG files, and drawings inlined in the page as SVG are kept too (without icons); remote embeds are excluded.
 
 ## Validation
 
@@ -92,7 +95,7 @@ After adding source or resource files, run `python3 scripts/generate_project.py`
 
 - Keep the app open while saving. The queue is persistent, but this version does not implement iOS background transfers, so shared links wait until Reed is opened.
 - Public HTML articles are supported. Pages that require JavaScript rendering, login, or a paywall may fail extraction or only expose a preview; Reed does not bypass those restrictions.
-- PDFs, video, audio, multi-page articles, accounts, cloud sync, tags, and full-text search are not implemented.
+- Video, audio, multi-page articles, accounts, cloud sync, tags, and full-text search are not implemented.
 - The Mac app is not sandboxed or notarized; only its share extension is sandboxed. App Store packaging, app icons, distribution signing, and iPhone interaction testing are follow-up work.
 - HTTP URLs are allowed for user-selected article sources. The reader itself blocks remote loading.
 

@@ -92,6 +92,8 @@ public enum ArticleHTML {
         a { color:var(--accent); text-underline-offset:4px; } img, svg { max-width:100%; height:auto; border-radius:4px; }
         @media(prefers-color-scheme:dark) { svg { background:#fff; color:#282d28; } }
         figure { margin:2em 0; } figcaption { font:13px/1.6 -apple-system,sans-serif; color:var(--muted); }
+        figure.equation { margin:1.4em 0; text-align:center; } .footnotes { font-size:0.85em; color:var(--muted); }
+        @media(prefers-color-scheme:dark) { figure.equation img { filter:invert(1) hue-rotate(180deg); } }
         blockquote { margin:1.7em 0; padding-left:24px; border-left:3px solid var(--accent); font-style:italic; }
         pre { overflow:auto; padding:18px; background:color-mix(in srgb,var(--muted) 10%,transparent); border-radius:5px; }
         math { font-family:"STIX Two Math",math; } code { font:0.85em ui-monospace,monospace; } table { display:block; max-width:100%; overflow:auto; border-collapse:collapse; }

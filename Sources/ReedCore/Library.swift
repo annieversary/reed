@@ -621,6 +621,11 @@ public final class Library {
         return extracted
     }
 
+    private func readPDF(_ data: Data, url: URL) async throws -> (ExtractedArticle, [String: Data]) {
+        guard #available(macOS 26, iOS 26, *) else { throw ReedError.pdfNeedsNewerSystem }
+        return try await PDFArticle.extract(data, url: url)
+    }
+
     private func download(_ article: Article) async {
         article.state = .downloading
         save()
@@ -635,16 +640,36 @@ public final class Library {
             let source = try ArticleURL.parse(article.originalURL)
             let pageURL: URL
             let extracted: ExtractedArticle
+            /// Pictures that came with the article rather than needing a download, by file name.
+            var pictures: [String: Data] = [:]
             if let video = YouTube.videoID(in: source) {
                 report("Fetching the transcript…")
                 extracted = try await YouTube.transcript(of: video, using: downloader)
                 pageURL = YouTube.watchURL(video)
             } else {
                 report("Fetching \(article.domain)…")
-                let page = try await downloader.page(at: source)
-                report("Finding the article…")
-                extracted = try await extract(page, report: report)
-                pageURL = page.url
+                switch try await downloader.document(at: source) {
+                case .pdf(let data, let url):
+                    report("Reading the PDF…")
+                    (extracted, pictures) = try await readPDF(data, url: url)
+                    pageURL = url
+                case .page(let page):
+                    report("Finding the article…")
+                    let found = try await extract(page, report: report)
+                    if let paperURL = ArticleDownloader.arxivPDF(for: page.url, extracted: found.html) {
+                        // The abstract page names the paper, and without an HTML rendering its PDF is the paper.
+                        report("Fetching the paper…")
+                        let pdf = try await downloader.pdf(at: paperURL)
+                        report("Reading the PDF…")
+                        let paper: ExtractedArticle
+                        (paper, pictures) = try await readPDF(pdf.data, url: pdf.url)
+                        extracted = ExtractedArticle(title: found.title, author: found.author ?? paper.author, publishedAt: found.publishedAt ?? paper.publishedAt,
+                                                     excerpt: found.excerpt, html: paper.html, wordCount: paper.wordCount, images: paper.images, page: found.page)
+                    } else {
+                        extracted = found
+                    }
+                    pageURL = page.url
+                }
             }
             let directory = try storage.createStagingDirectory()
             staging = directory
@@ -653,6 +678,10 @@ public final class Library {
             var totalBytes = 0
             for (index, image) in extracted.images.enumerated() {
                 try Task.checkCancellation()
+                if let data = pictures[image.filename] {
+                    try data.write(to: directory.appendingPathComponent(image.filename), options: .atomic)
+                    continue
+                }
                 let message = "Saving image \(index + 1) of \(extracted.images.count)…"
                 imageActivity = message
                 report(message)

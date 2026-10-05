@@ -82,11 +82,12 @@ public final class Article {
 public enum ReedError: LocalizedError {
     case invalidURL, unsupportedContent, emptyArticle, oversizedDownload, httpStatus(Int), extractionTimeout
     case damagedArticle, noFeed, unreadableFeed, substackSignedOut, noTranscript, unavailableVideo(reason: String?)
+    case unreadablePDF, pdfNeedsNewerSystem
 
     public var errorDescription: String? {
         switch self {
         case .invalidURL: "Enter a valid http or https article URL."
-        case .unsupportedContent: "This link isn't an HTML article. PDFs and other files aren't supported yet."
+        case .unsupportedContent: "This link isn't an HTML article or a PDF."
         case .emptyArticle: "No readable article was found. The page may need a login or JavaScript."
         case .oversizedDownload: "This page or image exceeds the download size limit."
         case .httpStatus(let code): "The website returned an error (HTTP \(code)). Try opening the original link."
@@ -97,6 +98,8 @@ public enum ReedError: LocalizedError {
         case .substackSignedOut: "Sign in to Substack in Settings to see the posts it picks for you."
         case .noTranscript: "This video has no captions to make a transcript from."
         case .unavailableVideo(let reason): "YouTube won't play this video" + (reason.map { ": \($0)" } ?? ".")
+        case .unreadablePDF: "This PDF couldn't be read. It may be damaged or password-protected."
+        case .pdfNeedsNewerSystem: "Saving PDFs needs macOS 26 or iOS 26."
         }
     }
 }

@@ -5,6 +5,12 @@ public struct DownloadedPage: Sendable {
     public let url: URL
 }
 
+/// What a link to an article turned out to be.
+public enum DownloadedDocument: Sendable {
+    case page(DownloadedPage)
+    case pdf(Data, url: URL)
+}
+
 /// A feed fetched with the validators from its last fetch.
 public enum FeedDownload: Sendable {
     case unchanged
@@ -25,6 +31,25 @@ public actor ArticleDownloader {
 
     public func page(at url: URL) async throws -> DownloadedPage {
         let (data, response) = try await fetch(Self.readablePage(for: url), limit: 8 * 1024 * 1024, kind: .html)
+        return try Self.page(from: data, response: response)
+    }
+
+    /// The page at `url`, or the PDF it serves.
+    public func document(at url: URL) async throws -> DownloadedDocument {
+        let (data, response) = try await fetch(Self.readablePage(for: url), limit: 8 * 1024 * 1024, kind: .document)
+        if data.starts(with: Data("%PDF".utf8)) { return .pdf(data, url: response.url ?? url) }
+        guard Self.htmlTypes.contains(response.mimeType?.lowercased() ?? "") else { throw ReedError.unsupportedContent }
+        return .page(try Self.page(from: data, response: response))
+    }
+
+    /// The PDF at `url`, as it is.
+    public func pdf(at url: URL) async throws -> (data: Data, url: URL) {
+        let (data, response) = try await fetch(url, limit: 8 * 1024 * 1024, kind: .document)
+        guard data.starts(with: Data("%PDF".utf8)) else { throw ReedError.unsupportedContent }
+        return (data, response.url ?? url)
+    }
+
+    private static func page(from data: Data, response: HTTPURLResponse) throws -> DownloadedPage {
         let encoding: String.Encoding
         switch response.textEncodingName?.lowercased() {
         case "iso-8859-1", "latin1": encoding = .isoLatin1
@@ -35,6 +60,14 @@ public actor ArticleDownloader {
         guard let html = String(data: data, encoding: encoding) ?? String(data: data, encoding: .windowsCP1252),
               let finalURL = response.url else { throw ReedError.unsupportedContent }
         return DownloadedPage(html: html, url: finalURL)
+    }
+
+    /// The PDF of an arXiv paper saved from its abstract page without the paper itself, because arXiv has no
+    /// HTML rendering of it or couldn't make one.
+    static func arxivPDF(for url: URL, extracted html: String) -> URL? {
+        guard let host = url.host(), host == "arxiv.org" || host.hasSuffix(".arxiv.org"),
+              url.path().hasPrefix("/abs/"), !html.contains("<h2>Paper</h2>") else { return nil }
+        return URL(string: "https://arxiv.org/pdf/" + url.path().dropFirst("/abs/".count))
     }
 
     /// arXiv's PDF and HTML renderings, as their abstract page, which links to the HTML when there is one.
@@ -93,7 +126,9 @@ public actor ArticleDownloader {
                         lastModified: response.value(forHTTPHeaderField: "Last-Modified"))
     }
 
-    private enum Kind { case html, image, json, resource, feed }
+    private enum Kind { case html, document, image, json, resource, feed }
+    private static let htmlTypes = ["text/html", "application/xhtml+xml"]
+    private static let pdfTypes = ["application/pdf", "application/x-pdf", "application/octet-stream", "binary/octet-stream"]
 
     private func fetch(_ url: URL, limit: Int, kind: Kind) async throws -> (Data, HTTPURLResponse) {
         try await fetch(URLRequest(url: url), limit: limit, kind: kind)
@@ -108,7 +143,9 @@ public actor ArticleDownloader {
         let mime = response.mimeType?.lowercased() ?? ""
         switch kind {
         case .html:
-            guard ["text/html", "application/xhtml+xml"].contains(mime) else { throw ReedError.unsupportedContent }
+            guard Self.htmlTypes.contains(mime) else { throw ReedError.unsupportedContent }
+        case .document:
+            guard Self.htmlTypes.contains(mime) || Self.pdfTypes.contains(mime) else { throw ReedError.unsupportedContent }
         case .json:
             guard mime == "application/json" else { throw ReedError.unsupportedContent }
         case .resource:
@@ -118,6 +155,8 @@ public actor ArticleDownloader {
         case .feed:
             break
         }
+        // PDFs carry their pictures with them, so they may be larger than a page.
+        let limit = kind == .document && Self.pdfTypes.contains(mime) ? 64 * 1024 * 1024 : limit
         guard response.expectedContentLength <= limit else { throw ReedError.oversizedDownload }
         var data = Data()
         data.reserveCapacity(min(max(Int(response.expectedContentLength), 0), limit))

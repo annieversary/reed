@@ -34,6 +34,7 @@ import ReedCore
                 try check(article.id == duplicate.id, "URL fragments do not create duplicate articles")
                 let failed = try library.add(base + "/unavailable")
                 let unsupported = try library.add(base + "/document.pdf")
+                let paper = try library.add(base + "/paper.pdf")
                 let deadline = Date().addingTimeInterval(90)
                 while library.articles.contains(where: { $0.state == .queued || $0.state == .downloading }) && Date() < deadline {
                     try await Task.sleep(for: .milliseconds(100))
@@ -44,15 +45,22 @@ import ReedCore
                 try check(article.author == "Reed Studio", "Readability extracts the author")
                 try check(article.resolvedURL == base + "/story", "Redirected source URL is retained")
                 try check(failed.state == .failed && failed.failureMessage?.contains("503") == true, "HTTP errors are surfaced")
-                try check(unsupported.state == .failed, "Non-HTML content is rejected")
+                try check(unsupported.state == .failed, "Content that is neither HTML nor a readable PDF is rejected")
                 try check(rendered.state == .ready && rendered.wordCount > 150, "Pages built by script are rendered before extraction")
+                try check(paper.state == .ready && paper.title == "Reading Papers Offline" && paper.wordCount > 150,
+                          "PDFs are saved as articles (\(paper.failureMessage ?? paper.title))")
+                if let content = library.contentURL(for: paper) {
+                    let html = try String(contentsOf: content, encoding: .utf8)
+                    try check(html.contains("<h2>1 Introduction</h2>") && html.components(separatedBy: "<p>").count - 1 == 2,
+                              "PDF text is reflowed into its heading and paragraphs")
+                }
                 library.toggleFavorite(article)
                 library.updateProgress(article, value: 0.4)
                 library.save()
             } else {
-                try check(library.articles.count == 4, "Library survives a full app restart")
+                try check(library.articles.count == 5, "Library survives a full app restart")
             }
-            guard let article = library.articles.first(where: { $0.state.isReadable }), let url = library.contentURL(for: article) else {
+            guard let article = library.articles.first(where: { $0.state.isReadable && $0.isFavorite }), let url = library.contentURL(for: article) else {
                 throw Failure(message: "No readable local article")
             }
             try check(article.isFavorite && abs(article.progress - 0.4) < 0.01, "Favorite and reading position persist")
