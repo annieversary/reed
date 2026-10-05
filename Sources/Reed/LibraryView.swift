@@ -390,22 +390,10 @@ struct LibraryView: View {
     }
 
     private var readerPlaceholder: some View {
-        VStack(spacing: 24) {
-            ZStack {
-                Circle().stroke(ReedStyle.accent.opacity(0.08), lineWidth: 1).frame(width: 150, height: 150)
-                Circle().fill(ReedStyle.accent.opacity(0.05)).frame(width: 108, height: 108)
-                Image(systemName: "book.pages").font(.system(size: 40, weight: .ultraLight)).foregroundStyle(ReedStyle.accent)
-            }
-            VStack(spacing: 12) {
-                Text("A quieter place to read.").font(.system(size: 30, design: .serif)).tracking(-0.6)
-                Text("Save the articles that catch your eye.\nRead them here, even when you're offline.")
-                    .font(.system(size: 13)).foregroundStyle(.secondary).lineSpacing(5).multilineTextAlignment(.center)
-            }
-            Button { showingAdd = true } label: {
-                Label(library.articles.isEmpty ? "Save your first article" : "Save an article", systemImage: "plus")
-                    .font(.system(size: 12, weight: .medium)).padding(.horizontal, 10).padding(.vertical, 6)
-            }.buttonStyle(.borderedProminent)
-            Text("PAUSE. SAVE. COME BACK.").font(.system(size: 9, weight: .medium)).tracking(2).foregroundStyle(.tertiary).padding(.top, 35)
+        VStack(spacing: 14) {
+            Text(library.articles.isEmpty ? "No articles saved." : "No article selected.")
+                .font(.system(size: 13)).foregroundStyle(.secondary)
+            Button("Save an article", systemImage: "plus") { showingAdd = true }
         }
         .padding(30).frame(maxWidth: .infinity, maxHeight: .infinity).background(ReedStyle.warm)
     }

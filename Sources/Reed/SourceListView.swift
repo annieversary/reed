@@ -186,12 +186,7 @@ struct SourceListView: View {
     @ViewBuilder private var emptyState: some View {
         if origin == .feeds && library.feeds.isEmpty {
             VStack(spacing: 14) {
-                Group {
-                    Text("No feeds yet.").font(.system(size: 18, design: .serif))
-                    Text("Subscribe to blogs and sites you like,\nand their new posts will gather here.")
-                        .font(.system(size: 12)).multilineTextAlignment(.center).lineSpacing(3)
-                }
-                .foregroundStyle(.secondary)
+                Text("No feeds yet.").font(.system(size: 18, design: .serif)).foregroundStyle(.secondary)
                 Button("Add a Feed") { showingAddFeed = true }.buttonStyle(.reedSecondary)
             }
             .padding(30)
