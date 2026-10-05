@@ -154,3 +154,13 @@ private let arxivAbstract = """
     #expect(article.html.contains("href=\"https://example.com/other#gears\""))
     #expect(article.html.contains("id=\"gears\""))
 }
+
+@Test @MainActor func tablesIndentedWithSpacerImagesAreKept() async throws {
+    let spacer = "<img src=\"1pix.gif\" width=36 height=1>"
+    let sentence = "Caroline typed quickly as she discussed the day's business with the Supreme Being, as she always did. "
+    let prose = String(repeating: spacer + String(repeating: sentence, count: 4) + "<br>", count: 2)
+    let rows = (1...4).map { "<tr><td>\(spacer)*</td><td><tt>Challenger \($0)</tt></td></tr>" }.joined()
+    let article = try await extract("<html><body>\(prose)<p><table>\(rows)</table><p>\(prose)</body></html>", url: "https://example.com/chapter1.html")
+    #expect(article.html.contains("<code>Challenger 4</code>"))
+    #expect(article.images.isEmpty)
+}

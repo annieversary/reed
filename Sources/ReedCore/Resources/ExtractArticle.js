@@ -7,11 +7,19 @@ doc.head.prepend(base);
 for (const img of doc.querySelectorAll("img")) {
     const lazy = img.getAttribute("data-src") || img.getAttribute("data-original") || img.getAttribute("data-lazy-src");
     if (lazy) img.setAttribute("src", lazy);
+    // Spacers and tracking pixels; Readability would count them as images and drop the tables they indent.
+    else if (["width", "height"].some(name => parseFloat(img.getAttribute(name)) <= 1)) { img.remove(); continue; }
     if (!img.getAttribute("src")) {
         const source = img.getAttribute("srcset") || img.getAttribute("data-srcset") ||
             img.closest("picture")?.querySelector("source")?.getAttribute("srcset");
         if (source) img.setAttribute("src", source.split(",")[0].trim().split(/\s+/)[0]);
     }
+}
+// Older ways of marking monospaced text become code, which the reader keeps.
+for (const node of doc.querySelectorAll("tt, kbd, samp")) {
+    const code = doc.createElement("code");
+    code.append(...node.childNodes);
+    node.replaceWith(code);
 }
 prepareMath(doc);
 // Readability drops what's hidden from screen readers, which includes the keys to charts; icons are dropped later.
