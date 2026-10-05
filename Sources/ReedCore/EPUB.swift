@@ -89,7 +89,11 @@ public struct EPUB {
             ?? manifest.values.first(where: { $0.type == "application/x-dtbncx+xml" }) {
             contents = try Self.ncx(archive, ncx.path)
         }
-        chapters = Self.chapters(spine: spine, contents: contents)
+        var ids: [String: [String]] = [:]
+        for path in Set(contents.filter { $0.fragment != nil }.map(\.path)) {
+            if let data = try? archive.file(path) { ids[path] = Self.ids(in: String(decoding: data, as: UTF8.self)).map(\.id) }
+        }
+        chapters = Self.chapters(spine: spine, contents: contents, ids: ids)
     }
 
     /// The file at `path` in the archive.
@@ -99,8 +103,9 @@ public struct EPUB {
 
     /// Divides the reading order into chapters where the table of contents starts one: at a file, or at an element
     /// within one, since some books keep several chapters to a file. Sections of a chapter stay in it, and pages
-    /// before the first entry are a chapter of their own.
-    static func chapters(spine: [String], contents: [Entry]) -> [Chapter] {
+    /// before the first entry are a chapter of their own. `ids` lists each file's element IDs in the order they appear,
+    /// so chapters within a file follow the file even when the table of contents lists them out of order.
+    static func chapters(spine: [String], contents: [Entry], ids: [String: [String]] = [:]) -> [Chapter] {
         var starts: [String: [Entry]] = [:]
         for entry in contents where !entry.isSection && spine.contains(entry.path) {
             guard !(starts[entry.path] ?? []).contains(where: { $0.fragment == entry.fragment }) else { continue }
@@ -113,8 +118,11 @@ public struct EPUB {
             chapters[chapters.count - 1].parts.append(part)
         }
         for path in spine {
-            // An entry for the whole file starts it; the others follow in the order they're listed.
-            let entries = (starts[path] ?? []).filter { $0.fragment == nil } + (starts[path] ?? []).filter { $0.fragment != nil }
+            // An entry for the whole file starts it; the others follow in the order they appear in it.
+            let order = Dictionary((ids[path] ?? []).enumerated().map { ($1, $0) }) { first, _ in first }
+            let fragments = (starts[path] ?? []).enumerated().filter { $0.element.fragment != nil }
+                .sorted { (order[$0.element.fragment!] ?? .max, $0.offset) < (order[$1.element.fragment!] ?? .max, $1.offset) }.map(\.element)
+            let entries = (starts[path] ?? []).filter { $0.fragment == nil } + fragments
             var from: String?
             for entry in entries {
                 // What comes before an element starting a chapter belongs to the one before.
@@ -141,11 +149,16 @@ public struct EPUB {
             links[path] = links[path] ?? parts.first { $0.start == nil }?.chapter ?? parts[0].chapter
             guard let data = try file(path) else { continue }
             let html = String(decoding: data, as: UTF8.self)
-            let ids = html.matches(of: #/\bid\s*=\s*["']([^"']+)["']/#).map { (id: String($0.output.1), at: $0.range.lowerBound) }
+            let ids = Self.ids(in: html)
             let starts = parts.map { part in (at: part.start.flatMap { start in ids.first { $0.id == start }?.at } ?? html.startIndex, chapter: part.chapter) }
             for id in ids { links[path + "#" + id.id] = starts.last { $0.at <= id.at }?.chapter ?? links[path] }
         }
         return links
+    }
+
+    /// The element IDs in a file, in order, with where each is.
+    private static func ids(in html: String) -> [(id: String, at: String.Index)] {
+        html.matches(of: #/\bid\s*=\s*["']([^"']+)["']/#).map { (id: String($0.output.1), at: $0.range.lowerBound) }
     }
 
     /// The links in an EPUB 3 navigation document's table of contents, in order.

@@ -68,15 +68,18 @@ public final class BookChapter {
     /// Its place in the book, from 0, which also names its files.
     public var index: Int
     public var title: String
+    /// Where it starts in the EPUB, as a file's path and an element's ID, which stays the same when the book is converted again.
+    public var start: String?
     public var wordCount: Int
     public var progress: Double
     public var isRead: Bool
     public var narrationPassage: Int?
 
-    public init(index: Int, title: String, wordCount: Int, id: UUID = UUID()) {
+    public init(index: Int, title: String, start: String? = nil, wordCount: Int, id: UUID = UUID()) {
         self.id = id
         self.index = index
         self.title = title
+        self.start = start
         self.wordCount = wordCount
         progress = 0
         isRead = false

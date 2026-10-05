@@ -30,6 +30,15 @@ private func fixture(_ name: String) throws -> URL {
     ])
 }
 
+@Test func chaptersSharingAFileFollowItsOrder() {
+    let contents = [EPUB.Entry(title: "Two", path: "a", fragment: "two"), EPUB.Entry(title: "One", path: "a", fragment: "one")]
+    #expect(EPUB.chapters(spine: ["a"], contents: contents, ids: ["a": ["top", "one", "two"]]) == [
+        EPUB.Chapter(title: nil, parts: [EPUB.Part("a", to: "one")]),
+        EPUB.Chapter(title: "One", parts: [EPUB.Part("a", from: "one", to: "two")]),
+        EPUB.Chapter(title: "Two", parts: [EPUB.Part("a", from: "two")]),
+    ])
+}
+
 @Test func epub2BooksUseTheirNCX() throws {
     let book = try EPUB(data: Data(contentsOf: fixture("book-epub2")))
     #expect(book.title == "An Old Book" && book.author == "B. Writer" && book.cover == "OEBPS/cover.png")

@@ -127,6 +127,8 @@ final class PDFReflow {
     private(set) var images: [String: Data] = [:]
     /// Pages are drawn at this many pixels a point to look for ink, and cropped at `cropScale`.
     private let scale: CGFloat = 2, cropScale: CGFloat = 4
+    /// The most pixels drawn at once. A page's size comes from the file, so it may be absurdly large.
+    private static let maxPixels: CGFloat = 50_000_000
     private var drawn: (page: Int, image: CGImage)?
 
     init(document: PDFDocument, url: URL) {
@@ -155,7 +157,8 @@ final class PDFReflow {
 
     private func blocks(on index: Int) async -> [PDFBlock] {
         let page = page(index), box = box(index)
-        let layout = try? await RecognizeDocumentsRequest().perform(on: render(index)).first?.document
+        let image = render(index)
+        let layout = if let image { try? await RecognizeDocumentsRequest().perform(on: image).first?.document } else { nil as DocumentObservation.Container? }
         func toPage(_ r: NormalizedRect) -> CGRect {
             CGRect(x: box.minX + r.cgRect.minX * box.width, y: box.minY + r.cgRect.minY * box.height,
                    width: r.cgRect.width * box.width, height: r.cgRect.height * box.height)
@@ -294,7 +297,7 @@ final class PDFReflow {
             guard CGPDFObjectGetValue(object, .stream, &stream), let stream, let info = CGPDFStreamGetDictionary(stream) else { return true }
             var subtype: UnsafePointer<CChar>?, width: CGPDFInteger = 0, height: CGPDFInteger = 0
             if CGPDFDictionaryGetName(info, "Subtype", &subtype), let subtype, String(cString: subtype) == "Image",
-               CGPDFDictionaryGetInteger(info, "Width", &width), CGPDFDictionaryGetInteger(info, "Height", &height), width * height > 1_500_000 {
+               CGPDFDictionaryGetInteger(info, "Width", &width), CGPDFDictionaryGetInteger(info, "Height", &height), Double(width) * Double(height) > 1_500_000 {
                 pageSizedImage = true
             }
             return true
@@ -604,23 +607,26 @@ final class PDFReflow {
 
     // MARK: Pictures
 
-    private func render(_ index: Int) -> CGImage {
+    private func render(_ index: Int) -> CGImage? {
         if let drawn, drawn.page == index { return drawn.image }
-        let image = draw(page: index, region: box(index), scale: scale)
+        guard let image = draw(page: index, region: box(index), scale: scale) else { return nil }
         drawn = (index, image)
         return image
     }
 
-    private func draw(page index: Int, region: CGRect, scale: CGFloat) -> CGImage {
-        let width = max(Int((region.width * scale).rounded(.up)), 1), height = max(Int((region.height * scale).rounded(.up)), 1)
-        let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-                                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    /// Nil when the region is too large to draw at `scale`.
+    private func draw(page index: Int, region: CGRect, scale: CGFloat) -> CGImage? {
+        let w = (region.width * scale).rounded(.up), h = (region.height * scale).rounded(.up)
+        guard w.isFinite, h.isFinite, max(w, 1) * max(h, 1) <= Self.maxPixels else { return nil }
+        let width = max(Int(w), 1), height = max(Int(h), 1)
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
         context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         context.scaleBy(x: scale, y: scale)
         context.translateBy(x: -region.minX, y: -region.minY)
         page(index).draw(with: .mediaBox, to: context)
-        return context.makeImage()!
+        return context.makeImage()
     }
 
     /// `region` cut back from text above and below `core`, so looking for ink around a drawing doesn't take
@@ -638,7 +644,8 @@ final class PDFReflow {
 
     /// The bounds of what's drawn within `rect`, if there's enough of it to be a drawing.
     private func ink(in rect: CGRect, page index: Int) -> CGRect? {
-        let image = render(index), box = box(index)
+        guard let image = render(index) else { return nil }
+        let box = box(index)
         let pixels = CGRect(x: (rect.minX - box.minX) * scale, y: (box.maxY - rect.maxY) * scale, width: rect.width * scale, height: rect.height * scale)
             .integral.intersection(CGRect(x: 0, y: 0, width: image.width, height: image.height))
         guard pixels.width > 4, pixels.height > 4, let crop = image.cropping(to: pixels),
@@ -664,7 +671,10 @@ final class PDFReflow {
         guard !region.isNull, region.width > 1, region.height > 1 else { return nil }
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else { return nil }
-        CGImageDestinationAddImage(destination, draw(page: index, region: region, scale: cropScale), nil)
+        // A large figure is cropped at less than `cropScale`, rather than not at all.
+        let scale = min(cropScale, (Self.maxPixels / (region.width * region.height)).squareRoot())
+        guard let image = draw(page: index, region: region, scale: scale) else { return nil }
+        CGImageDestinationAddImage(destination, image, nil)
         guard CGImageDestinationFinalize(destination) else { return nil }
         let name = "image-\(images.count).png"
         images[name] = data as Data

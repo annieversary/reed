@@ -73,24 +73,37 @@ public struct ShareInbox: Sendable {
         CFNotificationCenterPostNotification(center, CFNotificationName(Self.didDeposit.rawValue as CFString), nil, nil, true)
     }
 
-    /// Hands each item to `save`, oldest first, removing it once saved.
-    /// Stops at the first error, leaving that item and the rest for next time.
-    public func drain(_ save: (Item) throws -> Void) throws {
+    /// Hands each item to `save`, oldest first, removing it once saved. An item that fails is left for next time,
+    /// or set aside in `Failed` if `giveUp` says so, and the rest carry on. The first error is thrown once all are tried.
+    public func drain(giveUp: (URL) -> Bool = { _ in false }, _ save: (Item) throws -> Void) throws {
         guard FileManager.default.fileExists(atPath: directory.path) else { return }
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
             .filter { ["link", "pdf", "epub"].contains($0.pathExtension.lowercased()) }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        var failure: (any Error)?
         for file in files {
-            if file.pathExtension == "link" {
-                try save(.link(String(decoding: try Data(contentsOf: file), as: UTF8.self)))
-            } else {
-                // The name follows the stamp, the UUID and a space.
-                let shared = String(file.lastPathComponent.drop { $0 != " " }.dropFirst())
-                let name = shared.isEmpty ? file.lastPathComponent : shared
-                try save(file.pathExtension.lowercased() == "epub" ? .book(file, name: name) : .pdf(file, name: name))
+            do { try take(file, save) } catch {
+                failure = failure ?? error
+                if giveUp(file) {
+                    let failed = directory.appendingPathComponent("Failed", isDirectory: true)
+                    try? FileManager.default.createDirectory(at: failed, withIntermediateDirectories: true)
+                    try? FileManager.default.moveItem(at: file, to: failed.appendingPathComponent(file.lastPathComponent))
+                }
             }
-            try FileManager.default.removeItem(at: file)
         }
+        if let failure { throw failure }
+    }
+
+    private func take(_ file: URL, _ save: (Item) throws -> Void) throws {
+        if file.pathExtension == "link" {
+            try save(.link(String(decoding: try Data(contentsOf: file), as: UTF8.self)))
+        } else {
+            // The name follows the stamp, the UUID and a space.
+            let shared = String(file.lastPathComponent.drop { $0 != " " }.dropFirst())
+            let name = shared.isEmpty ? file.lastPathComponent : shared
+            try save(file.pathExtension.lowercased() == "epub" ? .book(file, name: name) : .pdf(file, name: name))
+        }
+        try FileManager.default.removeItem(at: file)
     }
 
     /// Re-posts deposits from other processes as `didDeposit` on the default notification center.

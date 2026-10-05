@@ -82,10 +82,9 @@ public struct ArticleStorage: Sendable {
         try FileManager.default.moveItem(at: staging, to: parent.appendingPathComponent(version))
     }
 
-    /// Removes a saved version, once a newer one has replaced it.
+    /// Removes a saved version and its narration, once a newer one has replaced it.
     public func removeBookVersion(_ id: UUID, version: String) throws {
-        let url = bookDirectory(id).appendingPathComponent(version, isDirectory: true)
-        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        try removeVersion(version, in: bookDirectory(id))
     }
 
     public func removeBook(_ id: UUID) throws {
@@ -104,6 +103,19 @@ public struct ArticleStorage: Sendable {
         let parent = articleDirectory(id)
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
         try FileManager.default.moveItem(at: staging, to: parent.appendingPathComponent(version))
+    }
+
+    /// Removes a saved version and its narration, once a newer one has replaced it.
+    public func removeArticleVersion(_ id: UUID, version: String) throws {
+        try removeVersion(version, in: articleDirectory(id))
+    }
+
+    private func removeVersion(_ version: String, in directory: URL) throws {
+        for url in [directory.appendingPathComponent(version, isDirectory: true),
+                    directory.appendingPathComponent("Audio", isDirectory: true).appendingPathComponent(version, isDirectory: true)]
+        where FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
     }
 
     public func removeArticle(_ id: UUID) throws {

@@ -155,7 +155,7 @@ public enum YouTube {
     /// The chapters a description lists as lines starting with their times, such as "1:07 - Series preview".
     /// YouTube only takes them as chapters when the first starts the video and they run in order, and neither does this.
     static func chapters(in description: String) -> [Chapter] {
-        let line = #/^\s*(?:(\d+):)?(\d{1,2}):(\d{2})\s*[-–—:|.)]?\s*(.+?)\s*$/#
+        let line = #/^\s*(?:(\d{1,3}):)?(\d{1,2}):(\d{2})\s*[-–—:|.)]?\s*(.+?)\s*$/#
         let chapters = description.split(whereSeparator: \.isNewline).compactMap { text -> Chapter? in
             guard let match = String(text).wholeMatch(of: line) else { return nil }
             let seconds = (Int(match.1 ?? "0") ?? 0) * 3600 + (Int(match.2) ?? 0) * 60 + (Int(match.3) ?? 0)

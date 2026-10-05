@@ -10,6 +10,7 @@ struct AddFeedView: View {
     @State private var address = ""
     @State private var error: String?
     @State private var working = false
+    @State private var task: Task<Void, Never>?
     /// Offered when a site has several feeds.
     @State private var candidates: [FeedCandidate] = []
     @FocusState private var focused: Bool
@@ -76,6 +77,8 @@ struct AddFeedView: View {
         .frame(width: 510)
         #endif
         .onAppear { focused = true }
+        // Closing the sheet abandons the search, rather than subscribing later.
+        .onDisappear { task?.cancel() }
     }
 
     private func find() {
@@ -101,9 +104,9 @@ struct AddFeedView: View {
     private func work(_ body: @escaping () async throws -> Void) {
         error = nil
         working = true
-        Task {
+        task = Task {
             defer { working = false }
-            do { try await body() } catch { self.error = error.localizedDescription }
+            do { try await body() } catch is CancellationError {} catch { self.error = error.localizedDescription }
         }
     }
 }

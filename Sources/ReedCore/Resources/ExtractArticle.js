@@ -186,7 +186,9 @@ function bookURL(path) {
 
 // The path within the book that an absolute book URL points to.
 function bookPath(url) {
-    return url.pathname.slice(1).split("/").map(decodeURIComponent).join("/");
+    // A malformed escape is left as written, rather than failing the whole book.
+    const decode = part => { try { return decodeURIComponent(part); } catch { return part; } };
+    return url.pathname.slice(1).split("/").map(decode).join("/");
 }
 
 // The chapter as Readability would give an article. Images are named after their place in the book, so a version's

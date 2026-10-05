@@ -197,6 +197,7 @@ struct LibraryView: View {
                     }
                 } else if let article = selectedArticle {
                     ReaderView(library: library, readable: article, next: library.articles.first { $0.id == nextID }, onOpenNext: openNext)
+                        .id(article.id)
                 } else {
                     readerPlaceholder
                 }

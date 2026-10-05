@@ -140,6 +140,25 @@ import Testing
     #expect(saved == [.link("https://example.com/a")])
 }
 
+@Test func inboxCarriesOnPastAnItemThatFails() throws {
+    let inbox = ShareInbox(directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+    defer { try? FileManager.default.removeItem(at: inbox.directory) }
+    try inbox.deposit(URL(string: "https://example.com/a")!)
+    try inbox.deposit(URL(string: "https://example.com/b")!)
+    var saved: [ShareInbox.Item] = []
+    let fail: (ShareInbox.Item) throws -> Void = { item in
+        if item == .link("https://example.com/a") { throw CocoaError(.fileReadCorruptFile) }
+        saved.append(item)
+    }
+    #expect(throws: CocoaError.self) { try inbox.drain(fail) }
+    #expect(saved == [.link("https://example.com/b")])
+    // Given up on, it's set aside rather than tried again.
+    #expect(throws: CocoaError.self) { try inbox.drain(giveUp: { _ in true }, fail) }
+    try inbox.drain { saved.append($0) }
+    #expect(saved == [.link("https://example.com/b")])
+    #expect(try FileManager.default.contentsOfDirectory(atPath: inbox.directory.appendingPathComponent("Failed").path).count == 1)
+}
+
 @Test func readerDocumentsBecomePlainText() {
     let document = ArticleHTML.document(title: "Ignored <title>", author: nil, domain: "example.com", minutes: 1,
                                         body: "<h2>Café</h2><p>Fish &amp; chips&#39;<br>at&nbsp;noon &#x2014; <em>fresh</em></p>")

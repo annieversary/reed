@@ -50,9 +50,17 @@ final class Narrator {
             directory = library.storage.audioDirectory(item.location, version: version, voice: voice)
             durations = [:]
             sentenceStarts = [:]
-            let wasPlaying = isPlaying
-            start(at: current)
-            if !wasPlaying { pause() }
+            heard = 0
+            if isPlaying {
+                start(at: current)
+            } else {
+                // The old voice's queued audio goes; the new one is made and queued on resuming.
+                epoch += 1
+                player.stop()
+                generator?.cancel()
+                generator = nil
+                needsStart = true
+            }
         }
     }
 
@@ -82,6 +90,12 @@ final class Narrator {
     @ObservationIgnored private var nextFrame: AVAudioFramePosition = 0
     /// How far into the current passage playback began, after seeking.
     @ObservationIgnored private var startOffset: AVAudioFramePosition = 0
+    /// How far into the current passage was last heard. The player's clock is lost when the engine stops.
+    @ObservationIgnored private var heard: Double = 0
+    /// Nothing is queued for the current passage, so resuming must start it afresh.
+    @ObservationIgnored private var needsStart = false
+    /// An interruption paused playback, so it may carry on once the interruption ends.
+    @ObservationIgnored private var interruptedWhilePlaying = false
     /// Lengths of synthesized passages, in seconds.
     @ObservationIgnored private var durations: [Int: Double] = [:]
     /// When each sentence of a synthesized passage begins, in seconds into it.
@@ -148,6 +162,7 @@ final class Narrator {
 
     func pause() {
         guard isPlaying else { return }
+        noteHeard()
         player.pause()
         isPlaying = false
         stopTracking()
@@ -156,13 +171,13 @@ final class Narrator {
 
     func resume() {
         guard readableID != nil, !isPlaying else { return }
-        if engine.isRunning {
+        if engine.isRunning, !needsStart {
             isPlaying = true
             player.play()
             track()
             updateNowPlaying()
         } else {
-            start(at: current)
+            start(at: current, offset: heard)
         }
         if generator == nil { generate(from: current) }
     }
@@ -284,6 +299,8 @@ final class Narrator {
         startFrames = [:]
         nextFrame = 0
         startOffset = AVAudioFramePosition(offset * Self.sampleRate)
+        heard = offset
+        needsStart = false
         sentence = sentenceIndex(at: offset)
         rememberPosition()
         do {
@@ -390,12 +407,17 @@ final class Narrator {
         tracker = Task { [weak self] in
             while !Task.isCancelled {
                 if let self {
-                    let heard = sentenceIndex(at: elapsedInPassage)
-                    if heard != sentence { sentence = heard }
+                    noteHeard()
+                    let reached = sentenceIndex(at: elapsedInPassage)
+                    if reached != sentence { sentence = reached }
                 } else { return }
                 try? await Task.sleep(for: .milliseconds(100))
             }
         }
+    }
+
+    private func noteHeard() {
+        if playerFrame != nil { heard = elapsedInPassage }
     }
 
     private func stopTracking() {
@@ -547,7 +569,7 @@ final class Narrator {
         center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.isPlaying else { return }
-                self.start(at: self.current)
+                self.start(at: self.current, offset: self.heard)
             }
         }
         #if os(iOS)
@@ -555,9 +577,14 @@ final class Narrator {
             let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init)
             let options = AVAudioSession.InterruptionOptions(rawValue: note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0)
             MainActor.assumeIsolated {
+                guard let self else { return }
                 switch type {
-                case .began: self?.pause()
-                case .ended where options.contains(.shouldResume): self?.resume()
+                case .began:
+                    self.interruptedWhilePlaying = self.isPlaying
+                    self.pause()
+                case .ended:
+                    if self.interruptedWhilePlaying, options.contains(.shouldResume) { self.resume() }
+                    self.interruptedWhilePlaying = false
                 default: break
                 }
             }

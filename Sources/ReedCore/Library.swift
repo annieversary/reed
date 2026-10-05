@@ -40,6 +40,9 @@ public final class Library {
     private var progressSave: Task<Void, Never>?
     /// Articles removed while downloading, deleted once their download settles.
     private var discarded: Set<UUID> = []
+    /// How many times each shared item has failed to be added, by its file name in the inbox.
+    private var inboxFailures: [String: Int] = [:]
+    private static let inboxAttempts = 3
 
     public init(root: URL? = nil, downloader: ArticleDownloader = ArticleDownloader()) throws {
         let root = try root ?? ArticleStorage.defaultRoot()
@@ -200,6 +203,7 @@ public final class Library {
     /// Moves a cached article into the library, without downloading it again.
     public func keep(_ article: Article) {
         guard article.isCached else { return }
+        discarded.remove(article.id)
         article.isCached = false
         article.savedAt = .now
         if article.state == .failed { article.state = .queued; article.failureMessage = nil }
@@ -299,6 +303,7 @@ public final class Library {
         if let existing = feed(at: url) { return existing }
         guard case .fetched(let data, let finalURL, let etag, let lastModified) = try await downloader.feed(at: url),
               let parsed = await Self.parse(data, from: finalURL) else { throw ReedError.noFeed }
+        try Task.checkCancellation()
         if let existing = feed(at: url) ?? feed(at: finalURL) { return existing }
         let feed = Feed(url: finalURL, parsed: parsed, fetchedAt: .now, etag: etag, lastModified: lastModified)
         feeds.append(feed)
@@ -408,7 +413,11 @@ public final class Library {
 
     public func addShared(from inbox: ShareInbox) {
         do {
-            try inbox.drain { item in
+            // An item that keeps failing is set aside, so it doesn't report the same error every time Reed is opened.
+            try inbox.drain(giveUp: { file in
+                inboxFailures[file.lastPathComponent, default: 0] += 1
+                return inboxFailures[file.lastPathComponent]! >= Self.inboxAttempts
+            }) { item in
                 // What can never be saved is dropped rather than retried forever.
                 switch item {
                 case .link(let input): do { try add(input) } catch ReedError.invalidURL {}
@@ -814,11 +823,13 @@ public final class Library {
             article.imageCount = extracted.images.count - missing
             article.missingImageCount = missing
             article.leadsToOtherChapters = ChapterLinks(page: extracted.page, url: pageURL).leadsToOtherChapters
+            let previous = article.contentVersion
             article.contentVersion = version
             article.downloadedAt = .now
             article.state = missing > 0 ? .partial : .ready
             article.failureMessage = nil
             try container.mainContext.save()
+            if let previous { try? storage.removeArticleVersion(article.id, version: previous) }
             if !article.isCached { reindex(article) }
         } catch {
             // A failed refresh leaves the copy already saved readable.
@@ -959,14 +970,25 @@ public final class Library {
             try storage.commitBook(staging: directory, id: book.id, version: version)
             staging = nil
             let previous = book.contentVersion
-            let finished = Dictionary(book.chapters.map { ($0.title, $0) }) { first, _ in first }
+            // Converting again keeps how far each chapter was read, and its notes, though chapters may have moved.
+            // Chapters saved before they knew where they start are known by title, in the same place if it's still there.
+            let byStart = Dictionary(book.chapters.compactMap { old in old.start.map { ($0, old) } }) { first, _ in first }
+            let legacy = book.chapters.filter { $0.start == nil }
+            let byIndex = Dictionary(legacy.map { ($0.index, $0) }) { first, _ in first }
+            let byTitle = Dictionary(legacy.map { ($0.title, $0) }) { first, _ in first }
+            var moved: [Int: Int] = [:]
             for chapter in book.chapters { container.mainContext.delete(chapter) }
             book.chapters = extracted.enumerated().map { index, chapter in
-                let new = BookChapter(index: index, title: chapter.title, wordCount: chapter.wordCount)
-                // Converting again keeps how far each chapter was read.
-                if let old = finished[chapter.title] { new.isRead = old.isRead; new.progress = old.progress }
+                let start = chapters[index].parts.first.map { $0.path + "#" + ($0.from ?? "") }
+                let new = BookChapter(index: index, title: chapter.title, start: start, wordCount: chapter.wordCount)
+                if let old = start.flatMap({ byStart[$0] }) ?? byIndex[index].flatMap({ $0.title == chapter.title ? $0 : nil }) ?? byTitle[chapter.title] {
+                    new.isRead = old.isRead
+                    new.progress = old.progress
+                    moved[old.index] = index
+                }
                 return new
             }
+            book.currentChapter = book.currentChapter.flatMap { moved[$0] }
             book.title = epub.title ?? book.title
             book.author = epub.author
             book.coverFile = coverFile
@@ -974,12 +996,35 @@ public final class Library {
             book.state = missing > 0 ? .partial : .ready
             book.failureMessage = nil
             try container.mainContext.save()
+            moveNotes(of: book, as: moved)
             if let previous { try? storage.removeBookVersion(book.id, version: previous) }
         } catch {
             book.state = hasContent(book) ? .ready : .failed
             book.failureMessage = hasContent(book) ? nil : error.localizedDescription
             if hasContent(book), !(error is CancellationError) { errorMessage = error.localizedDescription }
             save()
+        }
+    }
+}
+
+extension Library {
+    /// Renumbers a book's notes after converting it again moved its chapters, from each old index to the new.
+    /// Notes of a chapter that's gone are set aside in `Notes/Unplaced` rather than left beside another chapter.
+    private func moveNotes(of book: Book, as moved: [Int: Int]) {
+        let directory = storage.bookDirectory(book.id).appendingPathComponent("Notes", isDirectory: true)
+        guard let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
+        let notes = files.compactMap { file in
+            Int(file.deletingPathExtension().lastPathComponent).flatMap { index in try? (index, Data(contentsOf: file)) }
+        }
+        let unplaced = directory.appendingPathComponent("Unplaced", isDirectory: true)
+        for (index, _) in notes { try? FileManager.default.removeItem(at: storage.notesURL(.chapter(book: book.id, index: index))) }
+        for (index, data) in notes {
+            if let new = moved[index] {
+                try? data.write(to: storage.notesURL(.chapter(book: book.id, index: new)), options: .atomic)
+            } else {
+                try? FileManager.default.createDirectory(at: unplaced, withIntermediateDirectories: true)
+                try? data.write(to: unplaced.appendingPathComponent("\(index)-\(UUID().uuidString).json"), options: .atomic)
+            }
         }
     }
 }

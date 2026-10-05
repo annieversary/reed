@@ -56,6 +56,7 @@ private func fixture(_ name: String) throws -> Data {
                                                    .init(start: 3_762_000, title: "Late")])
     // Not chapters unless the first starts the video.
     #expect(YouTube.chapters(in: "0:30 First\n1:00 Second").isEmpty)
+    #expect(YouTube.chapters(in: "0:00 Start\n1:00 Next\n9223372036854775807:00:00 Overflow").count == 2)
     #expect(YouTube.excerpt(of: "What are neurons?\nHelp fund future projects: https://patreon.com/x\nAnd layers?\n\nMore") == "What are neurons? And layers?")
 }
 
