@@ -113,7 +113,6 @@ final class Narrator {
         engine.attach(player)
         engine.attach(timePitch)
         engine.connect(player, to: timePitch, format: Self.format)
-        engine.connect(timePitch, to: engine.mainMixerNode, format: Self.format)
         timePitch.rate = rate
         observeAudioChanges()
         installRemoteCommands()
@@ -289,6 +288,7 @@ final class Narrator {
             try session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio)
             try session.setActive(true)
             #endif
+            connectEngine()
             if !engine.isRunning { try engine.start() }
         } catch {
             errorMessage = error.localizedDescription
@@ -301,6 +301,12 @@ final class Narrator {
         scheduleReady()
         generate(from: index)
         updateNowPlaying()
+    }
+
+    /// Connected to the output only once narration starts, since bringing up the engine's output pauses other apps' audio.
+    private func connectEngine() {
+        guard engine.outputConnectionPoints(for: timePitch, outputBus: 0).isEmpty else { return }
+        engine.connect(timePitch, to: engine.mainMixerNode, format: Self.format)
     }
 
     /// Queues synthesized passages until the player holds a few ahead of the one being heard.
