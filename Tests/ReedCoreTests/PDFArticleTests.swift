@@ -49,12 +49,12 @@ import Testing
     #expect(images.isEmpty && article.images.isEmpty)
 }
 
-private struct Paragraph {
+struct Paragraph {
     let text: String, font: String, size: CGFloat, gapAfter: CGFloat
 }
 
 /// A one-page PDF with each paragraph set in its own frame, top to bottom.
-private func drawnPDF(_ paragraphs: [Paragraph]) -> Data {
+func drawnPDF(_ paragraphs: [Paragraph]) -> Data {
     let data = NSMutableData()
     var page = CGRect(x: 0, y: 0, width: 612, height: 792)
     let context = CGContext(consumer: CGDataConsumer(data: data)!, mediaBox: &page, nil)!
@@ -72,4 +72,38 @@ private func drawnPDF(_ paragraphs: [Paragraph]) -> Data {
     context.endPDFPage()
     context.closePDF()
     return data as Data
+}
+
+@Test @MainActor func sharedPDFsAreSavedOnceAndReadFromTheirCopy() async throws {
+    guard #available(macOS 26, iOS 26, *) else { return }
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let lorem = "A paper shared from the Files app is saved from its own copy, with no link to fetch it from again. "
+    let pdf = drawnPDF([.init(text: "Shared Without a Link", font: "Times-Bold", size: 22, gapAfter: 18),
+                        .init(text: String(repeating: lorem, count: 4), font: "Times-Roman", size: 10, gapAfter: 0)])
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let file = root.appendingPathComponent("handed-over.pdf"), text = root.appendingPathComponent("notes.txt")
+    try pdf.write(to: file)
+    try Data("not a pdf".utf8).write(to: text)
+    let inbox = ShareInbox(directory: root.appendingPathComponent("Inbox"))
+    try inbox.deposit(pdfAt: file, name: "Field Notes")
+    try inbox.deposit(URL(string: "https://reed.invalid/link")!)
+    try inbox.deposit(pdfAt: file, name: "Field Notes again.pdf")
+    try inbox.deposit(pdfAt: text)
+
+    let library = try Library(root: root.appendingPathComponent("Library"))
+    library.addShared(from: inbox)
+    #expect(library.errorMessage == nil)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: inbox.directory.path).isEmpty)
+    #expect(library.articles.count == 2)
+    let shared = try #require(library.articles.first { $0.isFile })
+    #expect(shared.title == "Field Notes" && shared.domain == "PDF" && shared.sourceURL == nil)
+    #expect(URL(string: shared.originalURL)?.lastPathComponent == "Field Notes.pdf")
+
+    let deadline = Date().addingTimeInterval(60)
+    while shared.state != .ready && shared.state != .failed && Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
+    #expect(shared.state == .ready, "\(shared.failureMessage ?? "")")
+    #expect(shared.title == "Shared Without a Link" && shared.wordCount > 50)
+    let html = try String(contentsOf: try #require(library.contentURL(for: shared)), encoding: .utf8)
+    #expect(html.contains("A paper shared from the Files app"))
 }

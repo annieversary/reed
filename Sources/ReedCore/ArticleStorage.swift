@@ -32,6 +32,11 @@ public struct ArticleStorage: Sendable {
         articleDirectory(id).appendingPathComponent("Notes.json")
     }
 
+    /// A PDF shared as a file, kept beside the versions made from it so it can be read again.
+    public func sharedFileURL(_ id: UUID) -> URL {
+        articleDirectory(id).appendingPathComponent("Shared.pdf")
+    }
+
     public func createStagingDirectory() throws -> URL {
         let url = root.appendingPathComponent("Staging", isDirectory: true).appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

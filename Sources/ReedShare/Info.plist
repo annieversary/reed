@@ -15,9 +15,13 @@
         <key>NSExtensionPointIdentifier</key><string>com.apple.share-services</string>
         <key>NSExtensionPrincipalClass</key><string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
         <key>NSExtensionAttributes</key><dict>
-            <key>NSExtensionActivationRule</key><dict>
-                <key>NSExtensionActivationSupportsWebURLWithMaxCount</key><integer>1</integer>
-            </dict>
+            <!-- A web link, or a PDF from Files, Mail or anywhere else that shares documents. -->
+            <key>NSExtensionActivationRule</key>
+            <string>SUBQUERY(extensionItems, $item, SUBQUERY($item.attachments, $attachment,
+                ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "com.adobe.pdf"
+                OR (ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
+                    AND NOT ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.file-url")
+            ).@count >= 1).@count == 1</string>
         </dict>
     </dict>
 </dict></plist>

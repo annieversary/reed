@@ -28,7 +28,7 @@ Builds for `generic/platform=iOS`, then installs and launches over `devicectl`. 
 ## What works
 
 - Paste a URL, or press Command-N on Mac to save an article.
-- Share a link to Reed from Safari or any other app's share sheet.
+- Share a link to Reed from Safari or any other app's share sheet, or a PDF from Files, Mail or anywhere else that shares documents.
 - Extract readable HTML using bundled Mozilla Readability, sanitize with DOMPurify, and download images.
 - Read saved articles in a local WebKit reader with light/dark appearance and adjustable type.
 - Search titles, authors, websites, and excerpts; favorite articles and mark them finished.
@@ -44,7 +44,7 @@ The library starts empty. Test fixtures are kept separate from the user's librar
 
 ## Sharing to Reed
 
-The `ReedShare` extension (`Sources/ReedShare`) appears in the share sheet for a single web link. It doesn't download anything, since extensions are short-lived and memory-capped. It writes the link as a file into an inbox in the App Group container (`group.town.versary.reed` on iOS, `KR4TU3GTWZ.town.versary.reed` on macOS) and posts a Darwin notification. Reed adds inbox links to the library on launch, when it becomes active, and immediately on that notification if it's running. Downloads then proceed as usual, so a shared article is saved the next time Reed is open.
+The `ReedShare` extension (`Sources/ReedShare`) appears in the share sheet for a web link or a PDF. It doesn't download anything, since extensions are short-lived and memory-capped. It writes the link as a file into an inbox in the App Group container (`group.town.versary.reed` on iOS, `KR4TU3GTWZ.town.versary.reed` on macOS) and posts a Darwin notification; a shared PDF is copied into the inbox under its own name. Reed adds inbox links and PDFs to the library on launch, when it becomes active, and immediately on that notification if it's running. Downloads then proceed as usual, so a shared article is saved the next time Reed is open. Reed keeps its own copy of a shared PDF beside the article, `Shared.pdf`, to read it again on a retry or refresh, and knows it by its contents, so sharing the same file twice saves it once. A PDF open in Safari is shared as its link instead.
 
 On macOS, enable the extension once under System Settings → General → Login Items & Extensions → Sharing (or `pluginkit -e use -i town.versary.reed.share`). On iOS it shows in the share sheet's app row, or under More.
 
@@ -67,6 +67,7 @@ Articles/<id>/<version>/
   index.html                    Sanitized article and Reed's reader stylesheet
   image-0                       Downloaded image, referenced locally
 Articles/<id>/Notes.json        Notes, each anchored to its paragraph's opening text
+Articles/<id>/Shared.pdf        A PDF shared as a file, kept to read it again
 Articles/<id>/Audio/<version>/<voice>/
   0.m4a, 1.m4a, …               Narration, one file per passage
 Staging/                        Incomplete downloads, cleaned after restart

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Observation
 import SwiftData
@@ -91,6 +92,28 @@ public final class Library {
         container.mainContext.insert(article)
         do { try container.mainContext.save() }
         catch { container.mainContext.delete(article); throw error }
+        articles.insert(article, at: 0)
+        reindex(article)
+        resumeDownloads()
+        return article
+    }
+
+    /// Saves the PDF at `file`, shared as a file rather than a link. Reed keeps a copy to read it from.
+    @discardableResult public func add(pdfAt file: URL, name: String) throws -> Article {
+        let data = try Data(contentsOf: file)
+        guard data.starts(with: Data("%PDF".utf8)) else { throw ReedError.unsupportedContent }
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        if let existing = articles.first(where: { $0.isFile && URL(string: $0.originalURL)?.pathComponents.dropFirst().first == digest }) {
+            return existing
+        }
+        let article = Article(url: Article.fileURL(digest: digest, name: name))
+        article.title = (name as NSString).deletingPathExtension
+        let copy = storage.sharedFileURL(article.id)
+        try FileManager.default.createDirectory(at: copy.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: copy, options: .atomic)
+        container.mainContext.insert(article)
+        do { try container.mainContext.save() }
+        catch { container.mainContext.delete(article); try? storage.removeArticle(article.id); throw error }
         articles.insert(article, at: 0)
         reindex(article)
         resumeDownloads()
@@ -335,9 +358,12 @@ public final class Library {
 
     public func addShared(from inbox: ShareInbox) {
         do {
-            try inbox.drain { input in
-                // Links that can never be saved are dropped rather than retried forever.
-                do { try add(input) } catch ReedError.invalidURL {}
+            try inbox.drain { item in
+                // What can never be saved is dropped rather than retried forever.
+                switch item {
+                case .link(let input): do { try add(input) } catch ReedError.invalidURL {}
+                case .pdf(let file, let name): do { try add(pdfAt: file, name: name) } catch ReedError.unsupportedContent {}
+                }
             }
         } catch { errorMessage = error.localizedDescription }
     }
@@ -637,16 +663,16 @@ public final class Library {
             if let staging { try? FileManager.default.removeItem(at: staging) }
         }
         do {
-            let source = try ArticleURL.parse(article.originalURL)
+            let source = try article.isFile ? nil : ArticleURL.parse(article.originalURL)
             let pageURL: URL
             let extracted: ExtractedArticle
-            /// Pictures that came with the article rather than needing a download, by file name.
+            // Pictures that came with the article rather than needing a download, by file name.
             var pictures: [String: Data] = [:]
-            if let video = YouTube.videoID(in: source) {
+            if let source, let video = YouTube.videoID(in: source) {
                 report("Fetching the transcript…")
                 extracted = try await YouTube.transcript(of: video, using: downloader)
                 pageURL = YouTube.watchURL(video)
-            } else {
+            } else if let source {
                 report("Fetching \(article.domain)…")
                 switch try await downloader.document(at: source) {
                 case .pdf(let data, let url):
@@ -670,6 +696,12 @@ public final class Library {
                     }
                     pageURL = page.url
                 }
+            } else {
+                report("Reading the PDF…")
+                guard let url = URL(string: article.originalURL),
+                      let data = try? Data(contentsOf: storage.sharedFileURL(article.id)) else { throw ReedError.damagedArticle }
+                (extracted, pictures) = try await readPDF(data, url: url)
+                pageURL = url
             }
             let directory = try storage.createStagingDirectory()
             staging = directory

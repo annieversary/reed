@@ -65,9 +65,11 @@ public final class Article {
         set { stateRaw = newValue.rawValue }
     }
 
-    public var sourceURL: URL? { URL(string: resolvedURL ?? originalURL) }
-    public var domain: String { sourceURL.flatMap(Self.domain(of:)) ?? originalURL }
+    /// Where the article can be found on the web; nil for a file shared to Reed.
+    public var sourceURL: URL? { isFile ? nil : URL(string: resolvedURL ?? originalURL) }
+    public var domain: String { URL(string: resolvedURL ?? originalURL).flatMap(Self.domain(of:)) ?? originalURL }
     public static func domain(of url: URL) -> String? {
+        if url.scheme == fileScheme { return "PDF" }
         guard let host = url.host()?.lowercased() else { return nil }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
@@ -77,6 +79,16 @@ public final class Article {
         sourceURL != nil && (leadsToOtherChapters ?? (SeriesTitle.partNumber(in: title) != nil))
     }
     public var readingMinutes: Int { max(1, Int(ceil(Double(wordCount) / 230))) }
+
+    /// Files shared to Reed are known by their contents, so sharing one twice saves it once.
+    static let fileScheme = "reed-file"
+    public var isFile: Bool { originalURL.hasPrefix(Self.fileScheme + ":") }
+    static func fileURL(digest: String, name: String) -> URL {
+        var components = URLComponents()
+        components.scheme = fileScheme
+        components.path = "/\(digest)/\(name.replacingOccurrences(of: "/", with: "-"))"
+        return components.url!
+    }
 }
 
 public enum ReedError: LocalizedError {

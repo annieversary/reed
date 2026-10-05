@@ -135,9 +135,9 @@ import Testing
     defer { try? FileManager.default.removeItem(at: inbox.directory) }
     try inbox.deposit(URL(string: "https://example.com/a")!)
     #expect(throws: CocoaError.self) { try inbox.drain { _ in throw CocoaError(.fileWriteOutOfSpace) } }
-    var saved: [String] = []
+    var saved: [ShareInbox.Item] = []
     try inbox.drain { saved.append($0) }
-    #expect(saved == ["https://example.com/a"])
+    #expect(saved == [.link("https://example.com/a")])
 }
 
 @Test func readerDocumentsBecomePlainText() {
