@@ -66,7 +66,11 @@ public final class Article {
     }
 
     public var sourceURL: URL? { URL(string: resolvedURL ?? originalURL) }
-    public var domain: String { sourceURL?.host()?.replacingOccurrences(of: "www.", with: "") ?? originalURL }
+    public var domain: String { sourceURL.flatMap(Self.domain(of:)) ?? originalURL }
+    public static func domain(of url: URL) -> String? {
+        guard let host = url.host()?.lowercased() else { return nil }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
     /// Whether finding the chapters around this one is worth offering. Articles saved before chapter links were
     /// looked for are guessed at from their titles.
     public var mayHaveOtherChapters: Bool {

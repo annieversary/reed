@@ -666,7 +666,7 @@ public final class Library {
                 }
             }
             let document = ArticleHTML.document(title: extracted.title, author: extracted.author,
-                                                domain: page.url.host() ?? "", minutes: max(1, Int(ceil(Double(extracted.wordCount) / 230))), body: body)
+                                                domain: Article.domain(of: page.url) ?? "", minutes: max(1, Int(ceil(Double(extracted.wordCount) / 230))), body: body)
             try document.write(to: directory.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
             let version = UUID().uuidString
             try storage.commit(staging: directory, id: article.id, version: version)

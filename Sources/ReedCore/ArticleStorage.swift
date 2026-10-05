@@ -85,7 +85,7 @@ public enum ArticleHTML {
         * { box-sizing:border-box } html { background:var(--paper); overflow-wrap:anywhere; }
         body { max-width:740px; margin:0 auto; padding:60px 42px 140px; color:var(--ink); font:var(--font-size)/1.8 Georgia,serif; }
         header { margin-bottom:38px; padding-bottom:30px; border-bottom:1px solid color-mix(in srgb,var(--muted) 25%,transparent); }
-        .source { font:11px -apple-system,sans-serif; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:var(--accent); }
+        .source { font:11px -apple-system,sans-serif; font-weight:600; letter-spacing:2px; color:var(--accent); }
         h1 { font-size:2.25em; font-weight:normal; line-height:1.16; letter-spacing:-1.4px; margin:18px 0; }
         .byline { color:var(--muted); font:13px/1.6 -apple-system,sans-serif; }
         h2,h3,h4 { line-height:1.35; margin-top:1.8em; } p { margin:1.2em 0; }

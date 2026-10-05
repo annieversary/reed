@@ -616,7 +616,7 @@ private struct ArticleRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
-                Text(article.domain.lowercased()).font(.system(size: 9, weight: .semibold)).tracking(1.1)
+                Text(article.domain).font(.system(size: 9, weight: .semibold)).tracking(1.1)
                 Spacer()
                 if article.isFavorite { Image(systemName: "star.fill").font(.system(size: 9)) }
             }.foregroundStyle(ReedStyle.accent)
