@@ -43,6 +43,8 @@ public final class Article {
     public var isCached: Bool = false
     /// Whether the page links to chapters either side of it; nil if it was saved before that was looked for.
     public var leadsToOtherChapters: Bool?
+    /// Where the link is discussed, such as its Hacker News thread, in the order they were found.
+    public var discussionURLs: [String]?
 
     public init(url: URL, id: UUID = UUID()) {
         self.id = id
@@ -67,6 +69,7 @@ public final class Article {
 
     /// Where the article can be found on the web; nil for a file shared to Reed.
     public var sourceURL: URL? { isFile ? nil : URL(string: resolvedURL ?? originalURL) }
+    public var discussionSites: [DiscussionSite] { (discussionURLs ?? []).compactMap { URL(string: $0).flatMap(DiscussionSite.init(url:)) } }
     public var domain: String { URL(string: resolvedURL ?? originalURL).flatMap(Self.domain(of:)) ?? originalURL }
     public static func domain(of url: URL) -> String? {
         if url.scheme == fileScheme { return "PDF" }

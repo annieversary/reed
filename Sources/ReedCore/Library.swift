@@ -92,11 +92,13 @@ public final class Library {
         }
     }
 
-    @discardableResult public func add(_ input: String) throws -> Article {
+    /// `discussion` is where the link was found being discussed, if it was.
+    @discardableResult public func add(_ input: String, discussion: URL? = nil) throws -> Article {
         let url = try ArticleURL.parse(input)
-        if let existing = article(at: url) { return existing }
-        if let cached = cachedArticle(at: url) { keep(cached); return cached }
+        if let existing = article(at: url) { note(discussion, of: existing); save(); return existing }
+        if let cached = cachedArticle(at: url) { note(discussion, of: cached); keep(cached); return cached }
         let article = Article(url: url)
+        note(discussion, of: article)
         container.mainContext.insert(article)
         do { try container.mainContext.save() }
         catch { container.mainContext.delete(article); throw error }
@@ -138,14 +140,17 @@ public final class Library {
     }
 
     /// The copy of `url` to read: the saved one, else the cached one, cached now if need be.
-    public func readable(at url: URL) -> Article? {
-        if let saved = article(at: url) { return saved }
+    public func readable(at url: URL, discussion: URL? = nil) -> Article? {
+        if let saved = article(at: url) { note(discussion, of: saved); save(); return saved }
         let article: Article
         if let existing = cachedArticle(at: url) {
             article = existing
-            if article.state == .failed { article.state = .queued; save() }
+            note(discussion, of: article)
+            if article.state == .failed { article.state = .queued }
+            save()
         } else {
             article = Article(url: url)
+            note(discussion, of: article)
             article.isCached = true
             container.mainContext.insert(article)
             do { try container.mainContext.save() }
@@ -156,6 +161,40 @@ public final class Library {
         cached.insert(article, at: 0)
         resumeDownloads()
         return article
+    }
+
+    /// Adds where the article is discussed, unsaved, if it isn't known already.
+    private func note(_ discussion: URL?, of article: Article) {
+        guard let discussion, let site = DiscussionSite(url: discussion), !article.discussionSites.contains(site) else { return }
+        article.discussionURLs = (article.discussionURLs ?? []) + [site.url.absoluteString]
+    }
+
+    /// Asks other sites whether they discuss the article. This tells them its address, so it's only done when asked for.
+    public func findDiscussions(of article: Article) async {
+        guard let url = article.sourceURL else { return }
+        let found = await DiscussionSite.discussions(of: url, using: downloader)
+        for site in found { note(site.url, of: article) }
+        save()
+    }
+
+    /// The comments last fetched from `site`, if any.
+    public func discussion(_ site: DiscussionSite, of article: Article) -> Discussion? {
+        guard let data = try? Data(contentsOf: storage.discussionURL(article.id, site: site)) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(Discussion.self, from: data)
+    }
+
+    /// Fetches the comments from `site` again, keeping them to read offline.
+    public func refreshDiscussion(_ site: DiscussionSite, of article: Article) async throws -> Discussion {
+        let discussion = try await site.discussion(using: downloader)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let url = storage.discussionURL(article.id, site: site)
+        // Failing to keep a copy only costs reading them offline.
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? encoder.encode(discussion).write(to: url, options: .atomic)
+        return discussion
     }
 
     /// Moves a cached article into the library, without downloading it again.
@@ -196,14 +235,17 @@ public final class Library {
     private func syncCache() {
         var kept: [Article] = []
         let wanted = ExternalSource.allCases.flatMap { frontPages[$0]?.items ?? [] } + feedItems.prefix(Self.cachedFeedEntries)
+        for item in wanted { if let saved = article(at: item.url) { note(item.discussionURL, of: saved) } }
         for item in wanted
         where article(at: item.url) == nil && !kept.contains(where: { $0.isAt(item.url) }) {
             if let existing = cachedArticle(at: item.url) {
                 // Earlier failures are often just being offline.
                 if existing.state == .failed { existing.state = .queued; existing.failureMessage = nil }
+                note(item.discussionURL, of: existing)
                 kept.append(existing)
             } else {
                 let article = Article(url: item.url)
+                note(item.discussionURL, of: article)
                 article.isCached = true
                 container.mainContext.insert(article)
                 kept.append(article)

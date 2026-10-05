@@ -32,6 +32,11 @@ public struct ArticleStorage: Sendable {
         articleDirectory(id).appendingPathComponent("Notes.json")
     }
 
+    /// The comments last fetched from one place the article is discussed.
+    public func discussionURL(_ id: UUID, site: DiscussionSite) -> URL {
+        articleDirectory(id).appendingPathComponent("Discussions", isDirectory: true).appendingPathComponent(site.key + ".json")
+    }
+
     /// A PDF shared as a file, kept beside the versions made from it so it can be read again.
     public func sharedFileURL(_ id: UUID) -> URL {
         articleDirectory(id).appendingPathComponent("Shared.pdf")

@@ -44,6 +44,8 @@ struct SourceListView: View {
     @State private var visited = false
     @State private var showingAddFeed = false
     @State private var showingFeeds = false
+    /// The story whose comments are showing.
+    @State private var commentsFor: (article: Article, site: DiscussionSite)?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -99,6 +101,16 @@ struct SourceListView: View {
         }
         .sheet(isPresented: $showingAddFeed) { AddFeedView(library: library) }
         .sheet(isPresented: $showingFeeds) { ManageFeedsView(library: library) }
+        .sheet(isPresented: Binding(get: { commentsFor != nil }, set: { if !$0 { commentsFor = nil } })) {
+            if let commentsFor {
+                DiscussionView(library: library, article: commentsFor.article,
+                               isPresented: Binding(get: { self.commentsFor != nil }, set: { if !$0 { self.commentsFor = nil } }),
+                               showsDone: true, selected: commentsFor.site)
+                #if os(macOS)
+                .frame(minWidth: 520, idealWidth: 620, minHeight: 560, idealHeight: 760)
+                #endif
+            }
+        }
         .navigationTitle(origin.title)
         #if os(macOS)
         .toolbar(removing: .title)
@@ -147,6 +159,11 @@ struct SourceListView: View {
                     Button("Remove from Library", systemImage: "tray.and.arrow.up", role: .destructive) { library.removeFromLibrary(saved) }
                 } else {
                     Button("Save to Library", systemImage: "tray.and.arrow.down") { save(item) }
+                }
+                if let site = item.discussionURL.flatMap(DiscussionSite.init(url:)) {
+                    Button("Comments", systemImage: "text.bubble") {
+                        if let article = library.readable(at: item.url, discussion: item.discussionURL) { commentsFor = (article, site) }
+                    }
                 }
             }
     }
@@ -302,12 +319,12 @@ struct SourceListView: View {
 
     private func choose(_ id: String?) {
         openedID = id
-        guard let item = items?.first(where: { $0.id == id }), let article = library.readable(at: item.url) else { return }
+        guard let item = items?.first(where: { $0.id == id }), let article = library.readable(at: item.url, discussion: item.discussionURL) else { return }
         open(article)
     }
 
     @discardableResult private func save(_ item: SourceItem) -> Article? {
-        do { return try library.add(item.url.absoluteString) }
+        do { return try library.add(item.url.absoluteString, discussion: item.discussionURL) }
         catch { library.errorMessage = error.localizedDescription; return nil }
     }
 }

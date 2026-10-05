@@ -23,6 +23,9 @@ struct ReaderView: View {
     @State private var notes: [ArticleNote]?
     @State private var notesOpen = false
     @State private var findingChapters = false
+    @State private var commentsOpen = false
+    /// The comments last fetched from each place the article is discussed.
+    @State private var discussions: [DiscussionSite: Discussion] = [:]
 
     private var article: Article? { readable as? Article }
     private var chapter: BookChapter? { readable as? BookChapter }
@@ -38,6 +41,7 @@ struct ReaderView: View {
                     progressLabel
                     if !isNarrating { listenButton }
                 }
+                if article?.sourceURL != nil { commentsButton }
                 readerMenu
             }
             .padding(.horizontal, 22).padding(.vertical, 15)
@@ -55,7 +59,7 @@ struct ReaderView: View {
                 }
                 OfflineWebView(url: url, fontSize: fontSize, progress: readable.progress, anchor: anchor, passages: passages,
                                narrating: isNarrating ? NarrationPosition(passage: narrator.current, sentence: narrator.sentence) : nil,
-                               proxy: reader, notes: notes, notesOpen: notesOpen, next: nextCard) { value in
+                               proxy: reader, notes: notes, notesOpen: notesOpen, cards: endCards) { value in
                     library.updateProgress(readable, value: value)
                 } onAddLink: { link in
                     do { try library.add(link.absoluteString) }
@@ -72,8 +76,8 @@ struct ReaderView: View {
                     guard let index = BookFiles.chapterIndex(of: file),
                           let target = chapter?.book?.orderedChapters.first(where: { $0.index == index }) else { return }
                     onOpenChapter(target, anchor)
-                } onOpenNext: {
-                    onOpenNext()
+                } onOpenCard: { id in
+                    if id == Self.commentsCard { commentsOpen = true } else { onOpenNext() }
                 }
                 .id(readable.id.uuidString + (readable.contentVersion ?? "") + (anchor ?? ""))
                 // Text runs under the home indicator, but not under the narration controls.
@@ -118,18 +122,45 @@ struct ReaderView: View {
                 ToolbarItem(placement: .principal) { progressLabel }
                 if !isNarrating { ToolbarItem(placement: .primaryAction) { listenButton } }
             }
+            if article?.sourceURL != nil { ToolbarItem(placement: .primaryAction) { commentsButton } }
             ToolbarItem(placement: .primaryAction) { readerMenu }
         }
         #endif
         .sheet(isPresented: $findingChapters) { if let article { FindChaptersView(library: library, start: article) } }
+        .inspector(isPresented: $commentsOpen) {
+            if let article {
+                DiscussionView(library: library, article: article, isPresented: $commentsOpen) { discussions[$0] = $1 }
+                    .inspectorColumnWidth(min: 320, ideal: 420)
+            }
+        }
+        .task(id: article?.id) { if let article { loadDiscussions(of: article) } }
         .onAppear { if let chapter { library.open(chapter) } }
         .onDisappear { library.save() }
     }
 
-    private var nextCard: NextCard? {
-        guard let next else { return nil }
-        let detail = [next.author, next.state.isReadable ? "\(next.readingMinutes) min read" : nil].compactMap { $0 }.filter { !$0.isEmpty }
-        return NextCard(kicker: "NEXT ARTICLE", source: next.domain.uppercased(), title: next.title, detail: detail.joined(separator: " · "))
+    private static let commentsCard = "comments"
+
+    private var endCards: [EndCard] {
+        var cards: [EndCard] = []
+        if let sites = article?.discussionSites, !sites.isEmpty {
+            let counted = sites.compactMap { site in discussions[site].map { (site, $0.count) } }
+            let total = counted.reduce(0) { $0 + $1.1 }
+            let title = counted.isEmpty ? "Read the discussion" : "\(total) \(total == 1 ? "comment" : "comments")"
+            let detail = counted.count > 1 ? counted.map { "\($1) on \($0.name)" }.joined(separator: " · ") : ""
+            cards.append(EndCard(id: Self.commentsCard, kicker: "DISCUSSION", source: sites.map { $0.name.uppercased() }.joined(separator: " · "),
+                                 title: title, detail: detail))
+        }
+        if let next {
+            let detail = [next.author, next.state.isReadable ? "\(next.readingMinutes) min read" : nil].compactMap { $0 }.filter { !$0.isEmpty }
+            cards.append(EndCard(id: "next", kicker: "NEXT ARTICLE", source: next.domain.uppercased(), title: next.title, detail: detail.joined(separator: " · ")))
+        }
+        return cards
+    }
+
+    /// The comments kept from when they were last shown. Opening an article fetches nothing, so no site learns it was read.
+    private func loadDiscussions(of article: Article) {
+        discussions = Dictionary(article.discussionSites.compactMap { site in library.discussion(site, of: article).map { (site, $0) } },
+                                 uniquingKeysWith: { first, _ in first })
     }
 
     private var progressLabel: some View {
@@ -155,6 +186,15 @@ struct ReaderView: View {
             .buttonStyle(.borderless)
             #endif
             .help("Listen")
+    }
+
+    private var commentsButton: some View {
+        Button("Comments", systemImage: "text.bubble") { commentsOpen.toggle() }
+            .labelStyle(.iconOnly)
+            #if os(macOS)
+            .buttonStyle(.borderless)
+            #endif
+            .help("Comments")
     }
 
     private func returnToNarrationButton(_ direction: NarrationDirection) -> some View {

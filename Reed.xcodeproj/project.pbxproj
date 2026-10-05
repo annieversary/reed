@@ -64,6 +64,24 @@
 			<key>fileRef</key>
 			<string>389682EFB429072B64101425</string>
 		</dict>
+		<key>C0F42409C53726155A6A445F</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/DiscussionView.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>8AFB1B09473B34E125DA987F</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>C0F42409C53726155A6A445F</string>
+		</dict>
 		<key>55138BB89AD0F42AA656C991</key>
 		<dict>
 			<key>isa</key>
@@ -423,6 +441,24 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>D65FBF6BA5AB19F660046967</string>
+		</dict>
+		<key>10AD7FCCD699597A6E456FDB</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Discussion.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>28F47E9609AE1D401F736759</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>10AD7FCCD699597A6E456FDB</string>
 		</dict>
 		<key>E4A6130A16DFE8999FB570D0</key>
 		<dict>
@@ -998,6 +1034,7 @@
 				<string>8A1C9B68090CF9EC3BF00E03</string>
 				<string>58082E44E6C06764D52E1DD7</string>
 				<string>389682EFB429072B64101425</string>
+				<string>C0F42409C53726155A6A445F</string>
 				<string>55138BB89AD0F42AA656C991</string>
 				<string>7FFB9C3824D5D12742BB27B3</string>
 				<string>26ECBB57E0E465EB30EFF084</string>
@@ -1018,6 +1055,7 @@
 				<string>98CED4B3A5C97EFC85BEB56A</string>
 				<string>CF68800A261266D8B7FAE975</string>
 				<string>D65FBF6BA5AB19F660046967</string>
+				<string>10AD7FCCD699597A6E456FDB</string>
 				<string>E4A6130A16DFE8999FB570D0</string>
 				<string>E54706938FEB6E4E3EB76450</string>
 				<string>71ED38E1A22A53FC09CC788E</string>
@@ -1092,6 +1130,7 @@
 			<array>
 				<string>6028FB5DE9020B01ED4401D3</string>
 				<string>E08D13C4A79B214B6C93A7E8</string>
+				<string>8AFB1B09473B34E125DA987F</string>
 				<string>AF2981C8D415CDED6EA81231</string>
 				<string>23C4BE1CC27D3C948AF14841</string>
 				<string>E1FE09D28E34B5F60D61E9C1</string>
@@ -1112,6 +1151,7 @@
 				<string>3483221D2BB5C1A5B6A79D8D</string>
 				<string>E7F44333818D0C1F695D8584</string>
 				<string>1E23CEB4C82ED008FF66EE27</string>
+				<string>28F47E9609AE1D401F736759</string>
 				<string>9B15EC43A7052836950CBFB3</string>
 				<string>AE024CFD9B7E72C3CD28BCD8</string>
 				<string>195C31670E982970F5E5921F</string>

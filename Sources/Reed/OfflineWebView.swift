@@ -26,8 +26,10 @@ struct NarrationPosition: Equatable {
     var sentence: Int
 }
 
-/// The way on to what's next in the list, shown at the end of the page.
-struct NextCard: Equatable {
+/// A card at the end of the page, such as the way on to what's next in the list.
+struct EndCard: Equatable {
+    /// Sent back when the card is tapped.
+    var id: String
     var kicker: String
     var source: String
     var title: String
@@ -53,7 +55,7 @@ enum NarrationDirection: String {
     /// The notes beside the article's passages, once loaded.
     var notes: [ArticleNote]?
     var notesOpen = false
-    var next: NextCard?
+    var cards: [EndCard] = []
     var onProgress: (Double) -> Void
     var onAddLink: (URL) -> Void
     var onNarrateFrom: (Int) -> Void = { _ in }
@@ -62,7 +64,7 @@ enum NarrationDirection: String {
     var onNoteChange: (Int, String) -> Void = { _, _ in }
     /// Another saved document beside this one, such as a book's next chapter, by file name and element ID.
     var onOpenSibling: (String, String?) -> Void = { _, _ in }
-    var onOpenNext: () -> Void = {}
+    var onOpenCard: (String) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -109,9 +111,9 @@ enum NarrationDirection: String {
                                                                        forMainFrameOnly: true, in: .defaultClient))
         configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: "notesOpen")
         configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: "noteChanged")
-        configuration.userContentController.addUserScript(WKUserScript(source: Self.nextScript, injectionTime: .atDocumentEnd,
+        configuration.userContentController.addUserScript(WKUserScript(source: Self.cardsScript, injectionTime: .atDocumentEnd,
                                                                        forMainFrameOnly: true, in: .defaultClient))
-        configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: "openNext")
+        configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: "openCard")
         #if os(macOS)
         // AppKit's menu hook doesn't say which link was clicked, so the page reports it first.
         configuration.userContentController.add(coordinator, contentWorld: .defaultClient, name: "contextLink")
@@ -147,7 +149,7 @@ enum NarrationDirection: String {
         coordinator.applyPassages(webView)
         coordinator.applyNarration(webView)
         coordinator.applyNotesOpen(webView)
-        coordinator.applyNext(webView)
+        coordinator.applyCards(webView)
         #if os(iOS)
         // Swiping back from the screen's edge closes the margin, rather than leaving the article.
         if coordinator.backSwipeDisabled != notesOpen { coordinator.setBackSwipe(enabled: !notesOpen, from: webView) }
@@ -638,9 +640,9 @@ enum NarrationDirection: String {
     })();
     """#
 
-    /// A card after the article that opens the next one. Its elements are inline, so narration never takes it for a passage.
-    private static let nextScript = #"""
-    window.reedNext = (() => {
+    /// Cards after the article, such as one that opens the next. Their elements are inline, so narration never takes them for passages.
+    private static let cardsScript = #"""
+    window.reedCards = (() => {
         const style = document.createElement('style');
         style.textContent = `
             .reed-next { display: block; margin-top: 64px; padding: 22px 26px; border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
@@ -649,9 +651,10 @@ enum NarrationDirection: String {
             .reed-next small { display: block; font: 11px -apple-system, sans-serif; font-weight: 600; letter-spacing: 2px; color: var(--accent); }
             .reed-next .reed-next-source { margin-top: 14px; font-weight: 500; letter-spacing: 1px; color: var(--muted); }
             .reed-next span { display: block; margin-top: 4px; font-size: 1.15em; line-height: 1.35; }
-            .reed-next .reed-next-detail { margin-top: 8px; font-size: 12px; font-weight: normal; letter-spacing: 0; color: var(--muted); }`;
+            .reed-next .reed-next-detail { margin-top: 8px; font-size: 12px; font-weight: normal; letter-spacing: 0; color: var(--muted); }
+            .reed-next + .reed-next { margin-top: 14px; }`;
         document.head.appendChild(style);
-        let card = null;
+        let shown = [];
         const line = (tag, className, text) => {
             const element = document.createElement(tag);
             if (className) element.className = className;
@@ -659,21 +662,22 @@ enum NarrationDirection: String {
             return element;
         };
         return {
-            set(next) {
-                card?.remove();
-                card = null;
-                if (!next) return;
-                card = document.createElement('a');
-                card.className = 'reed-next';
-                card.href = '#';
-                card.append(line('small', '', next.kicker), line('small', 'reed-next-source', next.source),
-                            line('span', '', next.title), line('small', 'reed-next-detail', next.detail));
-                card.addEventListener('click', event => {
-                    event.preventDefault();
-                    window.webkit.messageHandlers.openNext.postMessage('');
+            set(cards) {
+                shown.forEach(card => card.remove());
+                shown = cards.map(next => {
+                    const card = document.createElement('a');
+                    card.className = 'reed-next';
+                    card.href = '#';
+                    card.append(line('small', '', next.kicker), line('small', 'reed-next-source', next.source), line('span', '', next.title));
+                    if (next.detail) card.append(line('small', 'reed-next-detail', next.detail));
+                    card.addEventListener('click', event => {
+                        event.preventDefault();
+                        window.webkit.messageHandlers.openCard.postMessage(next.id);
+                    });
+                    return card;
                 });
                 const main = document.querySelector('body > main');
-                if (main) main.after(card); else document.body.appendChild(card);
+                if (main) main.after(...shown); else document.body.append(...shown);
             },
         };
     })();
@@ -688,7 +692,7 @@ enum NarrationDirection: String {
         private var shownNarration: NarrationPosition?
         private var sentNotes = false
         private var shownNotesOpen = false
-        private var shownNext: NextCard??
+        private var shownCards: [EndCard]?
         init(parent: OfflineWebView) { self.parent = parent }
 
         func applyFont(_ webView: WKWebView) {
@@ -713,11 +717,11 @@ enum NarrationDirection: String {
             webView.evaluateJavaScript("reedNotes.setOpen(\(parent.notesOpen))", in: nil, in: .defaultClient) { _ in }
         }
 
-        func applyNext(_ webView: WKWebView) {
-            guard shownNext != .some(parent.next) else { return }
-            shownNext = .some(parent.next)
-            let card = parent.next.map { ["kicker": $0.kicker, "source": $0.source, "title": $0.title, "detail": $0.detail] }
-            webView.callAsyncJavaScript("reedNext.set(card)", arguments: ["card": card ?? NSNull()], in: nil, in: .defaultClient) { _ in }
+        func applyCards(_ webView: WKWebView) {
+            guard shownCards != parent.cards else { return }
+            shownCards = parent.cards
+            let cards = parent.cards.map { ["id": $0.id, "kicker": $0.kicker, "source": $0.source, "title": $0.title, "detail": $0.detail] }
+            webView.callAsyncJavaScript("reedCards.set(cards)", arguments: ["cards": cards], in: nil, in: .defaultClient) { _ in }
         }
 
         func applyNarration(_ webView: WKWebView) {
@@ -736,7 +740,7 @@ enum NarrationDirection: String {
             applyFont(webView)
             applyPassages(webView)
             applyNotesOpen(webView)
-            applyNext(webView)
+            applyCards(webView)
             if parent.narrating != nil { applyNarration(webView) }
         }
 
@@ -745,8 +749,8 @@ enum NarrationDirection: String {
                 contextLink = (message.body as? String).flatMap(URL.init(string:)).flatMap { Self.isWeb($0) ? $0 : nil }
                 return
             }
-            if message.name == "openNext" {
-                parent.onOpenNext()
+            if message.name == "openCard" {
+                if let id = message.body as? String { parent.onOpenCard(id) }
                 return
             }
             if message.name == "narrationJump" {

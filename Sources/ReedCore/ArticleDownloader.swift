@@ -94,13 +94,13 @@ public actor ArticleDownloader {
     }
 
     /// JSON, sent with `cookie` alone when one is given.
-    public func json(at url: URL, cookie: String? = nil) async throws -> Data {
+    public func json(at url: URL, cookie: String? = nil, limit: Int = 2 * 1024 * 1024) async throws -> Data {
         var request = URLRequest(url: url)
         if let cookie {
             request.httpShouldHandleCookies = false
             request.setValue(cookie, forHTTPHeaderField: "Cookie")
         }
-        return try await fetch(request, limit: 2 * 1024 * 1024, kind: .json).0
+        return try await fetch(request, limit: limit, kind: .json).0
     }
 
     /// The JSON answer to POSTing `body` as JSON.

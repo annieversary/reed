@@ -398,3 +398,75 @@ import Testing
     reopened.removeFromSeries(reopened.articles.first { $0.title == "Packer, part 1" }!)
     #expect(reopened.series.isEmpty)
 }
+
+@Test func hackerNewsDiscussionsKeepHNsRankingAndDropEmptyDeletions() throws {
+    let url = try #require(URL(string: "https://news.ycombinator.com/item?id=8863"))
+    #expect(DiscussionSite(url: url) == .hackerNews(id: 8863))
+    let thread = Data("""
+    {"id":8863,"author":"dhouston","points":104,"text":null,"children":[
+     {"id":1,"author":"early","created_at_i":1175714575,"text":"First posted","children":[]},
+     {"id":2,"author":null,"text":null,"children":[
+       {"id":3,"author":"reply","created_at_i":1175714600,"text":"One<p>Two","children":[]}]},
+     {"id":4,"author":null,"text":null,"children":[]},
+     {"id":5,"author":"best","created_at_i":1175714700,"text":"Ranked first","children":[]}]}
+    """.utf8)
+    let discussion = try DiscussionSite.hackerNewsDiscussion(from: thread, ranking: Data(#"{"kids":[5,2,1]}"#.utf8), url: url)
+    #expect(discussion.comments.map(\.id) == ["5", "2", "1"])
+    #expect(discussion.count == 4)
+    #expect(discussion.comments[1].author == nil && discussion.comments[1].replies.map(\.html) == ["<p>One<p>Two"])
+    #expect(try DiscussionSite.hackerNewsDiscussion(from: thread, ranking: nil, url: url).comments.map(\.id) == ["1", "2", "5"])
+    let html = discussion.html(site: .hackerNews(id: 8863), title: "My <YC> app")
+    #expect(html.contains("My &lt;YC&gt; app") && html.contains("104 points · 4 comments") && html.contains("<i>deleted</i>"))
+}
+
+@Test func discussionSitesAreKnownByTheirThreadLinks() {
+    #expect(DiscussionSite(url: URL(string: "https://lobste.rs/s/2svplr/gleam_doesn_t_compile")!) == .lobsters(id: "2svplr"))
+    #expect(DiscussionSite(url: URL(string: "https://www.astralcodexten.com/p/open-thread-454/comments")!) == .substack(host: "www.astralcodexten.com", slug: "open-thread-454"))
+    #expect(DiscussionSite(url: URL(string: "https://example.com/p/a-post")!) == nil)
+    #expect(DiscussionSite.substack(host: "a.substack.com", slug: "b").url.absoluteString == "https://a.substack.com/p/b/comments")
+}
+
+@Test func lobstersThreadsAreRebuiltFromTheirDepths() throws {
+    let url = URL(string: "https://lobste.rs/s/abc")!
+    let discussion = try DiscussionSite.lobstersDiscussion(from: Data("""
+    {"score":38,"comments":[
+     {"short_id":"a","depth":0,"comment":"<p>Top</p>","commenting_user":"one","created_at":"2026-10-05T14:19:31.042-05:00"},
+     {"short_id":"b","depth":1,"comment":"<p>Reply</p>","commenting_user":"two"},
+     {"short_id":"c","depth":2,"comment":"<p>Deeper</p>","commenting_user":"three"},
+     {"short_id":"d","depth":1,"comment":"","is_deleted":true,"commenting_user":"four"},
+     {"short_id":"e","depth":0,"comment":"","is_moderated":true,"commenting_user":"five"},
+     {"short_id":"f","depth":1,"comment":"<p>Kept</p>","commenting_user":"six"},
+     {"short_id":"g","depth":0,"comment":"<p>Last</p>","commenting_user":"seven"}]}
+    """.utf8), url: url)
+    #expect(discussion.comments.map(\.id) == ["a", "e", "g"])
+    #expect(discussion.comments[0].replies.map(\.id) == ["b"] && discussion.comments[0].replies[0].replies.map(\.id) == ["c"])
+    #expect(discussion.comments[1].author == nil && discussion.comments[1].replies.map(\.html) == ["<p>Kept</p>"])
+    #expect(discussion.count == 6 && discussion.points == 38)
+}
+
+@Test func substackCommentsBecomeParagraphsWithLinks() throws {
+    let discussion = try DiscussionSite.substackDiscussion(from: Data("""
+    {"comments":[
+     {"id":1,"name":"Ann","body":"See https://example.com/a?b=1&c=2.\\n\\nSecond <line>\\nthird","date":"2026-10-05T15:45:48.408Z","children":[
+       {"id":2,"name":"Bo","body":null,"deleted":true,"children":[]}]},
+     {"id":3,"name":null,"body":null,"deleted":true,"children":[{"id":4,"name":"Cy","body":"Hi","children":[]}]}]}
+    """.utf8), points: 12, url: URL(string: "https://a.substack.com/p/b/comments")!)
+    #expect(discussion.comments.map(\.id) == ["1", "3"] && discussion.comments[0].replies.isEmpty)
+    #expect(discussion.comments[0].html == #"<p>See <a href="https://example.com/a?b=1&amp;c=2">https://example.com/a?b=1&amp;c=2</a>.</p><p>Second &lt;line&gt;<br>third</p>"#)
+    #expect(discussion.comments[1].author == nil && discussion.count == 3)
+    #expect(discussion.html(site: .substack(host: "a.substack.com", slug: "b"), title: "T").contains("12 likes · 3 comments"))
+}
+
+@Test func discussionLookupsPickTheMostDiscussedExactMatch() throws {
+    let article = URL(string: "https://www.example.com/post/")!
+    let hits = Data("""
+    {"hits":[{"objectID":"1","url":"https://example.com/post","num_comments":5},
+             {"objectID":"2","url":"http://example.com/post","num_comments":40},
+             {"objectID":"3","url":"https://example.com/post/more","num_comments":900},
+             {"objectID":"4","url":"https://example.com/post","num_comments":0}]}
+    """.utf8)
+    #expect(try DiscussionSite.hackerNewsMatch(for: article, in: hits) == .hackerNews(id: 2))
+    #expect(try DiscussionSite.hackerNewsMatch(for: article, in: Data(#"{"hits":[]}"#.utf8)) == nil)
+    #expect(try DiscussionSite.lobstersMatch(in: Data(#"[{"short_id":"x","comment_count":0},{"short_id":"y","comment_count":3}]"#.utf8)) == .lobsters(id: "y"))
+    #expect(try DiscussionSite.lobstersMatch(in: Data("[]".utf8)) == nil)
+}
