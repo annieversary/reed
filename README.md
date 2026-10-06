@@ -31,9 +31,15 @@ Builds for `generic/platform=iOS`, then installs and launches over `devicectl`. 
 - Share a link to Reed from Safari or any other app's share sheet, or a PDF from Files, Mail or anywhere else that shares documents.
 - Extract readable HTML using bundled Mozilla Readability, sanitize with DOMPurify, and download images.
 - Read saved articles in a local WebKit reader with light/dark appearance and adjustable type.
-- Search titles, authors, websites, and excerpts; favorite articles and mark them finished.
+- Search the full text of saved articles as well as their titles, authors and websites; favorite articles and mark them finished.
+- Unread articles are listed oldest first. Articles grey out the further they've been read, in the library, on front pages and in feeds, and each one ends with a card for the next in the list.
+- Browse the front pages of Hacker News, Lobste.rs and Substack (the For You feed, once signed in), and subscribe to RSS and Atom feeds. Their stories are downloaded ahead to read offline, and kept outside the library until saved.
+- Read the comments on Hacker News, Lobste.rs and Substack beside an article, from its More menu. They're kept to read offline, and other sites are only asked whether they discuss an article when you ask.
+- Find a serial's other chapters and save them as a series, read in order.
+- Save YouTube videos as their transcripts, in paragraphs under their chapters.
+- Pages that assemble their article with JavaScript are rendered once in a throwaway web view, then extracted like any other.
 - Save reading position and restore it when reopening an article.
-- Listen to saved articles, read aloud on device by Kokoro (see below).
+- Listen to saved articles, read aloud on device by Kokoro (see below). Pictures standing on their own are read by their alt text; on macOS 27 or iOS 27, the on-device model describes those that come without any.
 - Write notes beside each paragraph: swipe from right to left (or sideways on a trackpad) to slide the article over for a margin of notes. A note longer than its paragraph parts the article below it, so it stays beside what it's about.
 - Distinguish queued, downloading, saved, partially saved, and failed downloads.
 - Retry failures, recover interrupted downloads on launch, and delete saved articles.
@@ -69,6 +75,8 @@ Articles/<id>/<version>/
   image-0                       Downloaded image, referenced locally
 Articles/<id>/Notes.json        Notes, each anchored to its paragraph's opening text
 Articles/<id>/Shared.pdf        A PDF shared as a file, kept to read it again
+Articles/<id>/Discussions/<site>.json
+                                Comments last fetched from each site
 Articles/<id>/Audio/<version>/<voice>/
   0.m4a, 1.m4a, …               Narration, one file per passage
 Books/<id>/Book.epub            The EPUB a book was added from, kept to convert it again
@@ -77,8 +85,14 @@ Books/<id>/<version>/
   book-OEBPS_Images_cover.jpg   Images, shared by the chapters, named after their place in the EPUB
 Books/<id>/Notes/<chapter>.json
 Books/<id>/Audio/<version>/<voice>/<chapter>/
+Feeds.json                      Subscribed feeds and their latest entries
+Series.json                     Series and their parts, in reading order
+FrontPages/<source>.json        The front page last fetched from each source
+Search.sqlite                   Full-text index, rebuilt from the articles if damaged
 Staging/                        Incomplete downloads, cleaned after restart
 ```
+
+A `Feeds.json` or `Series.json` that can't be read is moved aside to `<name>.unreadable` rather than overwritten.
 
 Article packages are assembled in staging and moved into place before metadata points to them. A failed replacement leaves the earlier package intact. Saved articles are durable files, not a browser cache. On iOS this directory is inside the app container.
 
@@ -106,9 +120,9 @@ After adding source or resource files, run `python3 scripts/generate_project.py`
 ## Prototype boundaries
 
 - Keep the app open while saving. The queue is persistent, but this version does not implement iOS background transfers, so shared links wait until Reed is opened.
-- Public HTML articles are supported. Pages that require JavaScript rendering, login, or a paywall may fail extraction or only expose a preview; Reed does not bypass those restrictions.
-- Video, audio, multi-page articles, accounts, cloud sync, tags, and full-text search are not implemented.
-- The Mac app is not sandboxed or notarized; only its share extension is sandboxed. App Store packaging, app icons, distribution signing, and iPhone interaction testing are follow-up work.
+- Public HTML articles are supported. Pages that require a login or a paywall may fail extraction or only expose a preview; Reed does not bypass those restrictions.
+- Video beyond YouTube transcripts, audio, articles split across pages, accounts (other than signing in to Substack), cloud sync, and tags are not implemented.
+- The Mac app is not sandboxed or notarized; only its share extension is sandboxed. App Store packaging, distribution signing, and iPhone interaction testing are follow-up work.
 - HTTP URLs are allowed for user-selected article sources. The reader itself blocks remote loading.
 
 ## Third-party code

@@ -146,6 +146,22 @@ private let base = URL(string: "https://example.com/feed.xml")!
     #expect(river[0].feedID == a.id)
 }
 
+@MainActor @Test func unreadableFeedsAndSeriesAreKeptAside() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let unreadable = Data(#"{"feeds": [{"unexpected": true}]}"#.utf8)
+    for name in ["Feeds.json", "Series.json"] { try unreadable.write(to: root.appendingPathComponent(name)) }
+
+    let library = try Library(root: root)
+    #expect(library.feeds.isEmpty)
+    #expect(library.series.isEmpty)
+    try library.saveFeeds()
+    for name in ["Feeds.json", "Series.json"] {
+        #expect(try Data(contentsOf: root.appendingPathComponent(name + ".unreadable")) == unreadable)
+    }
+}
+
 @MainActor @Test func subscriptionsRefreshAndSurviveRelaunch() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }

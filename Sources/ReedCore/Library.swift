@@ -79,14 +79,12 @@ public final class Library {
                 frontPages[source] = page
             }
         }
-        if let data = try? Data(contentsOf: Self.feedsURL(root: root)),
-           let store = try? JSONDecoder().decode(FeedStore.self, from: data) {
+        if let store = Self.restore(FeedStore.self, from: Self.feedsURL(root: root)) {
             feeds = store.feeds
             feedItems = Self.river(of: feeds)
             feedsVisitedAt = store.visitedAt
         }
-        if let data = try? Data(contentsOf: Self.seriesURL(root: root)),
-           let stored = try? JSONDecoder().decode([Series].self, from: data) {
+        if let stored = Self.restore([Series].self, from: Self.seriesURL(root: root)) {
             let saved = Set(articles.map(\.id))
             series = stored.map { var series = $0; series.parts.removeAll { !saved.contains($0) }; return series }
                 .filter { !$0.parts.isEmpty }
@@ -97,6 +95,17 @@ public final class Library {
             try? await searchIndex.sync(entries)
             self?.searchRevision += 1
         }
+    }
+
+    /// What was saved at `url`, or nil if nothing was. A file that can't be read is moved aside to
+    /// `<name>.unreadable` rather than left to be overwritten by the next save.
+    static func restore<T: Decodable>(_ type: T.Type, from url: URL) -> T? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        if let value = try? JSONDecoder().decode(type, from: data) { return value }
+        let aside = url.appendingPathExtension("unreadable")
+        try? FileManager.default.removeItem(at: aside)
+        try? FileManager.default.moveItem(at: url, to: aside)
+        return nil
     }
 
     /// `discussion` is where the link was found being discussed, if it was.
