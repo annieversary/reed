@@ -88,6 +88,15 @@ private func fixture(_ name: String) throws -> URL {
     #expect(library.notes(for: chapters[0], passages: passages).map(\.text) == ["A good mill"])
     #expect(library.notes(for: chapters[1], passages: try #require(library.passages(for: chapters[1]))).isEmpty)
 
+    // Converting again moves notes with their chapters, and sets aside those of chapters that are gone.
+    library.setNote("A good river", at: 1, for: chapters[1])
+    library.moveNotes(of: book, as: [0: 1])
+    let notes = library.storage.bookDirectory(book.id).appendingPathComponent("Notes")
+    #expect(try String(contentsOf: notes.appendingPathComponent("1.json"), encoding: .utf8).contains("A good mill"))
+    #expect(!FileManager.default.fileExists(atPath: notes.appendingPathComponent("0.json").path))
+    let unplaced = try FileManager.default.contentsOfDirectory(at: notes.appendingPathComponent("Unplaced"), includingPropertiesForKeys: nil)
+    #expect(try unplaced.map { try String(contentsOf: $0, encoding: .utf8) }.joined().contains("A good river"))
+
     #expect(library.next(after: chapters[0]) === chapters[1] && library.next(after: chapters[1]) == nil)
     library.updateProgress(chapters[0], value: 1)
     library.open(chapters[1])

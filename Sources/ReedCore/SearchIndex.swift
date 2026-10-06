@@ -124,7 +124,7 @@ public enum ArticleText {
             .replacing(#/<math\b([^>]*)>(.*?)</math\s*>/#.dotMatchesNewlines().ignoresCase()) { match in
                 " " + spoken(mathAttributes: String(match.output.1), content: String(match.output.2)) + " "
             }
-            .replacing(#/<[^>]*>/#, with: " ")
+            .replacing(#/<(?:"[^"]*"|'[^']*'|[^"'>])*>/#, with: " ")
             .replacing(#/&(#[xX][0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/#) { match in
                 let name = match.output.1
                 if name.hasPrefix("#x") || name.hasPrefix("#X") {

@@ -42,8 +42,7 @@ public final class Library {
     /// How many times each shared item has failed to be added, by its file name in the inbox.
     @ObservationIgnored var inboxFailures: [String: Int] = [:]
     struct PassageKey: Hashable { let content: URL, title: String }
-    @ObservationIgnored var passageCache: [PassageKey: [String]] = [:]
-    @ObservationIgnored var sentenceCache: [PassageKey: [[String]]] = [:]
+    @ObservationIgnored var speechCache: [PassageKey: Speech] = [:]
     @ObservationIgnored var addingShared = false
     /// Something more was shared while the inbox was being emptied.
     @ObservationIgnored var inboxChanged = false
@@ -183,11 +182,17 @@ public final class Library {
     }
 
     public func delete(_ article: Article) {
-        // Active downloads cannot be deleted until they settle, avoiding orphaned work.
-        guard article.state != .downloading else { return }
         let id = article.id
         guard let index = articles.firstIndex(where: { $0.id == id }) else { return }
-        if erase(article) { articles.remove(at: index); removeFromSeries(article) }
+        // One downloading goes from the library now, and is erased once its download settles, leaving nothing behind.
+        if article.state == .downloading {
+            discarded.insert(id)
+            articles.remove(at: index)
+            removeFromSeries(article)
+        } else if erase(article) {
+            articles.remove(at: index)
+            removeFromSeries(article)
+        }
     }
 
     /// Whether the article's metadata is gone; leftover files are reported but don't count against it.
@@ -241,11 +246,15 @@ public final class Library {
     }
 
     /// The first image saved with the article, or a chapter's book cover, if any.
-    public func leadImage(for readable: any Readable) -> URL? {
+    public func leadImage(for readable: any Readable) async -> URL? {
         if let chapter = readable as? BookChapter { return chapter.book.flatMap(cover(of:)) }
-        guard let url = contentURL(for: readable), let html = try? String(contentsOf: url, encoding: .utf8),
-              let source = ArticleHTML.firstImage(in: html) else { return nil }
-        let image = url.deletingLastPathComponent().appendingPathComponent(source)
+        guard let url = contentURL(for: readable) else { return nil }
+        return await Self.firstImage(of: url)
+    }
+
+    nonisolated static func firstImage(of document: URL) async -> URL? {
+        guard let html = try? String(contentsOf: document, encoding: .utf8), let source = ArticleHTML.firstImage(in: html) else { return nil }
+        let image = document.deletingLastPathComponent().appendingPathComponent(source)
         return FileManager.default.fileExists(atPath: image.path) ? image : nil
     }
 

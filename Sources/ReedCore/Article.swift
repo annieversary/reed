@@ -39,6 +39,8 @@ public final class Article {
     public var contentVersion: String?
     /// The passage narration last reached, to resume from.
     public var narrationPassage: Int?
+    /// The start of that passage, to find it again if the passages are numbered differently.
+    public var narrationAnchor: String?
     /// Downloaded ahead from a front page or feed so it can be read offline, but not saved to the library.
     public var isCached: Bool = false
     /// Whether the page links to chapters either side of it; nil if it was saved before that was looked for.

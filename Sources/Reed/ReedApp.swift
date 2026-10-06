@@ -21,10 +21,17 @@ import ReedCore
 }
 
 /// Adds an EPUB opened with Reed from elsewhere, such as Finder or Files, and shows it.
+/// A copy handed over in the app's Inbox is removed once Reed has copied it in turn.
 @MainActor private func openBook(at url: URL, in library: Library) {
     Task {
         let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        defer {
+            if scoped { url.stopAccessingSecurityScopedResource() }
+            #if os(iOS)
+            let inbox = URL.documentsDirectory.appendingPathComponent("Inbox", isDirectory: true).resolvingSymlinksInPath().path + "/"
+            if url.resolvingSymlinksInPath().path.hasPrefix(inbox) { try? FileManager.default.removeItem(at: url) }
+            #endif
+        }
         do {
             let book = try await library.add(bookAt: url, name: url.lastPathComponent)
             NotificationCenter.default.post(name: .reedShowBook, object: [book.id])
@@ -184,8 +191,6 @@ import ReedCore
                         .onOpenURL { url in
                             guard url.isFileURL, url.pathExtension.lowercased() == "epub" else { return }
                             openBook(at: url, in: library)
-                            // Handed over as a copy in the app's Inbox, which Reed has copied in turn.
-                            if url.path.contains("/Documents/Inbox/") { try? FileManager.default.removeItem(at: url) }
                         }
                 } else {
                     ContentUnavailableView("Couldn't open your library", systemImage: "externaldrive.badge.exclamationmark",

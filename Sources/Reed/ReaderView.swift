@@ -82,8 +82,9 @@ struct ReaderView: View {
                 // Text runs under the home indicator, but not under the narration controls.
                 .ignoresSafeArea(edges: narrator.readableID == nil ? .bottom : [])
                 .task(id: url) {
-                    notes = library.passages(for: readable).map { library.notes(for: readable, passages: $0) }
-                    passages = library.sentences(for: readable)
+                    let speech = await library.speech(for: readable)
+                    notes = speech.map { library.notes(for: readable, passages: $0.passages) }
+                    passages = speech?.sentences
                 }
                 // Drawn by the app rather than the page, so it sits above the narration controls.
                 .overlay(alignment: .bottom) {

@@ -37,14 +37,15 @@ window.reedNotes = (() => {
     const textOf = note => Array.from(note.childNodes, node =>
         node.nodeName === 'BR' ? '\n' : node.nodeName === 'DIV' ? '\n' + node.textContent : node.textContent).join('');
     const writing = note => note === document.activeElement || textOf(note).trim() !== '';
+    // Saves wait for a pause in typing. Each waiting one is kept with its timer, so leaving the page can send it straight away.
     const save = (index, note, now) => {
         const send = () => {
             saves.delete(index);
             window.webkit.messageHandlers.noteChanged.postMessage({passage: index, text: textOf(note)});
         };
-        if (now) { if (saves.has(index)) { clearTimeout(saves.get(index)); send(); } return; }
-        clearTimeout(saves.get(index));
-        saves.set(index, setTimeout(send, 400));
+        if (now) { if (saves.has(index)) { clearTimeout(saves.get(index).timer); send(); } return; }
+        clearTimeout(saves.get(index)?.timer);
+        saves.set(index, {timer: setTimeout(send, 400), send});
     };
     const setGap = (element, gap) => {
         if (gap < .5) {
@@ -225,5 +226,8 @@ window.reedNotes = (() => {
             schedule();
         },
         setOpen(value) { setOpen(value, false); },
+        flush() {
+            for (const {timer, send} of Array.from(saves.values())) { clearTimeout(timer); send(); }
+        },
     };
 })();

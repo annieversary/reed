@@ -12,6 +12,8 @@ public protocol Readable: AnyObject {
     var isRead: Bool { get set }
     /// The passage narration last reached, to resume from.
     var narrationPassage: Int? { get set }
+    /// The start of that passage, as `ArticleNotes.anchor(for:)` gives it.
+    var narrationAnchor: String? { get set }
 }
 
 /// Where a readable's files are kept in the library.

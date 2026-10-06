@@ -81,21 +81,18 @@ extension Library {
             let directory = try storage.createStagingDirectory()
             staging = directory
             var chapters = epub.chapters
-            func links() throws -> [String: Int] { try epub.links(for: chapters) }
             func extract(_ index: Int, links: [String: Int]) async throws -> ExtractedArticle {
                 activity = "Converting chapter \(index + 1) of \(chapters.count)…"
-                let files = try chapters[index].parts.compactMap { part in
-                    try epub.file(part.path).map { (part: part, html: String(decoding: $0, as: UTF8.self)) }
-                }
+                let files = try await Self.files(of: chapters[index], in: epub)
                 return try await extractor.chapter(files: files, title: chapters[index].title, index: index, links: links)
             }
             var extracted: [ExtractedArticle] = []
             // Pages before the table of contents' first entry are kept only if they have something to read, unlike a cover.
             if chapters.count > 1, chapters[0].title == nil {
-                let opening = try await extract(0, links: try links())
+                let opening = try await extract(0, links: try await Self.links(in: epub, for: chapters))
                 if opening.wordCount < 20 { chapters.removeFirst() } else { extracted.append(opening) }
             }
-            let links = try links()
+            let links = try await Self.links(in: epub, for: chapters)
             for index in extracted.count..<chapters.count {
                 try Task.checkCancellation()
                 extracted.append(try await extract(index, links: links))
@@ -107,9 +104,14 @@ extension Library {
             if let cover { images.append(cover) }
             let (saved, missing) = await Self.unpack(images, from: epub, to: directory)
             // Chapters share pictures, so each is described once for the whole book.
+            var earlier: (html: String, directory: URL)?
+            if let version = book.contentVersion {
+                let chapters = book.chapters.map { storage.contentURL(.chapter(book: book.id, index: $0.index), version: version) }
+                earlier = (await Self.joined(chapters), storage.bookDirectory(book.id).appendingPathComponent(version, isDirectory: true))
+            }
             let descriptions = try await describeImages(in: extracted.map(\.html).joined(), directory: directory, limit: 60,
-                                                        from: "the book \"\(book.title)\"") { activity = $0 }
-            for index in extracted.indices { extracted[index].html = ImageDescriptions.applying(descriptions, to: extracted[index].html) }
+                                                        from: "the book \"\(book.title)\"", previous: earlier) { activity = $0 }
+            for index in extracted.indices { extracted[index].html = await ImageDescriptions.applying(descriptions, to: extracted[index].html) }
             for (index, chapter) in extracted.enumerated() {
                 let after = extracted.indices.contains(index + 1) ? BookFiles.nextChapterCard(index: index + 1, title: extracted[index + 1].title) : ""
                 let document = ArticleHTML.document(title: chapter.title, author: nil, domain: book.title,
@@ -144,36 +146,54 @@ extension Library {
             book.author = epub.author
             book.coverFile = coverFile
             book.contentVersion = version
+            book.missingImageCount = missing
             book.state = missing > 0 ? .partial : .ready
             book.failureMessage = nil
             try container.mainContext.save()
             moveNotes(of: book, as: moved)
             if let previous { try? storage.removeBookVersion(book.id, version: previous) }
         } catch {
-            book.state = hasContent(book) ? .ready : .failed
-            book.failureMessage = hasContent(book) ? nil : error.localizedDescription
-            if hasContent(book), !(error is CancellationError) { errorMessage = error.localizedDescription }
+            // A failed refresh leaves the copy already saved readable.
+            if hasContent(book) {
+                book.state = book.missingImageCount > 0 ? .partial : .ready
+                book.failureMessage = nil
+                if !(error is CancellationError) { errorMessage = error.localizedDescription }
+            } else {
+                book.state = .failed
+                book.failureMessage = error.localizedDescription
+            }
             save()
         }
     }
 
     /// Renumbers a book's notes after converting it again moved its chapters, from each old index to the new.
     /// Notes of a chapter that's gone are set aside in `Notes/Unplaced` rather than left beside another chapter.
+    /// The renumbered notes are gathered in a new folder that replaces the old one whole, so a failure leaves them as they were.
     func moveNotes(of book: Book, as moved: [Int: Int]) {
+        let manager = FileManager.default
         let directory = storage.bookDirectory(book.id).appendingPathComponent("Notes", isDirectory: true)
-        guard let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
-        let notes = files.compactMap { file in
-            Int(file.deletingPathExtension().lastPathComponent).flatMap { index in try? (index, Data(contentsOf: file)) }
-        }
-        let unplaced = directory.appendingPathComponent("Unplaced", isDirectory: true)
-        for (index, _) in notes { try? FileManager.default.removeItem(at: storage.notesURL(.chapter(book: book.id, index: index))) }
-        for (index, data) in notes {
-            if let new = moved[index] {
-                try? data.write(to: storage.notesURL(.chapter(book: book.id, index: new)), options: .atomic)
-            } else {
-                try? FileManager.default.createDirectory(at: unplaced, withIntermediateDirectories: true)
-                try? data.write(to: unplaced.appendingPathComponent("\(index)-\(UUID().uuidString).json"), options: .atomic)
+        guard let files = try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
+        let replacement = directory.deletingLastPathComponent().appendingPathComponent("Notes-" + UUID().uuidString, isDirectory: true)
+        let unplaced = replacement.appendingPathComponent("Unplaced", isDirectory: true)
+        do {
+            try manager.createDirectory(at: replacement, withIntermediateDirectories: true)
+            for file in files where Int(file.deletingPathExtension().lastPathComponent) == nil {
+                try manager.copyItem(at: file, to: replacement.appendingPathComponent(file.lastPathComponent))
             }
+            for file in files {
+                guard let index = Int(file.deletingPathExtension().lastPathComponent) else { continue }
+                let placed = moved[index].map { replacement.appendingPathComponent("\($0).json") }
+                if let placed, !manager.fileExists(atPath: placed.path) {
+                    try manager.copyItem(at: file, to: placed)
+                } else {
+                    try manager.createDirectory(at: unplaced, withIntermediateDirectories: true)
+                    try manager.copyItem(at: file, to: unplaced.appendingPathComponent("\(index)-\(UUID().uuidString).json"))
+                }
+            }
+            _ = try manager.replaceItemAt(directory, withItemAt: replacement)
+        } catch {
+            try? manager.removeItem(at: replacement)
+            errorMessage = "Couldn't keep notes beside the chapters they were written for: \(error.localizedDescription)"
         }
     }
 
@@ -187,6 +207,21 @@ extension Library {
             saved.insert(image.filename)
         }
         return (saved, tried.count - saved.count)
+    }
+
+    /// A chapter's files from the book, unpacked away from the main actor.
+    nonisolated static func files(of chapter: EPUB.Chapter, in epub: EPUB) async throws -> [(part: EPUB.Part, html: String)] {
+        try chapter.parts.compactMap { part in try epub.file(part.path).map { (part: part, html: String(decoding: $0, as: UTF8.self)) } }
+    }
+
+    /// Where each of the book's files and elements falls among `chapters`, worked out away from the main actor.
+    nonisolated static func links(in epub: EPUB, for chapters: [EPUB.Chapter]) async throws -> [String: Int] {
+        try epub.links(for: chapters)
+    }
+
+    /// The text of `files`, one after another, leaving out any that can't be read.
+    nonisolated static func joined(_ files: [URL]) async -> String {
+        files.compactMap { try? String(contentsOf: $0, encoding: .utf8) }.joined()
     }
 
     /// The EPUB at `url`, read away from the main actor.

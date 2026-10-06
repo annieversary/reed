@@ -175,7 +175,7 @@ import Testing
     #expect(ArticleText.plain(labelled) == "With n teeth, p squared is at most n holds.")
 }
 
-@Test func narrationReadsBlocksButSkipsCodeAndFigures() {
+@Test func narrationReadsBlocksButSkipsCodeAndCaptions() {
     let document = ArticleHTML.document(title: "Ignored <title>", author: "Byline", domain: "example.com", minutes: 4, body: """
         <h2>Fish &amp; chips</h2><p>First line
         continues here.</p><figure><img src="image-0"><figcaption>A caption</figcaption></figure>
@@ -190,15 +190,25 @@ import Testing
     let body = """
         <p>Before</p><figure><img src="image-0" alt="A red barn &amp; snow"><figcaption>Winter</figcaption></figure>
         <p>Look <img src="image-1" alt="a chart of sales"> here <img src="image-2" alt="😀"> now</p>
+        <p><a href="x"><img src="image-4" alt="A map > a list"></a></p><p><img src="image-5" alt="Photo 3"><img src="image-6" alt="cover.JPG"></p>
+        <div><img src="image-7" data-alt="ignored" alt="e^{i\\pi}"><br>Caption-like text</div>
         <figure class="equation"><img src="image-3" alt="x^2"></figure><p>After</p>
         """
     #expect(ArticleSpeech.passages(title: "T", html: "<main>\(body)</main>")
-            == ["T", "Before", "Image: A red barn & snow", "Look", "Image: a chart of sales", "here now", "After"])
+            == ["T", "Before", "Image: A red barn & snow", "Look here now", "Image: A map > a list", "Caption-like text", "After"])
 }
 
-@Test func describedPicturesGainAltTextOnlyWhereTheyHadNone() {
+@Test func narrationResumesAtThePassageItReached() {
+    let passages = ["T", "Image: A barn", "First", "Second", "First"]
+    #expect(ArticleNotes.passage(near: 2, anchor: "Second", in: passages) == 3)
+    #expect(ArticleNotes.passage(near: 3, anchor: "First", in: passages) == 2)
+    #expect(ArticleNotes.passage(near: 9, anchor: "Gone", in: passages) == 4)
+    #expect(ArticleNotes.passage(near: 1, anchor: nil, in: passages) == 1)
+}
+
+@Test func describedPicturesGainAltTextOnlyWhereTheyHadNone() async {
     let html = #"<p><img src="image-0" alt=""><img alt="Kept" src="image-1"><img src="image-0"><img class="x" src="image-2"></p>"#
-    let described = ImageDescriptions.applying(["image-0": "A \"quoted\" cat", "image-1": "Replaced", "image-2": "Dog"], to: html)
+    let described = await ImageDescriptions.applying(["image-0": "A \"quoted\" cat", "image-1": "Replaced", "image-2": "Dog"], to: html)
     #expect(described == #"<p><img src="image-0" alt="A &quot;quoted&quot; cat"><img alt="Kept" src="image-1"><img alt="A &quot;quoted&quot; cat" src="image-0"><img alt="Dog" class="x" src="image-2"></p>"#)
 }
 
@@ -217,9 +227,23 @@ import Testing
     try png("image-0", side: 200)
     try png("image-1", side: 16)
     try png("image-2", side: 200)
-    let html = #"<img src="image-0"><img src="image-1"><img src="image-2" alt="Has one"><img src="image-3"><img src="image-0">"#
+    let html = #"<figure class="equation"><img src="image-2"></figure><img src="image-0"><img src="image-1"><img src="image-2" alt="Has one"><img src="image-3"><img src="image-0">"#
     #expect(await ImageDescriptions.undescribed(in: html, directory: directory, limit: 20) == ["image-0"])
     #expect(await ImageDescriptions.undescribed(in: html + #"<img src="image-2">"#, directory: directory, limit: 1) == ["image-0"])
+    #expect(await ImageDescriptions.undescribed(in: #"<img title="a > b" src="image-2" alt="">"#, directory: directory, limit: 20) == ["image-2"])
+}
+
+@Test func refreshingKeepsDescriptionsOfTheSamePictures() async throws {
+    let earlier = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    for url in [earlier, directory] { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
+    defer { for url in [earlier, directory] { try? FileManager.default.removeItem(at: url) } }
+    try Data([1]).write(to: earlier.appendingPathComponent("image-0"))
+    try Data([2]).write(to: earlier.appendingPathComponent("image-1"))
+    try Data([2]).write(to: directory.appendingPathComponent("image-0"))
+    try Data([3]).write(to: directory.appendingPathComponent("image-1"))
+    let html = #"<img src="image-0" alt="A cat"><img src="image-1" alt="A dog &amp; bone">"#
+    #expect(await ImageDescriptions.carried(["image-0", "image-1"], in: directory, from: (html, earlier)) == ["image-0": "A dog & bone"])
 }
 
 @Test func passagesSplitIntoSentences() {

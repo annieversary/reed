@@ -15,6 +15,8 @@ public final class Book {
     public var contentVersion: String?
     /// The cover image's file name in the saved version, if the book has one.
     public var coverFile: String?
+    /// Pictures the saved version couldn't keep, which make it partly saved.
+    public var missingImageCount: Int = 0
     public var isFavorite: Bool
     /// The chapter last opened, to carry on from.
     public var currentChapter: Int?
@@ -74,6 +76,7 @@ public final class BookChapter {
     public var progress: Double
     public var isRead: Bool
     public var narrationPassage: Int?
+    public var narrationAnchor: String?
 
     public init(index: Int, title: String, start: String? = nil, wordCount: Int, id: UUID = UUID()) {
         self.id = id

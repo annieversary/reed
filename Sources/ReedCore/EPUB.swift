@@ -158,7 +158,7 @@ public struct EPUB: Sendable {
 
     /// The element IDs in a file, in order, with where each is.
     private static func ids(in html: String) -> [(id: String, at: String.Index)] {
-        html.matches(of: #/\bid\s*=\s*["']([^"']+)["']/#).map { (id: String($0.output.1), at: $0.range.lowerBound) }
+        html.matches(of: #/\sid\s*=\s*["']([^"']+)["']/#).map { (id: String($0.output.1), at: $0.range.lowerBound) }
     }
 
     /// The links in an EPUB 3 navigation document's table of contents, in order.

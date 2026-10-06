@@ -22,12 +22,13 @@ enum ImageDescriptions {
     }
 
     /// The file names of the first `limit` pictures in `html` saved in `directory` with no alt text, in order,
-    /// leaving out drawings and anything too small to be more than an icon.
+    /// leaving out drawings, equations, and anything too small to be more than an icon.
     static func undescribed(in html: String, directory: URL, limit: Int) async -> [String] {
         var names: [String] = []
-        for tag in html.matches(of: imageTag()) {
-            let name = String(tag.output.source)
-            guard alt(of: String(tag.output.0)).isEmpty, !names.contains(name), !name.hasSuffix(".svg"),
+        let equations = #/<figure class="equation">.*?</figure\s*>/#.dotMatchesNewlines().ignoresCase()
+        for tag in html.replacing(equations, with: "").matches(of: ArticleHTML.imageTag()) {
+            guard let name = ArticleHTML.savedImage(String(tag.output)), ArticleHTML.alt(of: String(tag.output)).isEmpty,
+                  !names.contains(name), !name.hasSuffix(".svg"),
                   let source = CGImageSourceCreateWithURL(directory.appendingPathComponent(name) as CFURL, nil),
                   let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
                   let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int,
@@ -38,12 +39,30 @@ enum ImageDescriptions {
         return names
     }
 
+    /// Descriptions `previous` gave the same pictures, by file name in `directory`, so refreshing doesn't describe them again.
+    /// A picture is the same when its file is: names can move as an article changes.
+    static func carried(_ names: [String], in directory: URL, from previous: (html: String, directory: URL)) async -> [String: String] {
+        var earlier: [Data: String] = [:]
+        for tag in previous.html.matches(of: ArticleHTML.imageTag()) {
+            let alt = ArticleHTML.alt(of: String(tag.output))
+            guard !alt.isEmpty, let name = ArticleHTML.savedImage(String(tag.output)),
+                  let data = try? Data(contentsOf: previous.directory.appendingPathComponent(name)) else { continue }
+            earlier[data] = ArticleText.plain(alt)
+        }
+        guard !earlier.isEmpty else { return [:] }
+        var carried: [String: String] = [:]
+        for name in names {
+            if let data = try? Data(contentsOf: directory.appendingPathComponent(name)), let alt = earlier[data] { carried[name] = alt }
+        }
+        return carried
+    }
+
     /// `html` with `descriptions` as the alt text of each picture, by file name, that has none.
-    static func applying(_ descriptions: [String: String], to html: String) -> String {
+    static func applying(_ descriptions: [String: String], to html: String) async -> String {
         guard !descriptions.isEmpty else { return html }
-        return html.replacing(imageTag()) { tag in
-            let whole = String(tag.output.0)
-            guard let description = descriptions[String(tag.output.source)], alt(of: whole).isEmpty else { return whole }
+        return html.replacing(ArticleHTML.imageTag()) { tag in
+            let whole = String(tag.output)
+            guard let name = ArticleHTML.savedImage(whole), let description = descriptions[name], ArticleHTML.alt(of: whole).isEmpty else { return whole }
             let attribute = " alt=\"\(ArticleHTML.escape(description))\""
             if let empty = whole.firstRange(of: #/\salt\s*=\s*"\s*"/#.ignoresCase()) { return whole.replacingCharacters(in: empty, with: attribute) }
             return "<img" + attribute + whole.dropFirst("<img".count)
@@ -74,12 +93,4 @@ enum ImageDescriptions {
         and its main takeaway. Include any short text in the picture that matters. \
         Don't begin with "An image of" or "A picture of", and don't guess at things you can't see.
         """
-
-    private static func imageTag() -> Regex<(Substring, source: Substring)> {
-        #/<img\b[^>]*?\bsrc="(?<source>[^"/:]+)"[^>]*>/#.ignoresCase()
-    }
-
-    private static func alt(of tag: String) -> String {
-        tag.firstMatch(of: #/\balt\s*=\s*"([^"]*)"/#.ignoresCase()).map { String($0.output.1).trimmingCharacters(in: .whitespaces) } ?? ""
-    }
 }

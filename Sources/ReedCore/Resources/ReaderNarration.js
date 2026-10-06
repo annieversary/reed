@@ -9,8 +9,28 @@ window.reedNarration = (() => {
     // or not at all. Each is read whole, so a sentence can only start or end beside one.
     const formulaText = math => math.getAttribute('aria-label')
         ?? (/^[^\\^_{]*$/.test(math.getAttribute('alttext') ?? '\\') ? math.textContent : '');
-    // A picture reads as ArticleSpeech reads it: by its alt text, as a passage of its own.
-    const imageText = img => /[\p{L}\p{N}]/u.test(img.alt) && !img.closest('figure.equation') ? `Image: ${img.alt}` : '';
+    // A picture reads as ArticleSpeech reads it: by its alt text, as a passage of its own, unless it sits beside text,
+    // or its alt text is TeX, a file name, or a word like "image".
+    const breaks = 'p,div,h1,h2,h3,h4,h5,h6,li,ul,ol,dl,dt,dd,blockquote,section,article,header,footer,aside,main,hr,br,'
+        + 'figure,pre,table,svg,script,style,span.missing-image';
+    const worthReading = alt => /[\p{L}\p{N}]/u.test(alt) && !/[\\^_{]/.test(alt)
+        && !/^.*\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|heic)$/i.test(alt)
+        && !/^(image|img|picture|pic|photo|figure|graphic|untitled|null|undefined)\s*\d*$/i.test(alt);
+    // The text between the block boundaries either side of `img`, which ArticleSpeech reads as one passage.
+    const besideText = img => {
+        if (img.closest('figure')) return false;
+        let inline = img;
+        while (inline.parentElement && !inline.parentElement.matches(breaks)) inline = inline.parentElement;
+        const isBreak = node => node.nodeType === Node.ELEMENT_NODE && (node.matches(breaks) || node.querySelector(breaks));
+        const run = [inline];
+        for (let node = inline.previousSibling; node && !isBreak(node); node = node.previousSibling) run.push(node);
+        for (let node = inline.nextSibling; node && !isBreak(node); node = node.nextSibling) run.push(node);
+        return run.some(node => /[\p{L}\p{N}]/u.test(node.textContent));
+    };
+    const imageText = img => {
+        const alt = img.alt.trim().replace(/\s+/g, ' ');
+        return worthReading(alt) && !img.closest('figure.equation') && !besideText(img) ? `Image: ${alt}` : '';
+    };
     // The text nodes, formulas and pictures narration reads within `element`, in order.
     const spokenParts = element => {
         const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
@@ -46,16 +66,19 @@ window.reedNarration = (() => {
     const locate = passages => {
         const all = Array.from(document.body.querySelectorAll(blocks));
         const texts = new Map(all.map(element => [element, squash(spokenText(element))]));
-        let cursor = 0;
+        // Each passage is looked for from the last one found on, which may be a picture inside the block it continues.
+        let last = null;
+        const fromLast = element => !last || element === last || element.contains(last)
+            || (last.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING);
         return passages.map(text => {
             const target = squash(text);
             const contains = element => texts.get(element).includes(target);
-            let at = all.findIndex((element, index) => index >= cursor && contains(element));
-            if (at < 0) at = all.findIndex(contains);
-            if (at < 0) return null;
-            let found = all[at];
-            for (let child; (child = Array.from(found.children).find(c => texts.has(c) && contains(c)));) found = child;
-            cursor = all.indexOf(found);
+            let found = all.find(element => fromLast(element) && contains(element));
+            const fits = found ? fromLast : () => true;
+            found ??= all.find(contains);
+            if (!found) return null;
+            for (let child; (child = Array.from(found.children).find(c => texts.has(c) && contains(c) && fits(c)));) found = child;
+            last = found;
             return found;
         });
     };

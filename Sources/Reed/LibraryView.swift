@@ -498,10 +498,8 @@ struct LibraryView: View {
             }
             // No destructive role: it would remove the row before the delete is confirmed.
             .swipeActions(edge: .trailing) {
-                if article.state != .downloading {
-                    Button { articleToDelete = article } label: { Label("Delete", systemImage: "trash") }
-                        .tint(.red)
-                }
+                Button { articleToDelete = article } label: { Label("Delete", systemImage: "trash") }
+                    .tint(.red)
                 Button { library.toggleFavorite(article) } label: {
                     Label(article.isFavorite ? "Unfavorite" : "Favorite", systemImage: article.isFavorite ? "star.slash" : "star")
                 }
@@ -519,7 +517,6 @@ struct LibraryView: View {
                 seriesMenu(for: article)
                 Divider()
                 Button("Delete", systemImage: "trash", role: .destructive) { articleToDelete = article }
-                    .disabled(article.state == .downloading)
             }
     }
 

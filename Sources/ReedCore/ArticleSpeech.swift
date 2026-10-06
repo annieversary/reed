@@ -3,8 +3,9 @@ import NaturalLanguage
 
 public enum ArticleSpeech {
     /// The passages of a saved reader document to read aloud, one per block, starting with the title.
-    /// Code, tables, drawings and equations are left out, since they don't make sense spoken. A picture is its own passage,
-    /// read by its alt text, and the rest of a figure, like its caption, is left out.
+    /// Code, tables, drawings and equations are left out, since they don't make sense spoken. A picture standing on its own
+    /// is its own passage, read by its alt text; one beside text is left out, so it doesn't break up the sentence.
+    /// The rest of a figure, like its caption, is left out.
     public static func passages(title: String, html: String) -> [String] {
         var body = Substring(html)
         if let start = body.range(of: "<main>"), let end = body.range(of: "</main>", options: .backwards), start.upperBound <= end.lowerBound {
@@ -17,19 +18,29 @@ public enum ArticleSpeech {
             .ignoresCase()
         // Source line breaks fall inside paragraphs, so blocks are separated with a character HTML text never contains.
         let blocks = String(body).replacing(unspoken, with: "\u{1}")
-            .replacing(figure) { "\u{1}" + $0.output.1.matches(of: imageTag()).map { "\($0.output.0)\u{1}" }.joined() }
-            .replacing(imageTag()) { image in
-                let alt = image.output.alt.map(String.init) ?? ""
-                return alt.contains { $0.isLetter || $0.isNumber } ? "\u{1}Image: \(alt)\u{1}" : ""
-            }
+            .replacing(figure) { "\u{1}" + $0.output.1.matches(of: ArticleHTML.imageTag()).map { "\($0.output)\u{1}" }.joined() }
             .replacing(block, with: "\u{1}").split(separator: "\u{1}")
-        return ([title] + blocks.map { ArticleText.plain(String($0)) })
+        return ([title] + blocks.flatMap { spoken(block: String($0)) })
             .filter { $0.contains { $0.isLetter || $0.isNumber } }
     }
 
-    /// A picture, with its alt text if it has any. The reader's narration highlighting reads pictures the same way.
-    private static func imageTag() -> Regex<(Substring, alt: Substring?)> {
-        #/<img\b[^>]*?(?:\balt\s*=\s*"(?<alt>[^"]*)"[^>]*)?>/#.ignoresCase()
+    /// A block's text, or each of its pictures by its alt text when it has nothing else to read.
+    /// The reader's narration highlighting reads pictures the same way.
+    private static func spoken(block: String) -> [String] {
+        let text = ArticleText.plain(block)
+        if text.contains(where: { $0.isLetter || $0.isNumber }) { return [text] }
+        return block.matches(of: ArticleHTML.imageTag()).compactMap { image in
+            let alt = ArticleText.plain(ArticleHTML.alt(of: String(image.output)))
+            return isWorthReading(alt: alt) ? "Image: \(alt)" : nil
+        }
+    }
+
+    /// Whether alt text says something: not TeX, which reads as a jumble of symbols, nor a file name or a word like "image".
+    static func isWorthReading(alt: String) -> Bool {
+        alt.contains { $0.isLetter || $0.isNumber }
+            && !alt.contains { "\\^_{".contains($0) }
+            && alt.wholeMatch(of: #/.*\.(?:jpe?g|png|gif|webp|avif|svg|bmp|tiff?|heic)/#.ignoresCase()) == nil
+            && alt.wholeMatch(of: #/(?:image|img|picture|pic|photo|figure|graphic|untitled|null|undefined)\s*\d*/#.ignoresCase()) == nil
     }
 
     /// The sentences of a passage, in order. Fragments with nothing to say, like a lone dash, stay with the sentence before.

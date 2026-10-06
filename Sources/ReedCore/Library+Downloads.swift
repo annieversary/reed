@@ -136,11 +136,17 @@ extension Library {
                 catch { missing.append(image) }
             }
             var body = await Self.replacing(missing, in: extracted.html)
-            let descriptions = try await describeImages(in: body, directory: directory, limit: 20, from: "an article titled \"\(extracted.title)\"") { message in
+            var earlier: (html: String, directory: URL)?
+            if let version = article.contentVersion {
+                let url = storage.contentURL(article.id, version: version)
+                earlier = await Self.read(url).map { (String(decoding: $0, as: UTF8.self), url.deletingLastPathComponent()) }
+            }
+            let descriptions = try await describeImages(in: body, directory: directory, limit: 20, from: "an article titled \"\(extracted.title)\"",
+                                                        previous: earlier) { message in
                 imageActivity = message
                 report(message)
             }
-            body = ImageDescriptions.applying(descriptions, to: body)
+            body = await ImageDescriptions.applying(descriptions, to: body)
             let document = ArticleHTML.document(title: extracted.title, author: extracted.author,
                                                 domain: Article.domain(of: pageURL) ?? "", minutes: Article.readingMinutes(words: extracted.wordCount), body: body)
             try await Self.write(Data(document.utf8), to: directory.appendingPathComponent("index.html"))
@@ -163,12 +169,12 @@ extension Library {
             article.failureMessage = nil
             try container.mainContext.save()
             if let previous { try? storage.removeArticleVersion(article.id, version: previous) }
-            if !article.isCached { reindex(article) }
+            if !article.isCached, !discarded.contains(article.id) { reindex(article) }
         } catch {
             // A failed refresh leaves the copy already saved readable.
             if contentURL(for: article) != nil {
                 article.state = article.missingImageCount > 0 ? .partial : .ready
-                if !article.isCached { errorMessage = error.localizedDescription }
+                if !article.isCached, !discarded.contains(article.id) { errorMessage = error.localizedDescription }
             } else {
                 article.state = .failed
                 article.failureMessage = error.localizedDescription
@@ -178,14 +184,19 @@ extension Library {
         if discarded.remove(article.id) != nil { erase(article) }
     }
 
-    /// Alt text from the on-device model for the pictures in `html` saved in `directory` that have none, by file name.
-    func describeImages(in html: String, directory: URL, limit: Int, from source: String, report: (String) -> Void) async throws -> [String: String] {
-        guard ImageDescriptions.available else { return [:] }
+    /// Alt text for the pictures in `html` saved in `directory` that have none, by file name: as `previous` described them,
+    /// or else from the on-device model.
+    func describeImages(in html: String, directory: URL, limit: Int, from source: String, previous: (html: String, directory: URL)?,
+                        report: (String) -> Void) async throws -> [String: String] {
+        guard ImageDescriptions.available || previous != nil else { return [:] }
         let undescribed = await ImageDescriptions.undescribed(in: html, directory: directory, limit: limit)
         var descriptions: [String: String] = [:]
-        for (index, name) in undescribed.enumerated() {
+        if let previous { descriptions = await ImageDescriptions.carried(undescribed, in: directory, from: previous) }
+        guard ImageDescriptions.available else { return descriptions }
+        let remaining = undescribed.filter { descriptions[$0] == nil }
+        for (index, name) in remaining.enumerated() {
             try Task.checkCancellation()
-            report("Describing image \(index + 1) of \(undescribed.count)…")
+            report("Describing image \(index + 1) of \(remaining.count)…")
             descriptions[name] = await ImageDescriptions.describe(directory.appendingPathComponent(name), from: source)
         }
         return descriptions

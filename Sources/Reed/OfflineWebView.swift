@@ -271,10 +271,14 @@ enum NarrationDirection: String {
         #if os(iOS)
         private(set) var backSwipeDisabled = false
 
+        /// Where back-swipe was turned off, to turn it on again once the view has left the hierarchy.
+        private weak var swipeNavigation: UINavigationController?
+
         func setBackSwipe(enabled: Bool, from view: UIView) {
             var responder: UIResponder? = view
             while let next = responder, !(next is UIViewController) { responder = next.next }
-            guard let navigation = (responder as? UIViewController)?.navigationController else { return }
+            guard let navigation = (responder as? UIViewController)?.navigationController ?? swipeNavigation else { return }
+            swipeNavigation = navigation
             backSwipeDisabled = !enabled
             navigation.interactivePopGestureRecognizer?.isEnabled = enabled
             if #available(iOS 26, *) { navigation.interactiveContentPopGestureRecognizer?.isEnabled = enabled }
@@ -292,6 +296,16 @@ enum NarrationDirection: String {
             }
         }
         #endif
+    }
+}
+
+extension OfflineWebView {
+    /// Notes still waiting to be saved are sent before the page stops being listened to.
+    static func dismantle(_ webView: WKWebView) {
+        webView.navigationDelegate = nil
+        webView.evaluateJavaScript("window.reedNotes?.flush()") { _, _ in
+            webView.configuration.userContentController.removeAllScriptMessageHandlers()
+        }
     }
 }
 
@@ -319,13 +333,7 @@ extension OfflineWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView { makeWebView(coordinator: context.coordinator) }
     func updateNSView(_ nsView: WKWebView, context: Context) { update(nsView, coordinator: context.coordinator) }
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
-        nsView.configuration.userContentController.removeScriptMessageHandler(forName: "readingProgress", contentWorld: .defaultClient)
-        nsView.configuration.userContentController.removeScriptMessageHandler(forName: "contextLink", contentWorld: .defaultClient)
-        nsView.configuration.userContentController.removeScriptMessageHandler(forName: "narrationJump", contentWorld: .defaultClient)
-        nsView.configuration.userContentController.removeScriptMessageHandler(forName: "narrationAway", contentWorld: .defaultClient)
-        nsView.configuration.userContentController.removeScriptMessageHandler(forName: "notesOpen", contentWorld: .defaultClient)
-        nsView.configuration.userContentController.removeScriptMessageHandler(forName: "noteChanged", contentWorld: .defaultClient)
-        nsView.navigationDelegate = nil
+        dismantle(nsView)
     }
 }
 #else
@@ -333,12 +341,7 @@ extension OfflineWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView { makeWebView(coordinator: context.coordinator) }
     func updateUIView(_ uiView: WKWebView, context: Context) { update(uiView, coordinator: context.coordinator) }
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
-        uiView.configuration.userContentController.removeScriptMessageHandler(forName: "readingProgress", contentWorld: .defaultClient)
-        uiView.configuration.userContentController.removeScriptMessageHandler(forName: "narrationJump", contentWorld: .defaultClient)
-        uiView.configuration.userContentController.removeScriptMessageHandler(forName: "narrationAway", contentWorld: .defaultClient)
-        uiView.configuration.userContentController.removeScriptMessageHandler(forName: "notesOpen", contentWorld: .defaultClient)
-        uiView.configuration.userContentController.removeScriptMessageHandler(forName: "noteChanged", contentWorld: .defaultClient)
-        uiView.navigationDelegate = nil
+        dismantle(uiView)
         uiView.uiDelegate = nil
         if coordinator.backSwipeDisabled { coordinator.setBackSwipe(enabled: true, from: uiView) }
     }

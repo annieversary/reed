@@ -141,8 +141,22 @@ public enum ArticleHTML {
     /// The file name of the first image in a saved reader document. Saved images are referenced by
     /// bare file names beside the document; anything else isn't one of ours.
     public static func firstImage(in html: String) -> String? {
-        guard let match = html.firstMatch(of: #/<img\b[^>]*\bsrc="([^"/:]+)"/#.ignoresCase()) else { return nil }
-        return String(match.output.1)
+        html.matches(of: imageTag()).lazy.compactMap { savedImage(String($0.output)) }.first
+    }
+
+    /// An `<img>` tag, whose attribute values may hold `>`.
+    static func imageTag() -> Regex<Substring> {
+        #/<img\b(?:"[^"]*"|'[^']*'|[^"'>])*>/#.ignoresCase()
+    }
+
+    /// The file name an image tag shows, if it's a saved image beside the document.
+    static func savedImage(_ tag: String) -> String? {
+        tag.firstMatch(of: #/\ssrc\s*=\s*"([^"/:]+)"/#.ignoresCase()).map { String($0.output.1) }
+    }
+
+    /// An image tag's alt text as written, entities and all, or "" if it has none.
+    static func alt(of tag: String) -> String {
+        tag.firstMatch(of: #/\salt\s*=\s*"([^"]*)"/#.ignoresCase()).map { String($0.output.1) } ?? ""
     }
 
     /// `after` follows the article, outside what's read aloud, such as the way on to a book's next chapter.

@@ -16,7 +16,8 @@ for (const img of doc.querySelectorAll("img")) {
     if (!img.getAttribute("src")) {
         const source = img.getAttribute("srcset") || img.getAttribute("data-srcset") ||
             img.closest("picture")?.querySelector("source")?.getAttribute("srcset");
-        if (source) img.setAttribute("src", source.split(",")[0].trim().split(/\s+/)[0]);
+        const chosen = source && fromSrcset(source);
+        if (chosen) img.setAttribute("src", chosen);
     }
 }
 // Older ways of marking monospaced text become code, which the reader keeps.
@@ -255,4 +256,24 @@ function chapterContent(doc, book, images) {
 // A name for an image file in a saved book, from its path in the archive.
 function bookImageName(path) {
     return "book-" + path.replace(/[^A-Za-z0-9.-]/g, "_");
+}
+
+// The sharpest picture in a srcset that isn't needlessly large: the widest up to 1600 pixels, or densest up to 2x,
+// else the smallest. Its URLs may hold commas, as image services' often do; a comma ending one, or one before a
+// candidate's descriptor ends, separates candidates.
+function fromSrcset(srcset) {
+    const candidates = [];
+    let rest = srcset.trim();
+    while (rest) {
+        let url = rest.match(/^\S+/)[0];
+        rest = rest.slice(url.length);
+        let descriptor = "";
+        if (/,$/.test(url)) url = url.replace(/,+$/, "");
+        else [, descriptor, rest] = rest.match(/^\s*([^,]*),?([\s\S]*)$/);
+        rest = rest.trimStart();
+        const size = descriptor.match(/^([\d.]+)([wx])$/i);
+        candidates.push({ url, width: size ? parseFloat(size[1]) * (size[2].toLowerCase() === "x" ? 800 : 1) : 0 });
+    }
+    const fitting = candidates.filter(candidate => candidate.width <= 1600).sort((a, b) => b.width - a.width);
+    return (fitting[0] ?? candidates.sort((a, b) => a.width - b.width)[0])?.url;
 }
