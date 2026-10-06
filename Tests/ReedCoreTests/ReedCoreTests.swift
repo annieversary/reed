@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import SwiftData
 import Testing
 @testable import ReedCore
@@ -183,6 +184,42 @@ import Testing
         """)
     #expect(ArticleSpeech.passages(title: "A Title", html: document)
             == ["A Title", "Fish & chips", "First line continues here.", "One", "Two", "lines", "Quoted"])
+}
+
+@Test func narrationReadsPicturesByTheirAltText() {
+    let body = """
+        <p>Before</p><figure><img src="image-0" alt="A red barn &amp; snow"><figcaption>Winter</figcaption></figure>
+        <p>Look <img src="image-1" alt="a chart of sales"> here <img src="image-2" alt="😀"> now</p>
+        <figure class="equation"><img src="image-3" alt="x^2"></figure><p>After</p>
+        """
+    #expect(ArticleSpeech.passages(title: "T", html: "<main>\(body)</main>")
+            == ["T", "Before", "Image: A red barn & snow", "Look", "Image: a chart of sales", "here now", "After"])
+}
+
+@Test func describedPicturesGainAltTextOnlyWhereTheyHadNone() {
+    let html = #"<p><img src="image-0" alt=""><img alt="Kept" src="image-1"><img src="image-0"><img class="x" src="image-2"></p>"#
+    let described = ImageDescriptions.applying(["image-0": "A \"quoted\" cat", "image-1": "Replaced", "image-2": "Dog"], to: html)
+    #expect(described == #"<p><img src="image-0" alt="A &quot;quoted&quot; cat"><img alt="Kept" src="image-1"><img alt="A &quot;quoted&quot; cat" src="image-0"><img alt="Dog" class="x" src="image-2"></p>"#)
+}
+
+@Test func onlyPicturesBigEnoughToMatterAreDescribed() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    func png(_ name: String, side: Int) throws {
+        let context = try #require(CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
+                                             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let image = try #require(context.makeImage())
+        let destination = try #require(CGImageDestinationCreateWithURL(directory.appendingPathComponent(name) as CFURL, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        #expect(CGImageDestinationFinalize(destination))
+    }
+    try png("image-0", side: 200)
+    try png("image-1", side: 16)
+    try png("image-2", side: 200)
+    let html = #"<img src="image-0"><img src="image-1"><img src="image-2" alt="Has one"><img src="image-3"><img src="image-0">"#
+    #expect(await ImageDescriptions.undescribed(in: html, directory: directory, limit: 20) == ["image-0"])
+    #expect(await ImageDescriptions.undescribed(in: html + #"<img src="image-2">"#, directory: directory, limit: 1) == ["image-0"])
 }
 
 @Test func passagesSplitIntoSentences() {

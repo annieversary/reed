@@ -3,24 +3,27 @@
 // scrolling away stops that and reports which way it went.
 // Tapping a paragraph asks to read from there.
 window.reedNarration = (() => {
-    const blocks = 'p,h1,h2,h3,h4,h5,h6,li,dt,dd,blockquote,div,section,article,header,footer,aside,main';
+    const blocks = 'p,h1,h2,h3,h4,h5,h6,li,dt,dd,blockquote,div,section,article,header,footer,aside,main,figure,img';
     const squash = text => text.replace(/\s+/g, '');
     // Narration reads a formula as ArticleText does: by its spoken label, as its text when that's plain,
     // or not at all. Each is read whole, so a sentence can only start or end beside one.
     const formulaText = math => math.getAttribute('aria-label')
         ?? (/^[^\\^_{]*$/.test(math.getAttribute('alttext') ?? '\\') ? math.textContent : '');
-    // The text nodes and formulas narration reads within `element`, in order.
+    // A picture reads as ArticleSpeech reads it: by its alt text, as a passage of its own.
+    const imageText = img => /[\p{L}\p{N}]/u.test(img.alt) && !img.closest('figure.equation') ? `Image: ${img.alt}` : '';
+    // The text nodes, formulas and pictures narration reads within `element`, in order.
     const spokenParts = element => {
         const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
-            acceptNode: node => node.localName === 'math' || (node.nodeType === Node.TEXT_NODE && !node.parentElement.closest('math'))
+            acceptNode: node => node.localName === 'math' || (node.localName === 'img' && imageText(node))
+                || (node.nodeType === Node.TEXT_NODE && !node.parentElement.closest('math'))
                 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
         });
         const parts = [];
         for (let node; (node = walker.nextNode());) parts.push(node);
         return parts;
     };
-    const partText = part => part.nodeType === Node.TEXT_NODE ? part.data : formulaText(part);
-    const spokenText = element => spokenParts(element).map(partText).join('');
+    const partText = part => part.nodeType === Node.TEXT_NODE ? part.data : part.localName === 'img' ? imageText(part) : formulaText(part);
+    const spokenText = element => element.localName === 'img' ? imageText(element) : spokenParts(element).map(partText).join('');
     const style = document.createElement('style');
     style.textContent = `
         :root { --narrating: color-mix(in srgb, var(--accent) 9%, transparent); }
@@ -58,7 +61,7 @@ window.reedNarration = (() => {
     };
     // The range of the `number`th sentence within `element`, matching text the same way passages are matched.
     const sentenceRange = (element, list, number) => {
-        // Each character's range: within its text node, or around its whole formula.
+        // Each character's range: within its text node, or around its whole formula or picture.
         const characters = [];
         let text = '';
         for (const part of spokenParts(element)) {

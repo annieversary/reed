@@ -106,6 +106,10 @@ extension Library {
             let cover = epub.cover.map { (path: $0, filename: BookFiles.imageName(for: $0)) }
             if let cover { images.append(cover) }
             let (saved, missing) = await Self.unpack(images, from: epub, to: directory)
+            // Chapters share pictures, so each is described once for the whole book.
+            let descriptions = try await describeImages(in: extracted.map(\.html).joined(), directory: directory, limit: 60,
+                                                        from: "the book \"\(book.title)\"") { activity = $0 }
+            for index in extracted.indices { extracted[index].html = ImageDescriptions.applying(descriptions, to: extracted[index].html) }
             for (index, chapter) in extracted.enumerated() {
                 let after = extracted.indices.contains(index + 1) ? BookFiles.nextChapterCard(index: index + 1, title: extracted[index + 1].title) : ""
                 let document = ArticleHTML.document(title: chapter.title, author: nil, domain: book.title,

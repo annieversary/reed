@@ -135,7 +135,12 @@ extension Library {
                 } catch is CancellationError { throw CancellationError() }
                 catch { missing.append(image) }
             }
-            let body = await Self.replacing(missing, in: extracted.html)
+            var body = await Self.replacing(missing, in: extracted.html)
+            let descriptions = try await describeImages(in: body, directory: directory, limit: 20, from: "an article titled \"\(extracted.title)\"") { message in
+                imageActivity = message
+                report(message)
+            }
+            body = ImageDescriptions.applying(descriptions, to: body)
             let document = ArticleHTML.document(title: extracted.title, author: extracted.author,
                                                 domain: Article.domain(of: pageURL) ?? "", minutes: Article.readingMinutes(words: extracted.wordCount), body: body)
             try await Self.write(Data(document.utf8), to: directory.appendingPathComponent("index.html"))
@@ -171,6 +176,19 @@ extension Library {
             save()
         }
         if discarded.remove(article.id) != nil { erase(article) }
+    }
+
+    /// Alt text from the on-device model for the pictures in `html` saved in `directory` that have none, by file name.
+    func describeImages(in html: String, directory: URL, limit: Int, from source: String, report: (String) -> Void) async throws -> [String: String] {
+        guard ImageDescriptions.available else { return [:] }
+        let undescribed = await ImageDescriptions.undescribed(in: html, directory: directory, limit: limit)
+        var descriptions: [String: String] = [:]
+        for (index, name) in undescribed.enumerated() {
+            try Task.checkCancellation()
+            report("Describing image \(index + 1) of \(undescribed.count)…")
+            descriptions[name] = await ImageDescriptions.describe(directory.appendingPathComponent(name), from: source)
+        }
+        return descriptions
     }
 
     nonisolated static func read(_ url: URL) async -> Data? { try? Data(contentsOf: url) }

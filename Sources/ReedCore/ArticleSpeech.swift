@@ -3,20 +3,33 @@ import NaturalLanguage
 
 public enum ArticleSpeech {
     /// The passages of a saved reader document to read aloud, one per block, starting with the title.
-    /// Code, tables, figures and drawings are left out, since they don't make sense spoken.
+    /// Code, tables, drawings and equations are left out, since they don't make sense spoken. A picture is its own passage,
+    /// read by its alt text, and the rest of a figure, like its caption, is left out.
     public static func passages(title: String, html: String) -> [String] {
         var body = Substring(html)
         if let start = body.range(of: "<main>"), let end = body.range(of: "</main>", options: .backwards), start.upperBound <= end.lowerBound {
             body = body[start.upperBound..<end.lowerBound]
         }
-        let unspoken = #/<(pre|table|figure|svg|script|style)\b.*?</\1\s*>|<span class="missing-image">.*?</span>/#
+        let unspoken = #/<(pre|table|svg|script|style)\b.*?</\1\s*>|<span class="missing-image">.*?</span>|<figure class="equation">.*?</figure\s*>/#
             .dotMatchesNewlines().ignoresCase()
+        let figure = #/<figure\b[^>]*>(.*?)</figure\s*>/#.dotMatchesNewlines().ignoresCase()
         let block = #/</?(?:p|div|h[1-6]|li|ul|ol|dl|dt|dd|blockquote|section|article|header|footer|aside|hr)\b[^>]*>|<br\s*/?>/#
             .ignoresCase()
         // Source line breaks fall inside paragraphs, so blocks are separated with a character HTML text never contains.
-        let blocks = String(body).replacing(unspoken, with: "\u{1}").replacing(block, with: "\u{1}").split(separator: "\u{1}")
+        let blocks = String(body).replacing(unspoken, with: "\u{1}")
+            .replacing(figure) { "\u{1}" + $0.output.1.matches(of: imageTag()).map { "\($0.output.0)\u{1}" }.joined() }
+            .replacing(imageTag()) { image in
+                let alt = image.output.alt.map(String.init) ?? ""
+                return alt.contains { $0.isLetter || $0.isNumber } ? "\u{1}Image: \(alt)\u{1}" : ""
+            }
+            .replacing(block, with: "\u{1}").split(separator: "\u{1}")
         return ([title] + blocks.map { ArticleText.plain(String($0)) })
             .filter { $0.contains { $0.isLetter || $0.isNumber } }
+    }
+
+    /// A picture, with its alt text if it has any. The reader's narration highlighting reads pictures the same way.
+    private static func imageTag() -> Regex<(Substring, alt: Substring?)> {
+        #/<img\b[^>]*?(?:\balt\s*=\s*"(?<alt>[^"]*)"[^>]*)?>/#.ignoresCase()
     }
 
     /// The sentences of a passage, in order. Fragments with nothing to say, like a lone dash, stay with the sentence before.
