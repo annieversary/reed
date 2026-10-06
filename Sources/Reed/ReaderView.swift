@@ -41,7 +41,6 @@ struct ReaderView: View {
                     progressLabel
                     if !isNarrating { listenButton }
                 }
-                if article?.sourceURL != nil { commentsButton }
                 readerMenu
             }
             .padding(.horizontal, 22).padding(.vertical, 15)
@@ -121,7 +120,6 @@ struct ReaderView: View {
                 ToolbarItem(placement: .principal) { progressLabel }
                 if !isNarrating { ToolbarItem(placement: .primaryAction) { listenButton } }
             }
-            if article?.sourceURL != nil { ToolbarItem(placement: .primaryAction) { commentsButton } }
             ToolbarItem(placement: .primaryAction) { readerMenu }
         }
         #endif
@@ -190,15 +188,6 @@ struct ReaderView: View {
             .help("Listen")
     }
 
-    private var commentsButton: some View {
-        Button("Comments", systemImage: "text.bubble") { commentsOpen.toggle() }
-            .labelStyle(.iconOnly)
-            #if os(macOS)
-            .buttonStyle(.borderless)
-            #endif
-            .help("Comments")
-    }
-
     private func returnToNarrationButton(_ direction: NarrationDirection) -> some View {
         Button("Back to the Paragraph Being Read", systemImage: direction == .up ? "arrow.up" : "arrow.down") {
             reader.followNarration()
@@ -244,6 +233,7 @@ struct ReaderView: View {
             }
             if let url = article?.sourceURL {
                 Divider()
+                Button("Comments", systemImage: "text.bubble") { commentsOpen.toggle() }
                 Button("Open Original", systemImage: "safari") { openURL(url) }
             }
         } label: { Label("More", systemImage: "ellipsis") }
