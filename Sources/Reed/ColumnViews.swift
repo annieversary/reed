@@ -89,9 +89,11 @@ extension View {
 }
 
 extension View {
-    /// Greys a card out the further its article has been read, fully once finished, and a little once opened.
+    /// Greys a card out the further its article has been read, fully once finished, and noticeably once opened.
+    /// Most of the change happens in the first half, so starting an article is easy to see.
     func readFading(_ article: Article?) -> some View {
-        let read = article.map { $0.isRead ? 1 : max($0.progress, $0.openedAt == nil ? 0 : 0.2) } ?? 0
+        let progress = article.map { $0.isRead ? 1 : max($0.progress, $0.openedAt == nil ? 0 : 0.2) } ?? 0
+        let read = 1 - pow(1 - progress, 3)
         return saturation(1 - read).opacity(1 - 0.5 * read)
     }
 }
