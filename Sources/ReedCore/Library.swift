@@ -211,6 +211,12 @@ public final class Library {
         save()
     }
 
+    public func open(_ article: Article) {
+        guard article.openedAt == nil else { return }
+        article.openedAt = .now
+        save()
+    }
+
     public func toggleRead(_ readable: any Readable) { readable.isRead.toggle(); save() }
 
     public func updateProgress(_ readable: any Readable, value: Double) {

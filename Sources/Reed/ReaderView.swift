@@ -133,7 +133,10 @@ struct ReaderView: View {
             }
         }
         .task(id: article?.id) { if let article { loadDiscussions(of: article) } }
-        .onAppear { if let chapter { library.open(chapter) } }
+        .onAppear {
+            if let chapter { library.open(chapter) }
+            if let article { library.open(article) }
+        }
         .onDisappear { library.save() }
     }
 

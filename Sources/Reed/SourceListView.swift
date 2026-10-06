@@ -114,6 +114,7 @@ struct SourceListView: View {
     private func row(for item: SourceItem) -> some View {
         let saved = library.article(at: item.url)
         return SourceRow(item: item, label: label(for: item), saved: saved != nil, pointName: pointName)
+            .readFading(saved ?? library.cachedArticle(at: item.url))
             .background(NavigationLink(value: item.id) { EmptyView() }.opacity(0))
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))

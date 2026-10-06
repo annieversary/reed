@@ -45,6 +45,8 @@ public final class Article {
     public var leadsToOtherChapters: Bool?
     /// Where the link is discussed, such as its Hacker News thread, in the order they were found.
     public var discussionURLs: [String]?
+    /// When it was first opened in the reader, whether or not it was read any further.
+    public var openedAt: Date?
 
     public init(url: URL, id: UUID = UUID()) {
         self.id = id

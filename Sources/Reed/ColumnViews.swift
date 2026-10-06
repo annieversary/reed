@@ -87,3 +87,11 @@ extension View {
         #endif
     }
 }
+
+extension View {
+    /// Greys a card out the further its article has been read, fully once finished, and a little once opened.
+    func readFading(_ article: Article?) -> some View {
+        let read = article.map { $0.isRead ? 1 : max($0.progress, $0.openedAt == nil ? 0 : 0.2) } ?? 0
+        return saturation(1 - read).opacity(1 - 0.5 * read)
+    }
+}

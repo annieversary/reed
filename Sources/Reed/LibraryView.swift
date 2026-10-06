@@ -706,6 +706,7 @@ private struct ArticleRow: View {
             .font(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 4)
         }
         .padding(.vertical, 15).padding(.horizontal, 7)
+        .readFading(article)
         .accessibilityElement(children: .combine)
     }
 
