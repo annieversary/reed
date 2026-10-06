@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 import SwiftData
 
 @MainActor @Observable
@@ -90,11 +91,7 @@ public final class Library {
                 .filter { !$0.parts.isEmpty }
         }
         syncCache()
-        let entries = articles.map(searchEntry)
-        Task { [weak self, searchIndex] in
-            try? await searchIndex.sync(entries)
-            self?.searchRevision += 1
-        }
+        syncSearch()
     }
 
     /// What was saved at `url`, or nil if nothing was. A file that can't be read is moved aside to
@@ -184,10 +181,7 @@ public final class Library {
         cached.append(article)
         removeFromSeries(article)
         let id = article.id
-        Task { [weak self, searchIndex] in
-            try? await searchIndex.remove(id)
-            self?.searchRevision += 1
-        }
+        updateSearch { try await $0.remove(id) }
     }
 
     public func delete(_ article: Article) {
@@ -209,7 +203,7 @@ public final class Library {
         let id = article.id
         container.mainContext.delete(article)
         do { try container.mainContext.save() } catch { errorMessage = error.localizedDescription; return false }
-        Task { [searchIndex] in try? await searchIndex.remove(id) }
+        updateSearch { try await $0.remove(id) }
         do { try storage.removeArticle(id) } catch { errorMessage = error.localizedDescription }
         return true
     }
@@ -268,14 +262,39 @@ public final class Library {
     }
 
     public func search(_ text: String) async -> [SearchIndex.Match] {
-        (try? await searchIndex.search(text)) ?? []
+        do { return try await searchIndex.search(text) } catch {
+            Self.searchLog.error("Searching failed: \(error, privacy: .public)")
+            return []
+        }
     }
 
-    // Index failures aren't surfaced: the index is brought up to date again at every launch.
+    static let searchLog = Logger(subsystem: "town.versary.reed", category: "Search")
+
     func reindex(_ article: Article) {
         let entry = searchEntry(for: article)
+        updateSearch { try await $0.index(entry) }
+    }
+
+    /// Applies `change` to the index. If it fails, the whole index is brought up to date with the library instead.
+    func updateSearch(_ change: @escaping @Sendable (SearchIndex) async throws -> Void) {
         Task { [weak self, searchIndex] in
-            try? await searchIndex.index(entry)
+            do {
+                try await change(searchIndex)
+                self?.searchRevision += 1
+            } catch {
+                Self.searchLog.error("Updating the search index failed: \(error, privacy: .public)")
+                self?.syncSearch()
+            }
+        }
+    }
+
+    /// Brings the index up to date with the whole library.
+    func syncSearch() {
+        let entries = articles.map(searchEntry)
+        Task { [weak self, searchIndex] in
+            do { try await searchIndex.sync(entries) } catch {
+                Self.searchLog.error("Syncing the search index failed: \(error, privacy: .public)")
+            }
             self?.searchRevision += 1
         }
     }
