@@ -97,3 +97,29 @@ extension View {
         return saturation(1 - read).opacity(1 - 0.5 * read)
     }
 }
+
+extension View {
+    /// A list row that opens `value`. The link is hidden, so the row shows no disclosure chevron.
+    func listLink(value: some Hashable, insets: EdgeInsets) -> some View {
+        background(NavigationLink(value: value) { EmptyView() }.opacity(0))
+            .listRowSeparator(.hidden)
+            .listRowInsets(insets)
+    }
+}
+
+/// How far a part or chapter has been read: finished, the way through, or how long it takes.
+struct ReadingStatus: View {
+    let isRead: Bool
+    let progress: Double
+    let minutes: Int
+
+    var body: some View {
+        if isRead {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).accessibilityLabel("Finished")
+        } else if progress > 0 {
+            Text("\(Int(progress * 100))%")
+        } else {
+            Text("\(minutes) min")
+        }
+    }
+}

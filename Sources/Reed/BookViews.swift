@@ -44,9 +44,7 @@ struct BookShelfView: View {
                 #endif
                 ForEach(books) { book in
                     BookRow(library: library, book: book)
-                        .background(NavigationLink(value: book.id) { EmptyView() }.opacity(0))
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                        .listLink(value: book.id, insets: EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
                         .swipeActions(edge: .trailing) {
                             if book.state != .downloading {
                                 Button { onDelete(book) } label: { Label("Delete", systemImage: "trash") }.tint(.red)
@@ -304,16 +302,8 @@ private struct ChapterRow: View {
             Text(chapter.title).font(.system(size: 16, design: .serif)).fontWeight(isCurrent ? .semibold : .regular)
                 .multilineTextAlignment(.leading)
             Spacer(minLength: 8)
-            Group {
-                if chapter.isRead {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).accessibilityLabel("Finished")
-                } else if chapter.progress > 0 {
-                    Text("\(Int(chapter.progress * 100))%")
-                } else {
-                    Text("\(max(1, Int(ceil(Double(chapter.wordCount) / 230)))) min")
-                }
-            }
-            .font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
+            ReadingStatus(isRead: chapter.isRead, progress: chapter.progress, minutes: Article.readingMinutes(words: chapter.wordCount))
+                .font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
         }
         .padding(.vertical, 11)
         .contentShape(Rectangle())

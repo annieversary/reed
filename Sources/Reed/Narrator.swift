@@ -1,5 +1,4 @@
 import AVFoundation
-import CryptoKit
 import FluidAudio
 import MediaPlayer
 import Observation
@@ -88,7 +87,7 @@ final class Narrator {
     @ObservationIgnored private var loader: Task<Void, Never>?
     /// More passages may be ready to queue once the loader finishes.
     @ObservationIgnored private var needsScheduling = false
-    @ObservationIgnored private let engine = AVAudioEngine()
+    @ObservationIgnored let engine = AVAudioEngine()
     @ObservationIgnored private let player = AVAudioPlayerNode()
     @ObservationIgnored private let timePitch = AVAudioUnitTimePitch()
     /// Bumped whenever the player is flushed, so callbacks from discarded buffers are ignored.
@@ -99,11 +98,11 @@ final class Narrator {
     /// How far into the current passage playback began, after seeking.
     @ObservationIgnored private var startOffset: AVAudioFramePosition = 0
     /// How far into the current passage was last heard. The player's clock is lost when the engine stops.
-    @ObservationIgnored private var heard: Double = 0
+    @ObservationIgnored var heard: Double = 0
     /// Nothing is queued for the current passage, so resuming must start it afresh.
     @ObservationIgnored private var needsStart = false
     /// An interruption paused playback, so it may carry on once the interruption ends.
-    @ObservationIgnored private var interruptedWhilePlaying = false
+    @ObservationIgnored var interruptedWhilePlaying = false
     /// Lengths of synthesized passages, in seconds.
     @ObservationIgnored private var durations: [Int: Double] = [:]
     /// Estimated lengths of every passage, from its words, until it's synthesized.
@@ -112,18 +111,14 @@ final class Narrator {
     @ObservationIgnored private var sentenceStarts: [Int: [Double]] = [:]
     /// Keeps `sentence` in step with playback.
     @ObservationIgnored private var tracker: Task<Void, Never>?
-    @ObservationIgnored private var artwork: MPMediaItemArtwork?
+    @ObservationIgnored var artwork: MPMediaItemArtwork?
     @ObservationIgnored private var previewPlayer: AVAudioPlayer?
     @ObservationIgnored private var previewTask: Task<Void, Never>?
 
     private static let sample = "This is how articles will sound when Reed reads them aloud."
     private static let lookahead = 3
-    nonisolated private static let sampleRate = Double(KokoroAneConstants.sampleRate)
-    /// A beat of silence after each passage, so paragraphs don't run together.
-    nonisolated private static let pause = 0.35
     /// The shorter beat between sentences of a passage.
-    nonisolated private static let sentencePause = 0.15
-    nonisolated private static let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
+    private static let sentencePause = 0.15
     /// Kokoro reads at roughly this pace, to estimate passages not synthesized yet.
     private static let wordsPerSecond = 2.8
     /// "Previous" restarts the passage rather than going back once it's this far in.
@@ -139,7 +134,7 @@ final class Narrator {
     init() {
         engine.attach(player)
         engine.attach(timePitch)
-        engine.connect(player, to: timePitch, format: Self.format)
+        engine.connect(player, to: timePitch, format: PassageAudio.format)
         timePitch.rate = rate
         observeAudioChanges()
         installRemoteCommands()
@@ -166,8 +161,8 @@ final class Narrator {
             book = item is BookChapter ? item.source : nil
             passages = speech.passages
             sentences = speech.sentences
-            keys = speech.sentences.map(Self.key(for:))
-            estimates = passages.map { Double($0.split(whereSeparator: \.isWhitespace).count) / Self.wordsPerSecond + Self.pause }
+            keys = speech.sentences.map(PassageAudio.key(for:))
+            estimates = passages.map { Double($0.split(whereSeparator: \.isWhitespace).count) / Self.wordsPerSecond + PassageAudio.pause }
             passageCount = passages.count
             directory = library.storage.audioDirectory(item.location, version: version, voice: voice)
             self.artwork = artwork
@@ -284,7 +279,7 @@ final class Narrator {
                     let samples = try await kokoro.synthesizeDetailed(text: Self.sample, voice: voice).samples
                     try Task.checkCancellation()
                     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                    try await Self.write(samples, to: url)
+                    try await PassageAudio.write(samples, to: url)
                 }
                 try Task.checkCancellation()
                 guard let self else { return }
@@ -321,14 +316,14 @@ final class Narrator {
         isPreviewPlaying = false
     }
 
-    private func start(at index: Int, offset: Double = 0) {
+    func start(at index: Int, offset: Double = 0) {
         epoch += 1
         player.stop()
         current = index
         scheduled = index - 1
         startFrames = [:]
         nextFrame = 0
-        startOffset = AVAudioFramePosition(offset * Self.sampleRate)
+        startOffset = AVAudioFramePosition(offset * PassageAudio.sampleRate)
         heard = offset
         needsStart = false
         sentence = sentenceIndex(at: offset)
@@ -357,7 +352,7 @@ final class Narrator {
     /// Connected to the output only once narration starts, since bringing up the engine's output pauses other apps' audio.
     private func connectEngine() {
         guard engine.outputConnectionPoints(for: timePitch, outputBus: 0).isEmpty else { return }
-        engine.connect(timePitch, to: engine.mainMixerNode, format: Self.format)
+        engine.connect(timePitch, to: engine.mainMixerNode, format: PassageAudio.format)
     }
 
     /// Queues synthesized passages until the player holds a few ahead of the one being heard.
@@ -366,9 +361,9 @@ final class Narrator {
         guard loader == nil else { needsScheduling = true; return }
         needsScheduling = false
         guard let directory, scheduled + 1 < passageCount, scheduled + 1 < current + Self.lookahead else { return }
-        let index = scheduled + 1, epoch = epoch, url = Self.audioURL(keys[index], in: directory)
+        let index = scheduled + 1, epoch = epoch, url = PassageAudio.audioURL(keys[index], in: directory)
         loader = Task { [weak self] in
-            let buffer = await Self.buffer(at: url)
+            let buffer = await PassageAudio.buffer(at: url)
             guard let self else { return }
             loader = nil
             if epoch != self.epoch || index != scheduled + 1 {
@@ -385,9 +380,9 @@ final class Narrator {
         var buffer = buffer
         scheduled = index
         let epoch = epoch
-        durations[index] = Double(buffer.frameLength) / Self.sampleRate
+        durations[index] = Double(buffer.frameLength) / PassageAudio.sampleRate
         var skipped: AVAudioFramePosition = 0
-        if index == current, startOffset > 0, let rest = Self.slice(buffer, from: AVAudioFrameCount(startOffset)) {
+        if index == current, startOffset > 0, let rest = PassageAudio.slice(buffer, from: AVAudioFrameCount(startOffset)) {
             buffer = rest
             skipped = startOffset
         }
@@ -406,22 +401,22 @@ final class Narrator {
         return time.sampleTime
     }
 
-    private var elapsedInPassage: Double {
-        guard let begins = startFrames[current], let now = playerFrame else { return Double(startOffset) / Self.sampleRate }
-        return max(0, Double(now - begins) / Self.sampleRate)
+    var elapsedInPassage: Double {
+        guard let begins = startFrames[current], let now = playerFrame else { return Double(startOffset) / PassageAudio.sampleRate }
+        return max(0, Double(now - begins) / PassageAudio.sampleRate)
     }
 
     /// Exact once a passage is synthesized and measured, estimated from its words until then.
-    private func duration(of index: Int) -> Double {
+    func duration(of index: Int) -> Double {
         durations[index] ?? estimates[index]
     }
 
     /// Measures the passages already synthesized, away from the main thread.
     private func measure() {
         guard let directory else { return }
-        let urls = keys.map { Self.audioURL($0, in: directory) }
+        let urls = keys.map { PassageAudio.audioURL($0, in: directory) }
         Task { [weak self] in
-            let lengths = await Self.lengths(of: urls)
+            let lengths = await PassageAudio.lengths(of: urls)
             guard let self, self.directory == directory else { return }
             durations.merge(lengths) { known, _ in known }
             updateNowPlaying()
@@ -438,15 +433,15 @@ final class Narrator {
         if let known = sentenceStarts[index] { return known }
         let parts = sentences.indices.contains(index) ? sentences[index] : []
         guard parts.count > 1 else { return [0] }
-        if let directory, let data = try? Data(contentsOf: Self.sentencesURL(keys[index], in: directory)),
+        if let directory, let data = try? Data(contentsOf: PassageAudio.sentencesURL(keys[index], in: directory)),
            let starts = try? JSONDecoder().decode([Double].self, from: data), starts.count == parts.count {
             sentenceStarts[index] = starts
             return starts
         }
-        guard durations[index] != nil || (directory.map { FileManager.default.fileExists(atPath: Self.audioURL(keys[index], in: $0).path) } ?? false)
+        guard durations[index] != nil || (directory.map { FileManager.default.fileExists(atPath: PassageAudio.audioURL(keys[index], in: $0).path) } ?? false)
         else { return [0] }
         let lengths = parts.map { Double($0.count) }
-        let spoken = max(duration(of: index) - Self.pause, 0)
+        let spoken = max(duration(of: index) - PassageAudio.pause, 0)
         var starts: [Double] = [], total = 0.0
         for length in lengths {
             starts.append(total * spoken / lengths.reduce(0, +))
@@ -524,20 +519,20 @@ final class Narrator {
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 for index in start..<sentences.count {
-                    let url = Self.audioURL(keys[index], in: directory)
+                    let url = PassageAudio.audioURL(keys[index], in: directory)
                     guard !FileManager.default.fileExists(atPath: url.path) else { continue }
                     guard let kokoro = try await self?.loadKokoro() else { return }
                     var samples: [Float] = [], starts: [Double] = []
                     for (number, sentence) in sentences[index].enumerated() {
                         try Task.checkCancellation()
-                        if number > 0 { samples += [Float](repeating: 0, count: Int(Self.sentencePause * Self.sampleRate)) }
-                        starts.append(Double(samples.count) / Self.sampleRate)
+                        if number > 0 { samples += [Float](repeating: 0, count: Int(Self.sentencePause * PassageAudio.sampleRate)) }
+                        starts.append(Double(samples.count) / PassageAudio.sampleRate)
                         samples += try await kokoro.synthesizeDetailed(text: ArticleSpeech.spoken(sentence), voice: voice).samples
                     }
                     try Task.checkCancellation()
                     // Written first, so a passage's audio is never there without its sentence times.
-                    try JSONEncoder().encode(starts).write(to: Self.sentencesURL(keys[index], in: directory), options: .atomic)
-                    let length = try await Self.write(samples, to: url)
+                    try JSONEncoder().encode(starts).write(to: PassageAudio.sentencesURL(keys[index], in: directory), options: .atomic)
+                    let length = try await PassageAudio.write(samples, to: url)
                     if self?.directory == directory { self?.durations[index] = length }
                     self?.scheduleReady()
                 }
@@ -571,152 +566,6 @@ final class Narrator {
         }
     }
 
-    private static func audioURL(_ key: String, in directory: URL) -> URL {
-        directory.appendingPathComponent("\(key).m4a")
-    }
-
-    private static func sentencesURL(_ key: String, in directory: URL) -> URL {
-        directory.appendingPathComponent("\(key).json")
-    }
-
-    private static func key(for sentences: [String]) -> String {
-        SHA256.hash(data: Data(sentences.joined(separator: "\n").utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
-    }
-
-    @concurrent nonisolated private static func buffer(at url: URL) async -> sending AVAudioPCMBuffer? {
-        guard let file = try? AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false),
-              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
-              (try? file.read(into: buffer)) != nil else { return nil }
-        return buffer
-    }
-
-    /// The length in seconds of each of `files` that's there, by its place in the list.
-    @concurrent nonisolated private static func lengths(of files: [URL]) async -> [Int: Double] {
-        var lengths: [Int: Double] = [:]
-        for (index, url) in files.enumerated() where FileManager.default.fileExists(atPath: url.path) {
-            if let file = try? AVAudioFile(forReading: url) { lengths[index] = Double(file.length) / file.fileFormat.sampleRate }
-        }
-        return lengths
-    }
-
-    /// Written under a temporary name and moved into place, so a passage file is only ever complete. Returns its length in seconds.
-    @discardableResult @concurrent nonisolated private static func write(_ samples: [Float], to url: URL) async throws -> Double {
-        let padded = samples + [Float](repeating: 0, count: Int(pause * sampleRate))
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(padded.count)) else { return 0 }
-        buffer.frameLength = buffer.frameCapacity
-        padded.withUnsafeBufferPointer { buffer.floatChannelData![0].update(from: $0.baseAddress!, count: padded.count) }
-        let partial = url.deletingLastPathComponent().appendingPathComponent(UUID().uuidString + ".m4a")
-        defer { try? FileManager.default.removeItem(at: partial) }
-        let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: sampleRate,
-                                       AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 48_000]
-        do {
-            // The file is finished when it's released, at the end of this scope.
-            try AVAudioFile(forWriting: partial, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false).write(from: buffer)
-        }
-        // A passage the same as another is made once.
-        if !FileManager.default.fileExists(atPath: url.path) { try FileManager.default.moveItem(at: partial, to: url) }
-        return Double(padded.count) / sampleRate
-    }
-
-    nonisolated private static func slice(_ buffer: AVAudioPCMBuffer, from start: AVAudioFrameCount) -> AVAudioPCMBuffer? {
-        guard start < buffer.frameLength,
-              let rest = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameLength - start) else { return nil }
-        rest.frameLength = rest.frameCapacity
-        rest.floatChannelData![0].update(from: buffer.floatChannelData![0] + Int(start), count: Int(rest.frameLength))
-        return rest
-    }
-
-    /// The article's first image, or Reed's own artwork. Built outside the main actor, since the system
-    /// asks for the image from a background queue.
-    nonisolated private static func artwork(from image: URL?) -> MPMediaItemArtwork? {
-        #if os(iOS)
-        guard let image = image.flatMap({ UIImage(contentsOfFile: $0.path) }) ?? UIImage(named: "NowPlayingArtwork") else { return nil }
-        #else
-        guard let image = image.flatMap(NSImage.init(contentsOf:)) ?? NSImage(named: "NowPlayingArtwork") else { return nil }
-        #endif
-        nonisolated(unsafe) let artwork = image
-        return MPMediaItemArtwork(boundsSize: image.size) { _ in artwork }
-    }
-
-    private func observeAudioChanges() {
-        let center = NotificationCenter.default
-        // The engine stops itself when the output device changes; carry on from the same passage.
-        center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, self.isPlaying else { return }
-                self.start(at: self.current, offset: self.heard)
-            }
-        }
-        #if os(iOS)
-        center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
-            let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init)
-            let options = AVAudioSession.InterruptionOptions(rawValue: note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0)
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                switch type {
-                case .began:
-                    self.interruptedWhilePlaying = self.isPlaying
-                    self.pause()
-                case .ended:
-                    if self.interruptedWhilePlaying, options.contains(.shouldResume) { self.resume() }
-                    self.interruptedWhilePlaying = false
-                default: break
-                }
-            }
-        }
-        center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
-            let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt).flatMap(AVAudioSession.RouteChangeReason.init)
-            // Unplugged headphones pause rather than switching to the speaker.
-            guard reason == .oldDeviceUnavailable else { return }
-            MainActor.assumeIsolated { self?.pause() }
-        }
-        #endif
-    }
-
-    private func installRemoteCommands() {
-        let commands = MPRemoteCommandCenter.shared()
-        let actions: [(MPRemoteCommand, @MainActor (Narrator) -> Void)] = [
-            (commands.playCommand, { $0.resume() }),
-            (commands.pauseCommand, { $0.pause() }),
-            (commands.togglePlayPauseCommand, { $0.togglePlayback() }),
-            (commands.nextTrackCommand, { $0.skip(by: 1) }),
-            (commands.previousTrackCommand, { $0.previous() }),
-        ]
-        for (command, action) in actions {
-            command.addTarget { [weak self] _ in
-                Task { @MainActor in if let self { action(self) } }
-                return .success
-            }
-        }
-        commands.changePlaybackPositionCommand.addTarget { [weak self] event in
-            guard let time = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime else { return .commandFailed }
-            Task { @MainActor in self?.seek(to: time) }
-            return .success
-        }
-    }
-
-    private func updateNowPlaying() {
-        let center = MPNowPlayingInfoCenter.default()
-        guard readableID != nil else {
-            center.nowPlayingInfo = nil
-            #if os(macOS)
-            center.playbackState = .stopped
-            #endif
-            return
-        }
-        let elapsed = (0..<current).reduce(0) { $0 + duration(of: $1) } + elapsedInPassage
-        let total = (0..<passageCount).reduce(0) { $0 + duration(of: $1) }
-        var info: [String: Any] = [MPMediaItemPropertyTitle: title, MPMediaItemPropertyArtist: source,
-                                   MPMediaItemPropertyPlaybackDuration: total,
-                                   MPNowPlayingInfoPropertyElapsedPlaybackTime: min(elapsed, total),
-                                   MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? Double(rate) : 0.0,
-                                   MPNowPlayingInfoPropertyDefaultPlaybackRate: Double(rate)]
-        if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
-        center.nowPlayingInfo = info
-        #if os(macOS)
-        center.playbackState = isPlaying ? .playing : .paused
-        #endif
-    }
 }
 
 extension Narrator {

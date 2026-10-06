@@ -86,16 +86,19 @@ extension Library {
                 let files = try await Self.files(of: chapters[index], in: epub)
                 return try await extractor.chapter(files: files, title: chapters[index].title, index: index, links: links)
             }
-            var extracted: [ExtractedArticle] = []
-            // Pages before the table of contents' first entry are kept only if they have something to read, unlike a cover.
-            if chapters.count > 1, chapters[0].title == nil {
-                let opening = try await extract(0, links: try await Self.links(in: epub, for: chapters))
-                if opening.wordCount < 20 { chapters.removeFirst() } else { extracted.append(opening) }
-            }
-            let links = try await Self.links(in: epub, for: chapters)
-            for index in extracted.count..<chapters.count {
-                try Task.checkCancellation()
-                extracted.append(try await extract(index, links: links))
+            var extracted = try await extractor.keepingPage {
+                var extracted: [ExtractedArticle] = []
+                // Pages before the table of contents' first entry are kept only if they have something to read, unlike a cover.
+                if chapters.count > 1, chapters[0].title == nil {
+                    let opening = try await extract(0, links: try await Self.links(in: epub, for: chapters))
+                    if opening.wordCount < 20 { chapters.removeFirst() } else { extracted.append(opening) }
+                }
+                let links = try await Self.links(in: epub, for: chapters)
+                for index in extracted.count..<chapters.count {
+                    try Task.checkCancellation()
+                    extracted.append(try await extract(index, links: links))
+                }
+                return extracted
             }
             guard extracted.contains(where: { $0.wordCount > 0 }) else { throw ReedError.unreadableBook }
             activity = "Saving \(book.title)…"

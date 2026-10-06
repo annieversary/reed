@@ -88,7 +88,7 @@ public final class Article {
     public var readingMinutes: Int { Self.readingMinutes(words: wordCount) }
 
     /// How long reading `words` takes, at about 230 words a minute.
-    static func readingMinutes(words: Int) -> Int { max(1, Int(ceil(Double(words) / 230))) }
+    public static func readingMinutes(words: Int) -> Int { max(1, Int(ceil(Double(words) / 230))) }
 
     /// Files shared to Reed are known by their contents, so sharing one twice saves it once.
     static let fileScheme = "reed-file"

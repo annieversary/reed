@@ -138,6 +138,28 @@ public enum ArticleHTML {
             .replacingOccurrences(of: "'", with: "&#39;")
     }
 
+    /// What's between a reader document's `<main>` tags, or all of `html` if it has none.
+    static func main(of html: String) -> Substring {
+        let text = Substring(html)
+        guard let start = text.range(of: "<main>"), let end = text.range(of: "</main>", options: .backwards),
+              start.upperBound <= end.lowerBound else { return text }
+        return text[start.upperBound..<end.lowerBound]
+    }
+
+    /// `text` with its character references and common named entities written out as the characters they stand for.
+    static func decodingEntities(_ text: String) -> String {
+        guard text.contains("&") else { return text }
+        return text.replacing(#/&(#[xX][0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/#) { match in
+            let name = match.output.1
+            let code = name.hasPrefix("#x") || name.hasPrefix("#X") ? UInt32(name.dropFirst(2), radix: 16)
+                : name.hasPrefix("#") ? UInt32(name.dropFirst()) : nil
+            return code.flatMap(Unicode.Scalar.init).map { String($0) } ?? namedEntities[String(name)] ?? String(match.output.0)
+        }
+    }
+
+    private static let namedEntities = ["amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ", "hellip": "…",
+                                        "mdash": "—", "ndash": "–", "lsquo": "‘", "rsquo": "’", "ldquo": "“", "rdquo": "”"]
+
     /// The file name of the first image in a saved reader document. Saved images are referenced by
     /// bare file names beside the document; anything else isn't one of ours.
     public static func firstImage(in html: String) -> String? {

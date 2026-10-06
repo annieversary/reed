@@ -173,7 +173,7 @@ struct LibraryView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $visibility) {
-            sidebar
+            LibrarySidebar(library: library, selection: $selection, showingSettings: $showingSettings)
                 .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
                 .safeAreaInset(edge: .bottom, spacing: 0) { narrationBar(when: columnsStack) }
         } content: {
@@ -310,75 +310,6 @@ struct LibraryView: View {
         selectedID = id
     }
 
-    private var sidebar: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 9) {
-                Image("ReedMark").renderingMode(.template).resizable().frame(width: 34, height: 34)
-                    .foregroundStyle(ReedStyle.accent)
-                Text("reed").font(.system(size: 34, weight: .regular, design: .serif)).tracking(-1.8)
-                Spacer()
-                #if os(iOS)
-                Button("Settings", systemImage: "gearshape") { showingSettings = true }
-                    .labelStyle(.iconOnly).font(.title3).foregroundStyle(.secondary)
-                #endif
-            }
-            .padding(.horizontal, 22).padding(.top, 24).padding(.bottom, 30)
-            List(selection: $selection) {
-                Section {
-                    ForEach(CollectionFilter.allCases) { item in
-                        NavigationLink(value: SidebarItem.collection(item)) {
-                            HStack(spacing: 10) {
-                                Image(systemName: item.symbol).frame(width: 18)
-                                Text(item.rawValue)
-                                Spacer(minLength: 2)
-                                Text("\(library.articles.filter { item.includes($0) }.count)")
-                                    .font(.caption).monospacedDigit().foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 5)
-                        }
-                    }
-                } header: { Text("LIBRARY").font(.system(size: 10, weight: .medium)).tracking(1.7) }
-                Section {
-                    ForEach(BookFilter.allCases) { item in
-                        NavigationLink(value: SidebarItem.books(item)) {
-                            HStack(spacing: 10) {
-                                Image(systemName: item.symbol).frame(width: 18)
-                                Text(item.rawValue)
-                                Spacer(minLength: 2)
-                                Text("\(library.books.filter { item.includes($0) }.count)")
-                                    .font(.caption).monospacedDigit().foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 5)
-                        }
-                    }
-                } header: { Text("BOOKS").font(.system(size: 10, weight: .medium)).tracking(1.7) }
-                Section {
-                    ForEach(ExternalSource.allCases.filter { $0 != .substack || SubstackAccount.shared.isSignedIn }) { source in
-                        discoverLink(.frontPage(source), symbol: source.symbol)
-                    }
-                    discoverLink(.feeds, symbol: "dot.radiowaves.up.forward")
-                } header: { Text("DISCOVER").font(.system(size: 10, weight: .medium)).tracking(1.7) }
-            }
-            .listStyle(.sidebar)
-        }
-        .navigationTitle("Reed")
-        #if os(macOS)
-        .toolbar(removing: .title)
-        #else
-        .toolbar(.hidden, for: .navigationBar)
-        #endif
-    }
-
-    private func discoverLink(_ origin: Discover, symbol: String) -> some View {
-        NavigationLink(value: SidebarItem.discover(origin)) {
-            HStack(spacing: 10) {
-                Image(systemName: symbol).frame(width: 18)
-                Text(origin.title)
-            }
-            .padding(.vertical, 5)
-        }
-    }
-
     private var articleList: some View {
         let entries = entries
         let articleCount = Self.count(of: entries)
@@ -454,10 +385,8 @@ struct LibraryView: View {
             // the series' own ID, which the list would otherwise select.
             let next = (SeriesRow.upNext(in: parts) ?? first).id
             SeriesRow(series: series, parts: parts, expanded: expanded)
-                .background(NavigationLink(value: next) { EmptyView() }.opacity(0))
+                .listLink(value: next, insets: EdgeInsets(top: 4, leading: 12, bottom: expanded.wrappedValue ? 0 : 4, trailing: 12))
                 .tag(next)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: expanded.wrappedValue ? 0 : 4, trailing: 12))
                 .contextMenu {
                     Button(expanded.wrappedValue ? "Hide Parts" : "Show Parts", systemImage: "list.bullet") {
                         withAnimation(.snappy(duration: 0.25)) { expanded.wrappedValue.toggle() }
@@ -485,11 +414,8 @@ struct LibraryView: View {
 
     /// A row that opens `article`, with its swipe actions and context menu.
     private func actionable(_ row: some View, for article: Article, insets: EdgeInsets) -> some View {
-        // A hidden link keeps row navigation without the disclosure chevron.
         row
-            .background(NavigationLink(value: article.id) { EmptyView() }.opacity(0))
-            .listRowSeparator(.hidden)
-            .listRowInsets(insets)
+            .listLink(value: article.id, insets: insets)
             .swipeActions(edge: .leading) {
                 Button { library.toggleRead(article) } label: {
                     Label(article.isRead ? "Unread" : "Finished", systemImage: article.isRead ? "book.closed" : "checkmark.circle")
@@ -589,144 +515,5 @@ struct LibraryView: View {
             Button("Save an article", systemImage: "plus") { showingAdd = true }
         }
         .padding(30).frame(maxWidth: .infinity, maxHeight: .infinity).background(ReedStyle.warm)
-    }
-}
-
-#if os(iOS)
-private extension View {
-    /// Lets a pull down uncover `field`, a row `height` tall at the top of the list, as it would a
-    /// navigation bar's search field: if `startHidden`, the list opens scrolled just past it. Scrolling
-    /// never comes to rest with it partly shown; `next` is the row below it, which takes the top when it
-    /// is hidden. A list too short to scroll it away keeps it shown. `tucked` follows how much of it is
-    /// out of view, from 0 to 1. Does nothing before iOS 18.
-    @ViewBuilder func pullToReveal(_ field: some Hashable, next: some Hashable, height: CGFloat, startHidden: Bool, tucked: Binding<CGFloat>) -> some View {
-        if #available(iOS 18.0, *) {
-            modifier(PullToReveal(field: field, next: next, height: height, startHidden: startHidden, fraction: tucked))
-        } else {
-            self
-        }
-    }
-}
-
-@available(iOS 18.0, *)
-private struct PullToReveal<ID: Hashable, Next: Hashable>: ViewModifier {
-    let field: ID
-    let next: Next
-    let height: CGFloat
-    let startHidden: Bool
-    @Binding var fraction: CGFloat
-    /// How far the field is scrolled out of view, from 0 (fully shown) to `height` (fully hidden).
-    @State private var tucked: CGFloat = 0
-    /// Whether the field was last moving into view, so a short pull is enough to finish revealing it.
-    @State private var opening = false
-    /// How far the content can scroll, once laid out; lists shorter than the field just keep it in view.
-    @State private var room: CGFloat?
-    @State private var placed = false
-
-    func body(content: Content) -> some View {
-        ScrollViewReader { proxy in
-            content
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    min(max(0, geometry.contentOffset.y + geometry.contentInsets.top), height)
-                } action: { old, new in
-                    opening = new < old
-                    tucked = new
-                    fraction = height > 0 ? new / height : 0
-                }
-                .onScrollGeometryChange(for: CGFloat?.self) { geometry in
-                    guard geometry.contentSize.height > 0 else { return nil }
-                    return geometry.contentSize.height - geometry.containerSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
-                } action: { _, new in
-                    room = new
-                }
-                .onScrollPhaseChange { _, phase in
-                    guard phase == .idle, tucked > 0.5, tucked < height - 0.5 else { return }
-                    let reveal = (room ?? 0) < height || tucked < height * (opening ? 0.75 : 0.25)
-                    withAnimation(.snappy(duration: 0.25)) {
-                        if reveal { proxy.scrollTo(field, anchor: .top) } else { proxy.scrollTo(next, anchor: .top) }
-                    }
-                }
-                .onChange(of: height > 0 && room != nil, initial: true) { _, measured in
-                    guard measured, let room, !placed else { return }
-                    placed = true
-                    if startHidden && room >= height { proxy.scrollTo(next, anchor: .top) }
-                }
-        }
-    }
-}
-
-/// Fades `content` out as `hidden` goes from 0 to 1. It reads the binding itself, so only this view
-/// updates while it changes.
-private struct Fading<Content: View>: View {
-    @Binding var hidden: CGFloat
-    @ViewBuilder let content: Content
-    var body: some View { content.opacity(1 - hidden) }
-}
-#endif
-
-private struct ArticleRow: View {
-    let article: Article
-    /// The passage that matched a search, shown in place of the excerpt.
-    let snippet: String?
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack {
-                Text(article.domain).font(.system(size: 9, weight: .semibold)).tracking(1.1)
-                Spacer()
-                if article.isFavorite { Image(systemName: "star.fill").font(.system(size: 9)) }
-            }.foregroundStyle(ReedStyle.accent)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(article.title).font(.system(size: 18, weight: .medium, design: .serif)).lineLimit(3).lineSpacing(2)
-                if let byline {
-                    Text(byline).font(.system(size: 12, design: .serif).italic()).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-            if let snippet {
-                Text(Self.highlighted(snippet)).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(3).lineSpacing(3)
-            } else if !article.excerpt.isEmpty {
-                Text(article.excerpt).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2).lineSpacing(3)
-            }
-            HStack(spacing: 5) {
-                if article.state == .downloading || article.state == .queued { ProgressView().controlSize(.mini) }
-                else if !article.state.isReadable { Image(systemName: "exclamationmark.circle").font(.system(size: 10)) }
-                Text(article.state.isReadable ? "\(article.readingMinutes) min read" : article.state.label)
-                if article.state == .partial { Image(systemName: "photo.badge.exclamationmark") }
-                if article.isRead {
-                    Image(systemName: "checkmark.circle.fill").font(.system(size: 10)).foregroundStyle(.green)
-                        .accessibilityLabel("Finished")
-                } else if article.progress > 0 {
-                    Text("· \(Int(article.progress * 100))%")
-                }
-                Spacer()
-                Text("Saved \(article.savedAt.formatted(.dateTime.month(.abbreviated).day()))")
-            }
-            .font(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 4)
-        }
-        .padding(.vertical, 15).padding(.horizontal, 7)
-        .readFading(article)
-        .accessibilityElement(children: .combine)
-    }
-
-    private var byline: String? {
-        let parts = [article.author, article.publishedAt.map(Self.formatPublished)].compactMap { $0 }.filter { !$0.isEmpty }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
-
-    private static func highlighted(_ snippet: String) -> AttributedString {
-        var result = AttributedString()
-        for (index, part) in snippet.components(separatedBy: SearchIndex.highlightStart).enumerated() {
-            let pieces = part.components(separatedBy: SearchIndex.highlightEnd)
-            guard index > 0, pieces.count > 1 else { result += AttributedString(part); continue }
-            var term = AttributedString(pieces[0])
-            term.foregroundColor = .primary
-            term.inlinePresentationIntent = .stronglyEmphasized
-            result += term + AttributedString(pieces.dropFirst().joined())
-        }
-        return result
-    }
-
-    private static func formatPublished(_ date: Date) -> String {
-        let sameYear = Calendar.current.isDate(date, equalTo: .now, toGranularity: .year)
-        return date.formatted(sameYear ? .dateTime.month(.abbreviated).day() : .dateTime.month(.abbreviated).day().year())
     }
 }

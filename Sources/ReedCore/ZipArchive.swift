@@ -1,7 +1,7 @@
 import Compression
 import Foundation
 
-/// Reads the files in a zip archive held in memory, as EPUBs are. Only what EPUBs use is supported:
+/// Reads the files in a zip archive, as EPUBs are. Only what EPUBs use is supported:
 /// stored and deflated entries, without encryption or ZIP64.
 struct ZipArchive: Sendable {
     struct Entry: Sendable {
@@ -20,33 +20,38 @@ struct ZipArchive: Sendable {
     /// Entries by path, as the archive names them.
     let entries: [String: Entry]
 
+    /// Only the end of the archive and its directory are read, so a mapped file stays mostly on disk.
     init(_ data: Data) throws {
         self.data = data
-        let bytes = [UInt8](data)
+        let start = data.startIndex
         // The end of central directory record is at least 22 bytes, followed by a comment of up to 64 KiB.
-        guard bytes.count >= 22 else { throw Failure.notZip }
-        var end: Int?
-        for offset in stride(from: bytes.count - 22, through: max(0, bytes.count - 22 - 65535), by: -1)
-        where Self.uint32(bytes, offset) == 0x0605_4b50 {
-            end = offset
+        guard data.count >= 22 else { throw Failure.notZip }
+        let tailStart = max(0, data.count - 22 - 65535)
+        let tail = [UInt8](data[(start + tailStart)...])
+        var found: Int?
+        for offset in stride(from: tail.count - 22, through: 0, by: -1) where Self.uint32(tail, offset) == 0x0605_4b50 {
+            found = offset
             break
         }
-        guard let end else { throw Failure.notZip }
-        let count = Int(Self.uint16(bytes, end + 10))
-        var offset = Int(Self.uint32(bytes, end + 16))
-        guard Self.uint32(bytes, end + 16) != 0xffff_ffff else { throw Failure.unsupported }
+        guard let found else { throw Failure.notZip }
+        let count = Int(Self.uint16(tail, found + 10))
+        guard Self.uint32(tail, found + 16) != 0xffff_ffff else { throw Failure.unsupported }
+        let directoryStart = Int(Self.uint32(tail, found + 16)), directorySize = Int(Self.uint32(tail, found + 12))
+        guard directoryStart + directorySize <= tailStart + found else { throw Failure.damaged }
+        let directory = [UInt8](data[(start + directoryStart)..<(start + directoryStart + directorySize)])
+        var offset = 0
         var entries: [String: Entry] = [:]
         for _ in 0..<count {
-            guard offset + 46 <= bytes.count, Self.uint32(bytes, offset) == 0x0201_4b50 else { throw Failure.damaged }
-            let flags = Self.uint16(bytes, offset + 8)
-            let nameLength = Int(Self.uint16(bytes, offset + 28))
-            let extraLength = Int(Self.uint16(bytes, offset + 30))
-            let commentLength = Int(Self.uint16(bytes, offset + 32))
-            guard offset + 46 + nameLength <= bytes.count else { throw Failure.damaged }
-            let name = String(decoding: bytes[(offset + 46)..<(offset + 46 + nameLength)], as: UTF8.self)
+            guard offset + 46 <= directory.count, Self.uint32(directory, offset) == 0x0201_4b50 else { throw Failure.damaged }
+            let flags = Self.uint16(directory, offset + 8)
+            let nameLength = Int(Self.uint16(directory, offset + 28))
+            let extraLength = Int(Self.uint16(directory, offset + 30))
+            let commentLength = Int(Self.uint16(directory, offset + 32))
+            guard offset + 46 + nameLength <= directory.count else { throw Failure.damaged }
+            let name = String(decoding: directory[(offset + 46)..<(offset + 46 + nameLength)], as: UTF8.self)
             if flags & 1 == 0 {
-                entries[name] = Entry(method: Self.uint16(bytes, offset + 10), compressedSize: Int(Self.uint32(bytes, offset + 20)),
-                                      size: Int(Self.uint32(bytes, offset + 24)), headerOffset: Int(Self.uint32(bytes, offset + 42)))
+                entries[name] = Entry(method: Self.uint16(directory, offset + 10), compressedSize: Int(Self.uint32(directory, offset + 20)),
+                                      size: Int(Self.uint32(directory, offset + 24)), headerOffset: Int(Self.uint32(directory, offset + 42)))
             }
             offset += 46 + nameLength + extraLength + commentLength
         }

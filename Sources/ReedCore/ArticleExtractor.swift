@@ -19,12 +19,25 @@ public struct ExtractedArticle: Codable, Sendable {
 }
 
 @MainActor
-public final class ArticleExtractor: NSObject, WKNavigationDelegate {
-    private var webView: WKWebView?
-    private var loadContinuation: CheckedContinuation<Void, Error>?
-    private var timeout: Task<Void, Never>?
+public final class ArticleExtractor {
+    /// Blocks every network request, compiled once.
+    private var rules: WKContentRuleList?
+    /// A blank page kept between extractions while `keepingPage(during:)` runs.
+    private var kept: BlankPage?
+    private var keeping = 0
 
-    public override init() { super.init() }
+    public init() {}
+
+    /// Runs `body` with one blank page shared by every extraction in it, as converting a whole book does,
+    /// rather than bringing up a page for each.
+    public func keepingPage<T>(during body: () async throws -> T) async rethrows -> T {
+        keeping += 1
+        defer {
+            keeping -= 1
+            if keeping == 0 { kept?.close(); kept = nil }
+        }
+        return try await body()
+    }
 
     /// `fetch` loads the same-origin JSON a site rule asks for, such as a README rendered client-side.
     public func extract(html: String, url: URL, fetch: (URL) async throws -> String) async throws -> ExtractedArticle {
@@ -81,30 +94,31 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
 
     /// Runs `body` with a blank page that can't reach the network, for scripts to work on documents in.
     private func withWebView<T>(_ body: (WKWebView) async throws -> T) async throws -> T {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
-        let rules = try await WKContentRuleListStore.default().compileContentRuleList(
-            forIdentifier: "ReedExtractionNoNetwork",
-            encodedContentRuleList: """
-            [{"trigger":{"url-filter":"^https?://"},"action":{"type":"block"}}]
-            """
-        )
-        if let rules { configuration.userContentController.add(rules) }
-        let view = WKWebView(frame: .zero, configuration: configuration)
-        view.navigationDelegate = self
-        webView = view
-        defer { timeout?.cancel(); view.stopLoading(); view.navigationDelegate = nil; webView = nil }
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            loadContinuation = continuation
-            timeout = Task { [weak self] in
-                do { try await Task.sleep(for: .seconds(20)) } catch { return }
-                self?.finishLoading(.failure(ReedError.extractionTimeout))
+        if let kept, !kept.isGone { return try await body(kept.view) }
+        if rules == nil {
+            let store = WKContentRuleListStore.default()!
+            rules = await withCheckedContinuation { continuation in
+                store.lookUpContentRuleList(forIdentifier: Self.rulesIdentifier) { list, _ in continuation.resume(returning: list) }
             }
-            view.loadHTMLString("<html><head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'\"></head><body></body></html>", baseURL: nil)
+            if rules == nil {
+                rules = try await store.compileContentRuleList(forIdentifier: Self.rulesIdentifier, encodedContentRuleList: """
+                    [{"trigger":{"url-filter":"^https?://"},"action":{"type":"block"}}]
+                    """)
+            }
         }
+        let page = BlankPage(rules: rules)
+        try await page.load()
         try Task.checkCancellation()
-        return try await body(view)
+        if keeping > 0 {
+            kept?.close()
+            kept = page
+            return try await body(page.view)
+        }
+        defer { page.close() }
+        return try await body(page.view)
     }
+
+    private static let rulesIdentifier = "ReedExtractionNoNetwork"
 
     private struct Needs: Decodable { let needs: [String] }
 
@@ -153,15 +167,53 @@ public final class ArticleExtractor: NSObject, WKNavigationDelegate {
         }
     }
 
-    private func finishLoading(_ result: Result<Void, Error>) {
+}
+
+/// An empty page whose loading is awaited, and which notices when its web content process goes.
+@MainActor private final class BlankPage: NSObject, WKNavigationDelegate {
+    let view: WKWebView
+    private(set) var isGone = false
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var timeout: Task<Void, Never>?
+
+    init(rules: WKContentRuleList?) {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        if let rules { configuration.userContentController.add(rules) }
+        view = WKWebView(frame: .zero, configuration: configuration)
+        super.init()
+        view.navigationDelegate = self
+    }
+
+    func load() async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            self.continuation = continuation
+            timeout = Task { [weak self] in
+                do { try await Task.sleep(for: .seconds(20)) } catch { return }
+                self?.finish(.failure(ReedError.extractionTimeout))
+            }
+            view.loadHTMLString("<html><head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'\"></head><body></body></html>", baseURL: nil)
+        }
+    }
+
+    func close() {
+        finish(.failure(CancellationError()))
+        view.stopLoading()
+        view.navigationDelegate = nil
+    }
+
+    private func finish(_ result: Result<Void, Error>) {
         timeout?.cancel()
-        let continuation = loadContinuation
-        loadContinuation = nil
+        let continuation = continuation
+        self.continuation = nil
         continuation?.resume(with: result)
     }
 
-    public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { finishLoading(.success(())) }
-    public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { finishLoading(.failure(error)) }
-    public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { finishLoading(.failure(error)) }
-    public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { finishLoading(.failure(ReedError.extractionTimeout)) }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { finish(.success(())) }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { finish(.failure(error)) }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { finish(.failure(error)) }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        isGone = true
+        finish(.failure(ReedError.extractionTimeout))
+    }
 }

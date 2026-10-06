@@ -551,3 +551,14 @@ import Testing
     #expect(try DiscussionSite.lobstersMatch(in: Data(#"[{"short_id":"x","comment_count":0},{"short_id":"y","comment_count":3}]"#.utf8)) == .lobsters(id: "y"))
     #expect(try DiscussionSite.lobstersMatch(in: Data("[]".utf8)) == nil)
 }
+
+@Test func missingImagesBecomePlaceholdersKeepingTheirAltText() async {
+    let images = [ExtractedArticle.Image(url: "https://example.com/a.png", filename: "image-0.png", alt: "A <b> & \"c\""),
+                  ExtractedArticle.Image(url: "https://example.com/b.png", filename: "image-1.png", alt: "")]
+    let html = #"<p><img alt="x" src="image-0.png"> and <img src="image-1.png" class="wide"> and <img src="image-2.png" alt="kept"></p>"#
+    #expect(await Library.replacing(images, in: html) == """
+        <p><span class="missing-image">[Image unavailable: A &lt;b&gt; &amp; &quot;c&quot;]</span> and \
+        <span class="missing-image">[Image unavailable]</span> and <img src="image-2.png" alt="kept"></p>
+        """)
+    #expect(await Library.replacing([], in: html) == html)
+}

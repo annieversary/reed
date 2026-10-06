@@ -138,13 +138,7 @@ struct DiscussionView: View {
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
             guard navigationAction.navigationType == .linkActivated else { return .allow }
-            if let url = navigationAction.request.url, ["https", "http"].contains(url.scheme?.lowercased() ?? "") {
-                #if os(macOS)
-                NSWorkspace.shared.open(url)
-                #else
-                _ = await UIApplication.shared.open(url)
-                #endif
-            }
+            if let url = navigationAction.request.url { await openInBrowser(url) }
             return .cancel
         }
     }

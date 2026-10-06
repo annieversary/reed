@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 #if SWIFT_PACKAGE
 import ReedCore
 #endif

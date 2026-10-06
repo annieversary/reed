@@ -88,14 +88,10 @@ struct PartRow: View {
                 .foregroundStyle(article.isRead ? .secondary : .primary)
             Spacer(minLength: 6)
             Group {
-                if !article.state.isReadable {
-                    Text(article.state.label)
-                } else if article.isRead {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).accessibilityLabel("Finished")
-                } else if article.progress > 0 {
-                    Text("\(Int(article.progress * 100))%")
+                if article.state.isReadable {
+                    ReadingStatus(isRead: article.isRead, progress: article.progress, minutes: article.readingMinutes)
                 } else {
-                    Text("\(article.readingMinutes) min")
+                    Text(article.state.label)
                 }
             }
             .font(.system(size: 10)).foregroundStyle(.secondary)

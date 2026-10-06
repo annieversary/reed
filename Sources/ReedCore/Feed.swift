@@ -143,7 +143,7 @@ enum FeedParser {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
               let match = regex.firstMatch(in: tag, range: NSRange(tag.startIndex..., in: tag)) else { return nil }
         for group in 1...3 {
-            if let range = Range(match.range(at: group), in: tag) { return decodeEntities(String(tag[range])) }
+            if let range = Range(match.range(at: group), in: tag) { return ArticleHTML.decodingEntities(String(tag[range])) }
         }
         return nil
     }
@@ -157,7 +157,7 @@ enum FeedParser {
     /// Text without markup or runs of whitespace; nil when nothing is left.
     static func clean(_ text: String?) -> String? {
         guard let text else { return nil }
-        let stripped = decodeEntities(text.replacingOccurrences(of: "<[^>]*>", with: " ", options: .regularExpression))
+        let stripped = ArticleHTML.decodingEntities(text.replacingOccurrences(of: "<[^>]*>", with: " ", options: .regularExpression))
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
         return stripped.isEmpty ? nil : stripped
     }
@@ -167,46 +167,32 @@ enum FeedParser {
         return text.count > 280 ? String(text.prefix(280)) + "…" : text
     }
 
-    private static func decodeEntities(_ text: String) -> String {
-        guard text.contains("&") else { return text }
-        let named = ["amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ", "hellip": "…",
-                     "mdash": "—", "ndash": "–", "lsquo": "‘", "rsquo": "’", "ldquo": "“", "rdquo": "”"]
-        guard let regex = try? NSRegularExpression(pattern: "&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);") else { return text }
-        var result = ""
-        var last = text.startIndex
-        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-            guard let whole = Range(match.range, in: text), let nameRange = Range(match.range(at: 1), in: text) else { continue }
-            let name = text[nameRange]
-            let code = name.hasPrefix("#x") ? UInt32(name.dropFirst(2), radix: 16) : name.hasPrefix("#") ? UInt32(name.dropFirst()) : nil
-            let scalar = code.flatMap { Unicode.Scalar($0) }.map { String(Character($0)) } ?? named[String(name)]
-            result += text[last..<whole.lowerBound] + (scalar ?? String(text[whole]))
-            last = whole.upperBound
-        }
-        return result + text[last...]
+    /// Made once, since making formatters is slow and feeds are full of dates. Parsing with them is thread-safe.
+    nonisolated(unsafe) private static let isoFormatters = [[.withInternetDateTime], [.withInternetDateTime, .withFractionalSeconds]].map {
+        (options: ISO8601DateFormatter.Options) in
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = options
+        return formatter
     }
 
-    private static let dateFormats = [
+    private static let dateFormatters = [
         "EEE, d MMM yyyy HH:mm:ss Z", "EEE, d MMM yyyy HH:mm:ss zzz", "EEE, d MMM yyyy HH:mm Z", "EEE, d MMM yyyy HH:mm zzz",
         "d MMM yyyy HH:mm:ss Z", "d MMM yyyy HH:mm:ss zzz", "d MMM yyyy HH:mm Z", "d MMM yyyy HH:mm zzz", "EEE, d MMM yy HH:mm:ss Z", "EEE, d MMM yyyy",
         "yyyy-MM-dd'T'HH:mm:ssZZZZZ", "yyyy-MM-dd'T'HH:mm:ss.SSSZZZZZ", "yyyy-MM-dd'T'HH:mmZZZZZ", "yyyy-MM-dd HH:mm:ss Z", "yyyy-MM-dd",
-    ]
+    ].map { format in
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = format
+        return formatter
+    }
 
     /// Dates in RFC 822 (RSS) or ISO 8601 (Atom, JSON Feed), as feeds actually write them.
     static func date(_ string: String) -> Date? {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-        let iso = ISO8601DateFormatter()
-        for options: ISO8601DateFormatter.Options in [[.withInternetDateTime], [.withInternetDateTime, .withFractionalSeconds]] {
-            iso.formatOptions = options
-            if let date = iso.date(from: trimmed) { return date }
-        }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        for format in dateFormats {
-            formatter.dateFormat = format
-            if let date = formatter.date(from: trimmed) { return date }
-        }
+        for formatter in isoFormatters { if let date = formatter.date(from: trimmed) { return date } }
+        for formatter in dateFormatters { if let date = formatter.date(from: trimmed) { return date } }
         // Some feeds name the weekday wrongly or not in English; the date stands without it.
         if let comma = trimmed.firstIndex(of: ","), trimmed.distance(from: trimmed.startIndex, to: comma) <= 10 {
             return date(String(trimmed[trimmed.index(after: comma)...]))

@@ -120,3 +120,31 @@ private func fixture(_ name: String) throws -> URL {
     #expect(try FileManager.default.contentsOfDirectory(atPath: inbox.directory.path).isEmpty)
     await library.idle()
 }
+
+@Test @MainActor func convertingAgainKeepsProgressByWhereEachChapterStarts() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let library = try Library(root: root)
+    let book = try await library.add(bookAt: fixture("book-epub3"), name: "book-epub3.epub")
+    await library.idle()
+    #expect(book.state == .ready, "\(book.failureMessage ?? "")")
+    let chapters = book.orderedChapters
+    #expect(chapters.allSatisfy { $0.start != nil })
+
+    // Renumbered and renamed, so only its start finds it.
+    chapters[1].index = 7
+    chapters[1].title = "Renamed"
+    chapters[1].progress = 0.4
+    book.currentChapter = 7
+    // Saved before chapters knew their start, so it's found by its place and title.
+    chapters[0].start = nil
+    chapters[0].isRead = true
+    library.retry(book)
+    await library.idle()
+
+    #expect(book.state == .ready, "\(book.failureMessage ?? "")")
+    let converted = book.orderedChapters
+    #expect(converted.map(\.title) == ["Chapter One: The Mill", "Chapter Two"])
+    #expect(converted.map(\.isRead) == [true, false] && converted.map(\.progress) == [0, 0.4])
+    #expect(book.currentChapter == 1)
+}

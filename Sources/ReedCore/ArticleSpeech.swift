@@ -7,10 +7,7 @@ public enum ArticleSpeech {
     /// is its own passage, read by its alt text; one beside text is left out, so it doesn't break up the sentence.
     /// The rest of a figure, like its caption, is left out.
     public static func passages(title: String, html: String) -> [String] {
-        var body = Substring(html)
-        if let start = body.range(of: "<main>"), let end = body.range(of: "</main>", options: .backwards), start.upperBound <= end.lowerBound {
-            body = body[start.upperBound..<end.lowerBound]
-        }
+        let body = ArticleHTML.main(of: html)
         let unspoken = #/<(pre|table|svg|script|style)\b.*?</\1\s*>|<span class="missing-image">.*?</span>|<figure class="equation">.*?</figure\s*>/#
             .dotMatchesNewlines().ignoresCase()
         let figure = #/<figure\b[^>]*>(.*?)</figure\s*>/#.dotMatchesNewlines().ignoresCase()

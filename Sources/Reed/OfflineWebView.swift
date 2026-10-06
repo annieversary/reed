@@ -217,7 +217,7 @@ enum NarrationDirection: String {
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             if message.name == "contextLink" {
-                contextLink = (message.body as? String).flatMap(URL.init(string:)).flatMap { Self.isWeb($0) ? $0 : nil }
+                contextLink = (message.body as? String).flatMap(URL.init(string:)).flatMap { isWebLink($0) ? $0 : nil }
                 return
             }
             if message.name == "openCard" {
@@ -255,13 +255,7 @@ enum NarrationDirection: String {
                     parent.onOpenSibling(url.lastPathComponent, url.fragment)
                     return .cancel
                 }
-                if Self.isWeb(url) {
-                    #if os(macOS)
-                    NSWorkspace.shared.open(url)
-                    #else
-                    _ = await UIApplication.shared.open(url)
-                    #endif
-                }
+                await openInBrowser(url)
                 return .cancel
             } else {
                 return url.isFileURL && url.deletingLastPathComponent().standardizedFileURL == parent.url.deletingLastPathComponent().standardizedFileURL ? .allow : .cancel
@@ -285,11 +279,9 @@ enum NarrationDirection: String {
         }
         #endif
 
-        static func isWeb(_ url: URL) -> Bool { ["https", "http"].contains(url.scheme?.lowercased() ?? "") }
-
         #if os(iOS)
         func webView(_ webView: WKWebView, contextMenuConfigurationFor elementInfo: WKContextMenuElementInfo) async -> UIContextMenuConfiguration? {
-            guard let url = elementInfo.linkURL, Self.isWeb(url) else { return nil }
+            guard let url = elementInfo.linkURL, isWebLink(url) else { return nil }
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] suggested in
                 let save = UIAction(title: "Save", image: UIImage(systemName: "tray.and.arrow.down")) { _ in self?.parent.onAddLink(url) }
                 return UIMenu(children: [save] + suggested)
@@ -307,6 +299,18 @@ extension OfflineWebView {
             webView.configuration.userContentController.removeAllScriptMessageHandlers()
         }
     }
+}
+
+func isWebLink(_ url: URL) -> Bool { ["https", "http"].contains(url.scheme?.lowercased() ?? "") }
+
+/// Opens a web link in the browser. Links of any other kind are left alone.
+@MainActor func openInBrowser(_ url: URL) async {
+    guard isWebLink(url) else { return }
+    #if os(macOS)
+    NSWorkspace.shared.open(url)
+    #else
+    _ = await UIApplication.shared.open(url)
+    #endif
 }
 
 #if os(macOS)

@@ -28,6 +28,24 @@
 			<key>fileRef</key>
 			<string>8A1C9B68090CF9EC3BF00E03</string>
 		</dict>
+		<key>51FD3BCF3950165001C111A5</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/ArticleRow.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>A513CBA75EFA9DBEC1CD6A78</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>51FD3BCF3950165001C111A5</string>
+		</dict>
 		<key>58082E44E6C06764D52E1DD7</key>
 		<dict>
 			<key>isa</key>
@@ -118,6 +136,24 @@
 			<key>fileRef</key>
 			<string>55138BB89AD0F42AA656C991</string>
 		</dict>
+		<key>4BCAE5D90F4FA9EC763395AC</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/LibrarySidebar.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>4A620D3F8FEE95058A7EF8F3</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>4BCAE5D90F4FA9EC763395AC</string>
+		</dict>
 		<key>7FFB9C3824D5D12742BB27B3</key>
 		<dict>
 			<key>isa</key>
@@ -154,6 +190,24 @@
 			<key>fileRef</key>
 			<string>26ECBB57E0E465EB30EFF084</string>
 		</dict>
+		<key>6C1DEE09F4BF447EC6E73BC0</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/Narrator+NowPlaying.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>1BA68DB8C6A90189267015CB</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>6C1DEE09F4BF447EC6E73BC0</string>
+		</dict>
 		<key>2A88CBB9E73D0A0E48B9C71C</key>
 		<dict>
 			<key>isa</key>
@@ -189,6 +243,42 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>EA6A37D30699070A655CB24E</string>
+		</dict>
+		<key>4B7D67C4AC23A8BF63D153BF</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/PassageAudio.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>61CA8DCE40D0A577A754426D</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>4B7D67C4AC23A8BF63D153BF</string>
+		</dict>
+		<key>748A8BA1D8C10B4ED413295D</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/PullToReveal.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>41863F9FCD662322EB3B6328</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>748A8BA1D8C10B4ED413295D</string>
 		</dict>
 		<key>575985CDDA4DBE71F857D139</key>
 		<dict>
@@ -1302,15 +1392,20 @@
 			<key>children</key>
 			<array>
 				<string>8A1C9B68090CF9EC3BF00E03</string>
+				<string>51FD3BCF3950165001C111A5</string>
 				<string>58082E44E6C06764D52E1DD7</string>
 				<string>389682EFB429072B64101425</string>
 				<string>034FE1EE9318264B0F1FA10A</string>
 				<string>C0F42409C53726155A6A445F</string>
 				<string>55138BB89AD0F42AA656C991</string>
+				<string>4BCAE5D90F4FA9EC763395AC</string>
 				<string>7FFB9C3824D5D12742BB27B3</string>
 				<string>26ECBB57E0E465EB30EFF084</string>
+				<string>6C1DEE09F4BF447EC6E73BC0</string>
 				<string>2A88CBB9E73D0A0E48B9C71C</string>
 				<string>EA6A37D30699070A655CB24E</string>
+				<string>4B7D67C4AC23A8BF63D153BF</string>
+				<string>748A8BA1D8C10B4ED413295D</string>
 				<string>575985CDDA4DBE71F857D139</string>
 				<string>E9837CD9914E91D5750B82BD</string>
 				<string>E1B4CFB83055600EEABE19D0</string>
@@ -1414,14 +1509,19 @@
 			<key>files</key>
 			<array>
 				<string>6028FB5DE9020B01ED4401D3</string>
+				<string>A513CBA75EFA9DBEC1CD6A78</string>
 				<string>E08D13C4A79B214B6C93A7E8</string>
 				<string>444CEA85E84BBF78FDD18442</string>
 				<string>8AFB1B09473B34E125DA987F</string>
 				<string>AF2981C8D415CDED6EA81231</string>
+				<string>4A620D3F8FEE95058A7EF8F3</string>
 				<string>23C4BE1CC27D3C948AF14841</string>
 				<string>E1FE09D28E34B5F60D61E9C1</string>
+				<string>1BA68DB8C6A90189267015CB</string>
 				<string>E0E7870EA5D095C9234442AA</string>
 				<string>4258CB1E66946A2A57F938EC</string>
+				<string>61CA8DCE40D0A577A754426D</string>
+				<string>41863F9FCD662322EB3B6328</string>
 				<string>DB06D738042C6762A381055D</string>
 				<string>CD546E1A338CABB67FC83DE5</string>
 				<string>A39272BA477257773A42D1B1</string>

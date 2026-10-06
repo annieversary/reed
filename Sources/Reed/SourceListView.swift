@@ -115,9 +115,7 @@ struct SourceListView: View {
         let saved = library.article(at: item.url)
         return SourceRow(item: item, label: label(for: item), saved: saved != nil, pointName: pointName)
             .readFading(saved ?? library.cachedArticle(at: item.url))
-            .background(NavigationLink(value: item.id) { EmptyView() }.opacity(0))
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+            .listLink(value: item.id, insets: EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
             .swipeActions(edge: .trailing) {
                 if let saved {
                     Button { library.removeFromLibrary(saved) } label: { Label("Remove", systemImage: "tray.and.arrow.up") }
@@ -375,7 +373,7 @@ private struct SourceRow: View {
         }
         if let author = item.author { parts.append("by \(author)") }
         if let words = item.wordCount, words > 0 {
-            parts.append(item.paid == true ? "\(words.formatted()) words" : "\(max(1, Int((Double(words) / 230).rounded()))) min")
+            parts.append(item.paid == true ? "\(words.formatted()) words" : "\(Article.readingMinutes(words: words)) min")
         }
         if let postedAt = item.postedAt {
             parts.append(item.reason == .fromArchives

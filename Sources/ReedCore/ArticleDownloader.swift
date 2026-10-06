@@ -127,7 +127,6 @@ public actor ArticleDownloader {
     }
 
     private enum Kind { case html, document, image, json, resource, feed }
-    private static let chunkSize = 64 * 1024
     private static let htmlTypes = ["text/html", "application/xhtml+xml"]
     private static let pdfTypes = ["application/pdf", "application/x-pdf", "application/octet-stream", "binary/octet-stream"]
 
@@ -138,16 +137,26 @@ public actor ArticleDownloader {
     /// Off the actor, so downloads running side by side don't take turns reading their responses.
     private nonisolated func fetch(_ request: URLRequest, limit: Int, kind: Kind) async throws -> (Data, HTTPURLResponse) {
         _ = try ArticleURL.parse(request.url?.absoluteString ?? "")
-        let (bytes, response) = try await session.bytes(for: request)
-        guard let response = response as? HTTPURLResponse else { throw ReedError.unsupportedContent }
-        if kind == .feed && response.statusCode == 304 { return (Data(), response) }
+        let receiver = Receiver { response in try Self.limit(for: response, kind: kind, limit: limit) }
+        let task = session.dataTask(with: request)
+        task.delegate = receiver
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { receiver.start(task, continuation: $0) }
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    /// How large a response may be, once its status and type are acceptable for `kind`.
+    private static func limit(for response: HTTPURLResponse, kind: Kind, limit: Int) throws -> Int {
+        if kind == .feed && response.statusCode == 304 { return 0 }
         guard (200..<300).contains(response.statusCode) else { throw ReedError.httpStatus(response.statusCode) }
         let mime = response.mimeType?.lowercased() ?? ""
         switch kind {
         case .html:
-            guard Self.htmlTypes.contains(mime) else { throw ReedError.unsupportedContent }
+            guard htmlTypes.contains(mime) else { throw ReedError.unsupportedContent }
         case .document:
-            guard Self.htmlTypes.contains(mime) || Self.pdfTypes.contains(mime) else { throw ReedError.unsupportedContent }
+            guard htmlTypes.contains(mime) || pdfTypes.contains(mime) else { throw ReedError.unsupportedContent }
         case .json:
             guard mime == "application/json" else { throw ReedError.unsupportedContent }
         case .resource:
@@ -158,23 +167,64 @@ public actor ArticleDownloader {
             break
         }
         // PDFs carry their pictures with them, so they may be larger than a page.
-        let limit = kind == .document && Self.pdfTypes.contains(mime) ? 64 * 1024 * 1024 : limit
+        let limit = kind == .document && pdfTypes.contains(mime) ? 64 * 1024 * 1024 : limit
         guard response.expectedContentLength <= limit else { throw ReedError.oversizedDownload }
-        var data = Data()
-        data.reserveCapacity(min(max(Int(response.expectedContentLength), 0), limit))
-        // Gathered a chunk at a time, since appending each byte to `data` on its own is slow.
-        var chunk = [UInt8]()
-        chunk.reserveCapacity(Self.chunkSize)
-        for try await byte in bytes {
-            chunk.append(byte)
-            guard chunk.count == Self.chunkSize else { continue }
-            guard data.count + chunk.count <= limit else { throw ReedError.oversizedDownload }
-            data.append(contentsOf: chunk)
-            chunk.removeAll(keepingCapacity: true)
-            try Task.checkCancellation()
+        return limit
+    }
+
+    /// Gathers a response as it arrives, a piece at a time, and stops it as soon as it's refused or grows past its limit.
+    private final class Receiver: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+        private let lock = NSLock()
+        private let check: @Sendable (HTTPURLResponse) throws -> Int
+        private var limit = 0
+        private var data = Data()
+        private var response: HTTPURLResponse?
+        private var failure: Error?
+        private var continuation: CheckedContinuation<(Data, HTTPURLResponse), Error>?
+
+        init(check: @escaping @Sendable (HTTPURLResponse) throws -> Int) { self.check = check }
+
+        func start(_ task: URLSessionDataTask, continuation: CheckedContinuation<(Data, HTTPURLResponse), Error>) {
+            lock.withLock { self.continuation = continuation }
+            task.resume()
         }
-        guard data.count + chunk.count <= limit else { throw ReedError.oversizedDownload }
-        data.append(contentsOf: chunk)
-        return (data, response)
+
+        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+                        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+            do {
+                guard let response = response as? HTTPURLResponse else { throw ReedError.unsupportedContent }
+                let limit = try check(response)
+                lock.withLock {
+                    self.response = response
+                    self.limit = limit
+                    data.reserveCapacity(min(max(Int(response.expectedContentLength), 0), limit))
+                }
+                completionHandler(.allow)
+            } catch {
+                lock.withLock { failure = error }
+                completionHandler(.cancel)
+            }
+        }
+
+        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+            let fits = lock.withLock {
+                guard self.data.count + data.count <= limit else { failure = ReedError.oversizedDownload; return false }
+                self.data.append(data)
+                return true
+            }
+            if !fits { dataTask.cancel() }
+        }
+
+        func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+            let (continuation, result) = lock.withLock { () -> (CheckedContinuation<(Data, HTTPURLResponse), Error>?, Result<(Data, HTTPURLResponse), Error>) in
+                defer { self.continuation = nil }
+                if let failure { return (self.continuation, .failure(failure)) }
+                if let error = error as? URLError, error.code == .cancelled { return (self.continuation, .failure(CancellationError())) }
+                if let error { return (self.continuation, .failure(error)) }
+                guard let response else { return (self.continuation, .failure(ReedError.unsupportedContent)) }
+                return (self.continuation, .success((data, response)))
+            }
+            continuation?.resume(with: result)
+        }
     }
 }

@@ -116,26 +116,12 @@ public actor SearchIndex {
 public enum ArticleText {
     /// The readable text of a saved reader document, or of an HTML fragment.
     public static func plain(_ html: String) -> String {
-        var text = Substring(html)
-        if let start = text.range(of: "<main>"), let end = text.range(of: "</main>", options: .backwards), start.upperBound <= end.lowerBound {
-            text = text[start.upperBound..<end.lowerBound]
-        }
-        return String(text)
+        let text = String(ArticleHTML.main(of: html))
             .replacing(#/<math\b([^>]*)>(.*?)</math\s*>/#.dotMatchesNewlines().ignoresCase()) { match in
                 " " + spoken(mathAttributes: String(match.output.1), content: String(match.output.2)) + " "
             }
             .replacing(#/<(?:"[^"]*"|'[^']*'|[^"'>])*>/#, with: " ")
-            .replacing(#/&(#[xX][0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/#) { match in
-                let name = match.output.1
-                if name.hasPrefix("#x") || name.hasPrefix("#X") {
-                    return UInt32(name.dropFirst(2), radix: 16).flatMap(Unicode.Scalar.init).map { String($0) } ?? String(match.output.0)
-                }
-                if name.hasPrefix("#") {
-                    return UInt32(name.dropFirst()).flatMap(Unicode.Scalar.init).map { String($0) } ?? String(match.output.0)
-                }
-                return ["amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " "][String(name)] ?? String(match.output.0)
-            }
-            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return ArticleHTML.decodingEntities(text).split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
     /// How a formula reads: its spoken label when it has one, otherwise its text if that's plain, like "n" or "32",
