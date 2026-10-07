@@ -25,7 +25,7 @@ enum CollectionFilter: String, CaseIterable, Identifiable {
 }
 
 enum SidebarItem: Hashable {
-    case collection(CollectionFilter), books(BookFilter), discover(Discover)
+    case collection(CollectionFilter), books(BookFilter), discover(Discover), stats
 }
 
 struct LibraryView: View {
@@ -183,6 +183,8 @@ struct LibraryView: View {
                         .id(origin)
                 } else if case .books(let filter) = selection {
                     BookShelfView(library: library, filter: filter, selection: $selectedBookID) { bookToDelete = $0 }
+                } else if selection == .stats {
+                    StatsView(library: library)
                 } else {
                     articleList
                 }

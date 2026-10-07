@@ -28,6 +28,8 @@ public final class Library {
     public internal(set) var books: [Book] = []
     /// Saved articles grouped into series, in the order they were made.
     public internal(set) var series: [Series] = []
+    /// What's been read, kept after it leaves the library.
+    public internal(set) var readingRecords: [ReadingRecord] = []
     /// Advances whenever the search index changes, so searches can be rerun.
     public internal(set) var searchRevision = 0
     public let container: ModelContainer
@@ -54,7 +56,8 @@ public final class Library {
         storage = try ArticleStorage(root: root)
         self.downloader = downloader
         let configuration = ModelConfiguration(url: root.appendingPathComponent("Library.store"))
-        container = try ModelContainer(for: Article.self, Book.self, BookChapter.self, configurations: configuration)
+        container = try ModelContainer(for: Article.self, Book.self, BookChapter.self, ReadingRecord.self, ReadingDay.self,
+                                       configurations: configuration)
         searchIndex = try SearchIndex(url: root.appendingPathComponent("Search.sqlite"))
         let stored = try container.mainContext.fetch(FetchDescriptor<Article>(sortBy: [SortDescriptor(\.savedAt, order: .reverse)]))
         articles = stored.filter { !$0.isCached }
@@ -74,6 +77,7 @@ public final class Library {
             if book.state.isReadable && !hasContent(book) { book.state = .queued }
         }
         try container.mainContext.save()
+        try loadReadingRecords()
         for source in ExternalSource.allCases {
             if let data = try? Data(contentsOf: Self.frontPageURL(root: root, source: source)),
                let page = try? JSONDecoder().decode(FrontPage.self, from: data) {
@@ -215,7 +219,10 @@ public final class Library {
     }
 
     public func setRead(_ read: Bool, for articles: [Article]) {
-        for article in articles { article.isRead = read }
+        for article in articles {
+            article.isRead = read
+            if read { noteFinished(article) }
+        }
         save()
     }
 
@@ -225,12 +232,21 @@ public final class Library {
         save()
     }
 
-    public func toggleRead(_ readable: any Readable) { readable.isRead.toggle(); save() }
+    public func toggleRead(_ readable: any Readable) {
+        readable.isRead.toggle()
+        if readable.isRead { noteFinished(readable) }
+        save()
+    }
 
-    public func updateProgress(_ readable: any Readable, value: Double) {
+    /// While `listening`, the words aren't counted as read; narration counts them as it goes.
+    public func updateProgress(_ readable: any Readable, value: Double, listening: Bool = false) {
         guard value.isFinite else { return }
         readable.progress = min(max(value, 0), 1)
-        if value >= 0.95 { readable.isRead = true }
+        if !listening { creditReading(readable, through: readable.progress) }
+        if value >= 0.95 {
+            readable.isRead = true
+            noteFinished(readable)
+        }
         progressSave?.cancel()
         progressSave = Task { [weak self] in
             do { try await Task.sleep(for: .milliseconds(700)) } catch { return }

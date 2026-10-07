@@ -469,6 +469,15 @@ final class Narrator {
         if playerFrame != nil { heard = elapsedInPassage }
     }
 
+    /// Counts the passage just heard as listened to, by its share of the words.
+    private func creditListening(through index: Int) {
+        guard let item, let library else { return }
+        let words = passages.map { Double($0.split(whereSeparator: \.isWhitespace).count) }
+        let total = words.reduce(0, +)
+        guard total > 0 else { return }
+        library.creditListening(item, through: words[...index].reduce(0, +) / total, share: words[index] / total)
+    }
+
     private func stopTracking() {
         tracker?.cancel()
         tracker = nil
@@ -476,11 +485,12 @@ final class Narrator {
 
     private func finished(_ index: Int, epoch: Int) {
         guard epoch == self.epoch, index == current else { return }
+        creditListening(through: index)
         guard current + 1 < passageCount else {
             guard let item, let library else { stop(); return }
             item.narrationPassage = nil
             item.narrationAnchor = nil
-            library.updateProgress(item, value: 1)
+            library.updateProgress(item, value: 1, listening: true)
             // A book carries on into its next chapter, keeping the audio session so it can while the phone is locked.
             if let next = library.next(after: item) {
                 isPlaying = false

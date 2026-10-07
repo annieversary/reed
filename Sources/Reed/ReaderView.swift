@@ -59,7 +59,7 @@ struct ReaderView: View {
                 OfflineWebView(url: url, fontSize: fontSize, progress: readable.progress, anchor: anchor, passages: passages,
                                narrating: isNarrating ? NarrationPosition(passage: narrator.current, sentence: narrator.sentence) : nil,
                                proxy: reader, notes: notes, notesOpen: notesOpen, cards: endCards) { value in
-                    library.updateProgress(readable, value: value)
+                    library.updateProgress(readable, value: value, listening: isNarrating && narrator.isPlaying)
                 } onAddLink: { link in
                     do { try library.add(link.absoluteString) }
                     catch { library.errorMessage = error.localizedDescription }

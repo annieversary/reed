@@ -8,6 +8,7 @@ public protocol Readable: AnyObject {
     var source: String { get }
     var location: ReadableLocation { get }
     var contentVersion: String? { get }
+    var wordCount: Int { get }
     var progress: Double { get set }
     var isRead: Bool { get set }
     /// The passage narration last reached, to resume from.

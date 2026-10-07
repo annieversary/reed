@@ -46,6 +46,7 @@ Builds for `generic/platform=iOS`, then installs and launches over `devicectl`. 
 - Deduplicate normalized URLs without stripping meaningful query parameters.
 - Save PDFs as articles, reflowed into paragraphs with their headings, captions and code, and their figures, tables and displayed equations cropped from the page (macOS 26 or iOS 26). arXiv papers without an HTML rendering are read from their PDF.
 - Add EPUB books to a shelf of their own, from the shelf's add button, by dropping them on it, from the share sheet, or by opening them with Reed from Finder or Files. A book is read a chapter at a time, with the same reader, notes and narration as an article; each chapter ends with a card for the next, and listening carries on into it. Books are favorited whole; chapters are marked finished one by one, and the shelf shows how far through each book you are. Books locked to a store's app can't be read.
+- See how much you've read under Statistics: words read and words heard, things finished, words by day or month, the sites and books read most, and what was read last. Each article or chapter counts only the words newly scrolled past, or the passage just heard, so going back over it counts nothing; marking it finished counts it as finished but adds no words. Reading is kept after an article is deleted.
 
 The library starts empty. Test fixtures are kept separate from the user's library.
 

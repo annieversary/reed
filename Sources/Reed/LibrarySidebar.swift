@@ -58,6 +58,15 @@ struct LibrarySidebar: View {
                     }
                     discoverLink(.feeds, symbol: "dot.radiowaves.up.forward")
                 } header: { Text("DISCOVER").font(.system(size: 10, weight: .medium)).tracking(1.7) }
+                Section {
+                    NavigationLink(value: SidebarItem.stats) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "chart.bar").frame(width: 18)
+                            Text("Statistics")
+                        }
+                        .padding(.vertical, 5)
+                    }
+                }
             }
             .listStyle(.sidebar)
         }

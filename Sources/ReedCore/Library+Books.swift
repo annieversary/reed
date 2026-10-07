@@ -140,6 +140,7 @@ extension Library {
                 if let old = start.flatMap({ byStart[$0] }) ?? byIndex[index].flatMap({ $0.title == chapter.title ? $0 : nil }) ?? byTitle[chapter.title] {
                     new.isRead = old.isRead
                     new.progress = old.progress
+                    moveReadingRecord(from: old.id, to: new.id)
                     moved[old.index] = index
                 }
                 return new
