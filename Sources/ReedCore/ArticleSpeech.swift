@@ -41,7 +41,7 @@ public enum ArticleSpeech {
     }
 
     /// The sentences of a passage, in order. Fragments with nothing to say, like a lone dash, stay with the sentence before,
-    /// as does the name after a "St." the tokenizer took for the end of a sentence.
+    /// as does what follows a title like "Gov." or "St." that the tokenizer took for the end of a sentence.
     public static func sentences(in passage: String) -> [String] {
         let tokenizer = NLTokenizer(unit: .sentence)
         tokenizer.string = passage
@@ -49,7 +49,7 @@ public enum ArticleSpeech {
         tokenizer.enumerateTokens(in: passage.startIndex..<passage.endIndex) { range, _ in
             let sentence = passage[range].trimmingCharacters(in: .whitespacesAndNewlines)
             if sentence.isEmpty { return true }
-            if let last = sentences.last, !sentence.contains(where: { $0.isLetter || $0.isNumber }) || endsWithSaint(last, before: sentence) {
+            if let last = sentences.last, !sentence.contains(where: { $0.isLetter || $0.isNumber }) || continues(last, into: sentence) {
                 sentences[sentences.count - 1] = last + " " + sentence
             } else {
                 sentences.append(sentence)
@@ -59,25 +59,14 @@ public enum ArticleSpeech {
         return sentences.isEmpty ? [passage] : sentences
     }
 
-    private static func endsWithSaint(_ sentence: String, before next: String) -> Bool {
-        guard sentence.hasSuffix("St.") else { return false }
-        let joined = sentence + " " + next
-        let end = joined.index(joined.startIndex, offsetBy: sentence.count)
-        return joined.matches(of: saint()).contains { $0.range.upperBound == end && isSaint($0, in: joined) }
-    }
-
-    /// A sentence as Kokoro should be given it. Kokoro reads punctuation as pauses and splits words on it,
+    /// A sentence as Kokoro should be given it, with shorthand said in words (see `inWords(_:)`).
+    /// Kokoro reads punctuation as pauses and splits words on it,
     /// so names written with dots, underscores or symbols ("Node.js", "io_uring", "C++", "v1.2.3") are spelled the way they're said,
     /// names ending in an initialism ("CockroachDB", "SolidJS") are split so it's spelled out, and numeronyms ("k8s", "a11y") are said in full.
     /// Plural initialisms ("LLMs", "APIs") are written as possessives, which Kokoro spells out letter by letter,
     /// where it would otherwise sound them out as a word.
-    /// "St." before a name is said "Saint" (but not after one, as in "Main St."), and amounts of dollars with a scale ("$1M", "$2.5 billion") are said in words.
     public static func spoken(_ sentence: String) -> String {
-        sentence
-            .replacing(saint()) { isSaint($0, in: sentence) ? "\($0.1 ?? "")Saint" : String($0.0) }
-            .replacing(#/\$(\d[\d,]*(?:\.\d+)?)(?:([kmbt]|mn|bn|tn)\b|\s?(thousand|million|billion|trillion)\b)/#.ignoresCase()) {
-                "\($0.1) \(dollarScales[($0.2 ?? $0.3 ?? "").lowercased()] ?? "") dollars"
-            }
+        inWords(sentence)
             .replacing(#/\b([a-z]\d+[a-z]s?)\b/#.ignoresCase()) { numeronyms[$0.1.lowercased()] ?? String($0.0) }
             .replacing(#/\b([CF])[#]/#) { "\($0.1) sharp" }
             .replacing(#/\bC\+\+/#, with: "C plus plus")
@@ -90,21 +79,6 @@ public enum ArticleSpeech {
             .replacing(#/\b([A-Z][a-z]{2,})(DB|JS)\b/#) { "\($0.1) \($0.2)" }
             .replacing(#/\b([A-Z]{2,5})s\b/#) { "\($0.1)'s" }
     }
-
-    /// "St" or "St." before a capitalized word, with the word before it.
-    private static func saint() -> Regex<(Substring, Substring?)> { #/(\S+\s+)?\bSt\.?(?=\s+[A-Z])/# }
-
-    /// Whether a match of `saint()` means Saint rather than Street, which follows a name, like "Main St.".
-    /// The first word of a sentence is capitalized anyway, so it says nothing.
-    private static func isSaint(_ match: Regex<(Substring, Substring?)>.Match, in text: String) -> Bool {
-        guard let before = match.output.1 else { return true }
-        return match.range.lowerBound == text.startIndex || before.first?.isUppercase != true
-    }
-
-    private static let dollarScales = [
-        "k": "thousand", "thousand": "thousand", "m": "million", "mn": "million", "million": "million",
-        "b": "billion", "bn": "billion", "billion": "billion", "t": "trillion", "tn": "trillion", "trillion": "trillion",
-    ]
 
     /// Words abbreviated by their first and last letters around a count of the ones between, said in full.
     private static let numeronyms = [

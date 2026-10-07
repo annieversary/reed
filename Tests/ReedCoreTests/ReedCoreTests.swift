@@ -281,10 +281,50 @@ import Testing
 @Test func saintsAndDollarAmountsAreSaidInWords() {
     #expect(ArticleSpeech.spoken("St. Louis and St Paul, on Main St.") == "Saint Louis and Saint Paul, on Main St.")
     #expect(ArticleSpeech.spoken("Open on Main St. Tomorrow too.") == "Open on Main St. Tomorrow too.")
-    #expect(ArticleSpeech.sentences(in: "We went to St. Louis. Then St. Paul's. Open on Main St. Tomorrow too.")
-            == ["We went to St. Louis.", "Then St. Paul's.", "Open on Main St.", "Tomorrow too."])
     #expect(ArticleSpeech.spoken("$1M, $2.5bn, $40k and $3 billion, not $5 or a $5 t-shirt.")
             == "1 million dollars, 2.5 billion dollars, 40 thousand dollars and 3 billion dollars, not $5 or a $5 t-shirt.")
+}
+
+@Test func titlesDoNotEndSentences() {
+    #expect(ArticleSpeech.sentences(in: "We went to St. Louis. Then St. Paul's. Open on Main St. Tomorrow too.")
+            == ["We went to St. Louis.", "Then St. Paul's.", "Open on Main St.", "Tomorrow too."])
+    #expect(ArticleSpeech.sentences(in: "Gov. Newsom met Pres. Lincoln. Open Mon. Jan. 5. On Fifth Ave. Bring snacks.")
+            == ["Gov. Newsom met Pres. Lincoln.", "Open Mon. Jan. 5.", "On Fifth Ave.", "Bring snacks."])
+}
+
+@Test func abbreviationsAreSaidInFull() {
+    #expect(ArticleSpeech.spoken("Gov. Newsom met Prof. Smith, Martin Luther King Jr. and Apple Inc. staff.")
+            == "Governor Newsom met Professor Smith, Martin Luther King Junior and Apple Incorporated staff.")
+    #expect(ArticleSpeech.spoken("On Fifth Ave. Bring snacks to Abbey Rd.") == "On Fifth Avenue. Bring snacks to Abbey Road.")
+    #expect(ArticleSpeech.spoken("No. 5, see Fig. 3, approx. 5 miles, open Mon., Jan. 5.")
+            == "Number 5, see Figure 3, approximately 5 miles, open Monday, Jan. 5.")
+    #expect(ArticleSpeech.spoken("Coffee w/ milk, w/o sugar, b/c why not.") == "Coffee with milk, w/o sugar, because why not.")
+}
+
+@Test func timesAreSaidAsClockTimes() {
+    #expect(ArticleSpeech.spoken("At 1am, 1 a.m., 11PM, 7:30am, 7:05 a.m., 13:00 and 14:30.")
+            == "At 1 A M, 1 A M, 11 P M, 7 30 A M, 7 oh 5 A M, 13 hundred and 14 30.")
+    #expect(ArticleSpeech.spoken("It opens at 1 a.m. Then closes at 7 p.m.") == "It opens at 1 A M. Then closes at 7 P M.")
+}
+
+@Test func numbersWrittenInShorthandAreSaidInWords() {
+    #expect(ArticleSpeech.spoken("1.2M users, 3.4K stars, 50k runs, 7B parameters, a 4K TV, the 5K race, Room 4B.")
+            == "1.2 million users, 3.4 thousand stars, 50 thousand runs, 7 billion parameters, a 4K TV, the 5K race, Room 4B.")
+    #expect(ArticleSpeech.spoken("Open 24/7, a 50/50 split, after 9/11, 1/2 cup, on 12/25/2024.")
+            == "Open 24 7, a 50 50 split, after 9 11, 1/2 cup, on 12/25/2024.")
+    #expect(ArticleSpeech.spoken("10-15 people, 2024–2025, a 3-2 win, call 555-1234, COVID-19.")
+            == "10 to 15 people, 2024 to 2025, a 3 to 2 win, call 5 5 5, 1 2 3 4, COVID-19.")
+    #expect(ArticleSpeech.spoken("FY2025 in 1080p, 6'2\" tall at 5km/h with 4GB, 1 GB and 100 Mbps, 10x faster in 1920x1080.")
+            == "FY 2025 in 10 80 P, 6 foot 2 tall at 5 kilometers per hour with 4 gigabytes, 1 gigabyte and 100 megabits per second, 10 times faster in 1920 by 1080.")
+    #expect(ArticleSpeech.spoken("~5, ±2, x², √2, >5, ≤3, #1 and #tbt.")
+            == "about 5, plus or minus 2, x squared, square root of 2, more than 5, at most 3, number 1 and hashtag tbt.")
+}
+
+@Test func romanNumeralsAfterNamesAreSaid() {
+    #expect(ArticleSpeech.spoken("Henry VIII, Pope Leo XIV, Queen Elizabeth I, told Mary I would, Malcolm X.")
+            == "Henry the 8th, Pope Leo the 14th, Queen Elizabeth the 1st, told Mary I would, Malcolm X.")
+    #expect(ArticleSpeech.spoken("Chapter IV, Part I, World War II, Super Bowl LVIII, Final Fantasy VII, did I go.")
+            == "Chapter 4, Part 1, World War 2, Super Bowl 58, Final Fantasy 7, did I go.")
 }
 
 @Test func pronunciationsLoad() {
