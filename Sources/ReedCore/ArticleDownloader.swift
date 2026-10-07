@@ -19,6 +19,8 @@ public enum FeedDownload: Sendable {
 
 public actor ArticleDownloader {
     static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15 Reed/0.1"
+    /// Wikimedia asks programs to name themselves and how to reach whoever runs them, and limits those that pass as browsers.
+    static let wikimediaUserAgent = "Reed/0.1 (https://github.com/annieversary/reed)"
     private let session: URLSession
 
     public init(session: URLSession? = nil) {
@@ -137,6 +139,10 @@ public actor ArticleDownloader {
     /// Off the actor, so downloads running side by side don't take turns reading their responses.
     private nonisolated func fetch(_ request: URLRequest, limit: Int, kind: Kind) async throws -> (Data, HTTPURLResponse) {
         _ = try ArticleURL.parse(request.url?.absoluteString ?? "")
+        var request = request
+        if let host = request.url?.host(), Self.isWikimedia(host), request.value(forHTTPHeaderField: "User-Agent") == nil {
+            request.setValue(Self.wikimediaUserAgent, forHTTPHeaderField: "User-Agent")
+        }
         let receiver = Receiver { response in try Self.limit(for: response, kind: kind, limit: limit) }
         let task = session.dataTask(with: request)
         task.delegate = receiver
@@ -145,6 +151,10 @@ public actor ArticleDownloader {
         } onCancel: {
             task.cancel()
         }
+    }
+
+    static func isWikimedia(_ host: String) -> Bool {
+        ["wikipedia.org", "wikimedia.org"].contains { host == $0 || host.hasSuffix("." + $0) }
     }
 
     /// How large a response may be, once its status and type are acceptable for `kind`.

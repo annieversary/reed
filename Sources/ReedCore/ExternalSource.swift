@@ -5,6 +5,8 @@ public enum ExternalSource: String, CaseIterable, Identifiable, Sendable {
     case hackerNews = "Hacker News", lobsters = "Lobste.rs"
     /// The posts Substack picks for the signed-in reader.
     case substack = "Substack"
+    /// The day's featured, newsworthy and most read articles.
+    case wikipedia = "Wikipedia"
     public var id: Self { self }
 
     /// A stable name for files kept about this source.
@@ -13,6 +15,7 @@ public enum ExternalSource: String, CaseIterable, Identifiable, Sendable {
         case .hackerNews: "hacker-news"
         case .lobsters: "lobsters"
         case .substack: "substack"
+        case .wikipedia: "wikipedia"
         }
     }
 
@@ -40,6 +43,8 @@ public enum ExternalSource: String, CaseIterable, Identifiable, Sendable {
             return try Self.lobstersItems(from: await downloader.json(at: URL(string: "https://lobste.rs/hottest.json")!))
         case .substack:
             return try await Self.substackItems(using: downloader)
+        case .wikipedia:
+            return try await Self.wikipediaItems(using: downloader)
         }
     }
 
@@ -95,6 +100,8 @@ public struct FrontPage: Codable, Sendable {
 /// Why a link was picked for the reader.
 public enum SourceReason: Hashable, Codable, Sendable {
     case restacked(by: String), liked(by: String), fromArchives
+    /// Wikipedia's article of the day, and an article about a story in its news.
+    case featured, inTheNews
     /// Shared in a note, with what its author said about it.
     case note(author: String, text: String)
 }

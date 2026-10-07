@@ -79,8 +79,75 @@ const siteRules = [
             if (paper) content.push(heading("Paper"), paper);
             return { title, excerpt: textWithFormulas(abstractBody).trim(), content };
         }
+    },
+    {
+        name: "Wikipedia article",
+        // Articles only; talk, user and other pages are left to Readability.
+        matches: (doc, url) => /(^|\.)wikipedia\.org$/.test(url.hostname) && doc.body?.classList.contains("ns-0"),
+        extract(doc, url, resources) {
+            let title;
+            try {
+                const canonical = new URL(doc.querySelector('link[rel="canonical"]')?.getAttribute("href") || url.href, url);
+                title = decodeURIComponent(canonical.pathname.match(/^\/wiki\/(.+)/)?.[1] ?? "");
+            } catch {}
+            if (!title) return null;
+            // Parsoid's rendering marks citations, navigation and sections plainly, whatever the skin.
+            const parsoidURL = `${url.origin}/w/rest.php/v1/page/${encodeURIComponent(title)}/html`;
+            if (!(parsoidURL in resources)) return { needs: [parsoidURL] };
+            const article = wikipediaArticle(resources[parsoidURL], new URL("/wiki/", url));
+            return article && { title: article.title || title.replace(/_/g, " "), content: [article.body] };
+        }
     }
 ];
+
+// A Wikipedia article from its Parsoid HTML, without citations, navigation, maintenance notices, or the sections
+// that only list references and links elsewhere. The infobox gives way to its picture.
+function wikipediaArticle(html, base) {
+    const page = new DOMParser().parseFromString(html || "", "text/html");
+    if (!page.body.querySelector("section")) return null;
+    // Links are relative to the wiki rather than the article, whose title may hold slashes.
+    for (const link of page.body.querySelectorAll("a[href]")) {
+        try { link.setAttribute("href", new URL(link.getAttribute("href"), base).href); } catch {}
+    }
+    prepareMath(page);
+    page.body.querySelectorAll([
+        "style", "link", "meta", "script",
+        '[typeof~="mw:Extension/ref"]', '[typeof~="mw:Extension/references"]', ".mw-references-wrap", ".reflist", ".refbegin",
+        ".navbox", ".navbox-styles", ".vertical-navbox", ".sidebar", ".hatnote", ".shortdescription", ".noprint", ".metadata",
+        ".ambox", ".sistersitebox", ".side-box", ".portal-bar", ".authority-control", '[role="navigation"]', '[role="note"]',
+        '[typeof~="mw:Extension/phonos"]', '[style*="display:none"]', '[style*="display: none"]'
+    ].join(", ")).forEach(node => node.remove());
+    for (const infobox of page.body.querySelectorAll("table.infobox")) {
+        const picture = infobox.querySelector("img");
+        if (!picture || parseFloat(picture.getAttribute("width")) < 100) { infobox.remove(); continue; }
+        const figure = page.createElement("figure");
+        figure.append(picture);
+        const caption = infobox.querySelector(".infobox-caption")?.textContent.trim();
+        if (caption) figure.append(Object.assign(page.createElement("figcaption"), { textContent: caption }));
+        infobox.replaceWith(figure);
+    }
+    for (const img of page.body.querySelectorAll("img")) {
+        // Flags and icons.
+        if (parseFloat(img.getAttribute("width")) < 50) { (img.closest('[typeof^="mw:File"]') || img).remove(); continue; }
+        const sharper = img.getAttribute("srcset") && fromSrcset(img.getAttribute("srcset"));
+        if (sharper) img.setAttribute("src", sharper);
+    }
+    const listings = new Set(["See_also", "Notes", "References", "Footnotes", "Citations", "Sources", "Further_reading",
+        "External_links", "Works_cited", "Notes_and_references", "Explanatory_notes"]);
+    for (const section of page.body.querySelectorAll(":scope > section")) {
+        const heading = section.querySelector(":scope > h2");
+        if (!heading) continue;
+        const length = nodes => nodes.reduce((sum, node) => sum + node.textContent.trim().length, 0);
+        const content = length(Array.from(section.childNodes).filter(node => node !== heading));
+        // In any language, a section left empty held only references, and one of links out with no prose is external links.
+        const external = length(Array.from(section.querySelectorAll('a[rel~="mw:ExtLink"]')));
+        const prose = Array.from(section.querySelectorAll("p")).some(p => p.textContent.trim());
+        if (listings.has(heading.id) || !content || (!prose && external > content / 2)) section.remove();
+    }
+    const body = page.createElement("div");
+    body.append(...page.body.childNodes);
+    return body.textContent.trim() ? { title: page.querySelector("title")?.textContent.trim(), body } : null;
+}
 
 // The body of an arXiv HTML rendering, without the title, authors and abstract the abstract page already gives.
 function arxivPaperBody(html, paperURL) {

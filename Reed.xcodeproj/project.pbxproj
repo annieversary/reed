@@ -1295,6 +1295,24 @@
 			<key>fileRef</key>
 			<string>1DD381AB02DE9B858DEA0D7D</string>
 		</dict>
+		<key>5090D4113A6648B9D95C3D5F</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Wikipedia.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>D1EE0378AF7776BF8976FBCE</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>5090D4113A6648B9D95C3D5F</string>
+		</dict>
 		<key>8EE19AFD73856104EEE50822</key>
 		<dict>
 			<key>isa</key>
@@ -1462,6 +1480,7 @@
 				<string>CE88F19EEA1429E85B50DAE5</string>
 				<string>D6B3E48F2D5F9A78B16590C0</string>
 				<string>1DD381AB02DE9B858DEA0D7D</string>
+				<string>5090D4113A6648B9D95C3D5F</string>
 				<string>8EE19AFD73856104EEE50822</string>
 				<string>03B0AAE7E258B2787B178101</string>
 				<string>F1EEAC1AABD95DE2505EEBCD</string>
@@ -1559,6 +1578,7 @@
 				<string>DABFDAF3DA54B71E77115C79</string>
 				<string>E02CFC5074F0F3AE2CC43C5B</string>
 				<string>C63FD7F25C65273D3CA18C5B</string>
+				<string>D1EE0378AF7776BF8976FBCE</string>
 				<string>AA03910F0752AC3AA16025A4</string>
 				<string>9BA0E3B3C5A57ACBC1732299</string>
 			</array>

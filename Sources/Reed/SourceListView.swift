@@ -9,11 +9,18 @@ extension ExternalSource {
         case .hackerNews: "y.square"
         case .lobsters: "l.square"
         case .substack: "s.square"
+        case .wikipedia: "w.square"
         }
     }
 
     /// What the source calls a vote for a story.
-    var pointName: String { self == .substack ? "like" : "point" }
+    var pointName: String {
+        switch self {
+        case .hackerNews, .lobsters: "point"
+        case .substack: "like"
+        case .wikipedia: "view"
+        }
+    }
 }
 
 /// Where a list of links to browse comes from.
@@ -350,6 +357,8 @@ private struct SourceRow: View {
             case .restacked(let name): tag(name, symbol: "arrow.2.squarepath", spoken: "Restacked by")
             case .liked(let name): tag(name, symbol: "heart", spoken: "Liked by")
             case .fromArchives: tag("from the archives")
+            case .featured: tag("featured", symbol: "star")
+            case .inTheNews: tag("in the news", symbol: "newspaper")
             case .note, nil: EmptyView()
             }
         }
@@ -368,7 +377,7 @@ private struct SourceRow: View {
         var parts: [String] = []
         // A paid post's counts are often missing, and only its preview can be read.
         if item.paid != true {
-            if let points = item.points { parts.append("\(points) \(pointName)\(points == 1 ? "" : "s")") }
+            if let points = item.points { parts.append("\(points.formatted()) \(pointName)\(points == 1 ? "" : "s")") }
             if let comments = item.comments { parts.append("\(comments) \(comments == 1 ? "comment" : "comments")") }
         }
         if let author = item.author { parts.append("by \(author)") }
