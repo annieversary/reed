@@ -4,7 +4,7 @@ import ReedCore
 #endif
 
 enum CollectionFilter: String, CaseIterable, Identifiable {
-    case all = "All articles", unread = "Unread", favorites = "Favorites", read = "Finished"
+    case unread = "Unread", favorites = "Favorites", read = "Finished", all = "All articles"
     var id: Self { self }
     var symbol: String {
         switch self {
