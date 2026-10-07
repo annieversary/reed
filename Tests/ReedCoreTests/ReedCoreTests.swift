@@ -278,6 +278,15 @@ import Testing
     #expect(ArticleSpeech.spoken("K8s, a11y and i18n, not b2b or x86.") == "Kubernetes, accessibility and internationalization, not b2b or x86.")
 }
 
+@Test func saintsAndDollarAmountsAreSaidInWords() {
+    #expect(ArticleSpeech.spoken("St. Louis and St Paul, on Main St.") == "Saint Louis and Saint Paul, on Main St.")
+    #expect(ArticleSpeech.spoken("Open on Main St. Tomorrow too.") == "Open on Main St. Tomorrow too.")
+    #expect(ArticleSpeech.sentences(in: "We went to St. Louis. Then St. Paul's. Open on Main St. Tomorrow too.")
+            == ["We went to St. Louis.", "Then St. Paul's.", "Open on Main St.", "Tomorrow too."])
+    #expect(ArticleSpeech.spoken("$1M, $2.5bn, $40k and $3 billion, not $5 or a $5 t-shirt.")
+            == "1 million dollars, 2.5 billion dollars, 40 thousand dollars and 3 billion dollars, not $5 or a $5 t-shirt.")
+}
+
 @Test func pronunciationsLoad() {
     #expect(ArticleSpeech.pronunciations["JSON"] == "ʤˈAsᵊn")
 }
