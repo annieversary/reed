@@ -327,6 +327,27 @@ import Testing
             == "Chapter 4, Part 1, World War 2, Super Bowl 58, Final Fantasy 7, did I go.")
 }
 
+@Test func moreShorthandIsSaidInWords() {
+    #expect(ArticleSpeech.spoken("Smith et al. found it, cf. Jones, a.k.a. Bob, c. 1500 (b. 1950, d. 2001), a Ph.D., J.R.R. Tolkien in the U.S.")
+            == "Smith and others found it, compare Jones, also known as Bob, circa 1500 (born 1950, died 2001), a P H D, J R R Tolkien in the U S.")
+    #expect(ArticleSpeech.spoken("At 3pm ET and 9 a.m. EST.") == "At 3 P M E T and 9 A M E S T.")
+    #expect(ArticleSpeech.spoken("A$10, US$5, A$5M, $5/month, 50¢, 25 bps, 3 pp, $1,200.")
+            == "$10 Australian, $5 US, 5 million Australian dollars, $5 per month, 50 cents, 25 basis points, 3 percentage points, $1,200.")
+    #expect(ArticleSpeech.spoken("2 hrs, 1 hr, 3.5mm, 120V, 5 kWh, 60 Hz, 5 m wide, £5 m.")
+            == "2 hours, 1 hour, 3.5 millimeters, 120 volts, 5 kilowatt hours, 60 hertz, 5 meters wide, £5 m.")
+    #expect(ArticleSpeech.spoken("10^6, 10^2, 3.2e-5, −5, 16:9, 10:30, 40.7°N, 90°, 5' tall.")
+            == "10 to the 6th, 10 squared, 3.2 times 10 to the minus 5th, minus 5, 16 to 9, 10:30, 40.7 degrees north, 90 degrees, 5 feet tall.")
+    #expect(ArticleSpeech.spoken("Q&A, AT&T, 3rd-party, 24-7, the 1990s–2000s, RTX 4090, ISO 8601, RTX 4000.")
+            == "Q and A, A T and T, 3rd party, 24 7, the 1990s to 2000s, RTX 40 90, ISO 86 oh 1, RTX 4000.")
+    #expect(ArticleSpeech.spoken("See https://www.example.com/foo?x=1. It was big.[12][citation needed] 🎉 ❤️ x → y.")
+            == "See example dot com. It was big. x to y.")
+}
+
+@Test func footnoteMarkersStayWithTheirSentence() {
+    #expect(ArticleSpeech.sentences(in: "It was big.[1] Then small.[12][13] The end. Meet a.k.a. Bob. Smith et al. (2020) agree.")
+            == ["It was big.[1]", "Then small.[12][13]", "The end.", "Meet a.k.a. Bob.", "Smith et al. (2020) agree."])
+}
+
 @Test func pronunciationsLoad() {
     #expect(ArticleSpeech.pronunciations["JSON"] == "ʤˈAsᵊn")
 }

@@ -41,13 +41,18 @@ public enum ArticleSpeech {
     }
 
     /// The sentences of a passage, in order. Fragments with nothing to say, like a lone dash, stay with the sentence before,
-    /// as does what follows a title like "Gov." or "St." that the tokenizer took for the end of a sentence.
+    /// as does what follows an abbreviation like "Gov.", "St." or "a.k.a." that the tokenizer took for the end of a sentence.
     public static func sentences(in passage: String) -> [String] {
         let tokenizer = NLTokenizer(unit: .sentence)
         tokenizer.string = passage
         var sentences: [String] = []
         tokenizer.enumerateTokens(in: passage.startIndex..<passage.endIndex) { range, _ in
-            let sentence = passage[range].trimmingCharacters(in: .whitespacesAndNewlines)
+            var sentence = passage[range].trimmingCharacters(in: .whitespacesAndNewlines)
+            // Footnote markers after a period, as in "big.[1][2]", are split down the middle.
+            if let last = sentences.last, last.hasSuffix("["), let marker = sentence.prefixMatch(of: #/[^\[\]]{1,30}\](?:\[[^\[\]]{1,30}\])*/#) {
+                sentences[sentences.count - 1] = last + marker.output
+                sentence = String(sentence[marker.range.upperBound...]).trimmingCharacters(in: .whitespaces)
+            }
             if sentence.isEmpty { return true }
             if let last = sentences.last, !sentence.contains(where: { $0.isLetter || $0.isNumber }) || continues(last, into: sentence) {
                 sentences[sentences.count - 1] = last + " " + sentence
