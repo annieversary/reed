@@ -343,9 +343,28 @@ import Testing
             == "See example dot com. It was big. x to y.")
 }
 
+@Test func evenMoreShorthandIsSaidInWords() {
+    #expect(ArticleSpeech.spoken("Ms Lee, Prof Brown, Gen Z, Natl. Guard, Govt policy, John F. Kennedy, J. K. Rowling, vitamin D. Then.")
+            == "Miz Lee, Professor Brown, Gen Z, National Guard, government policy, John F Kennedy, J K Rowling, vitamin D. Then.")
+    #expect(ArticleSpeech.spoken("On 03.01.2024 in the 19th c. and '24, ETA 5, 200 kcal.")
+            == "On 3 January 2024 in the 19th century and 24, E T A 5, 200 kilocalories.")
+    #expect(ArticleSpeech.spoken("Mon–Fri, 9am–5pm, 9:00–17:00, noon-2pm, 0800 hours.")
+            == "Monday to Friday, 9 A M to 5 P M, 9:00 to 17 hundred, noon to 2 P M, oh 8 hundred hours.")
+    #expect(ArticleSpeech.spoken("-$5, $5–$10, 51%–49%, £300k, ₹500, R$20, R$5M, ¥1,000.")
+            == "minus $5, $5 to $10, 51% to 49%, 300 thousand pounds, 500 rupees, 20 reais, 5 million reais, ¥1,000.")
+    #expect(ArticleSpeech.spoken("6 ÷ 2, a ≠ b, ∞, 1000s of people, 100s, 50-50 odds, §§ 4-5, ¶ 3, &c.")
+            == "6 divided by 2, a does not equal b, infinity, thousands of people, hundreds, 50 50 odds, sections 4 to 5, paragraph 3, etcetera.")
+    #expect(ArticleSpeech.spoken("Call 1-800-FLOWERS or (555) 123-4567.") == "Call 1, 8 hundred, Flowers or 5 5 5, 1 2 3, 4 5 6 7.")
+    #expect(ArticleSpeech.spoken("CO₂, 5 km², m³, 100 sq ft, 100 mg/dL, km/h.")
+            == "CO2, 5 square kilometers, cubic meters, 100 square feet, 100 milligrams per deciliter, kilometers per hour.")
+    #expect(ArticleSpeech.spoken("and/or, he/she, Mac/PC, she/her, TCP/IP, w/o, item(s), Yes*, footnote†, **bold** and _italic_.")
+            == "and or, he or she, Mac or PC, she her, TCP IP, w/o, items, Yes, footnote, bold and italic.")
+}
+
 @Test func footnoteMarkersStayWithTheirSentence() {
     #expect(ArticleSpeech.sentences(in: "It was big.[1] Then small.[12][13] The end. Meet a.k.a. Bob. Smith et al. (2020) agree.")
             == ["It was big.[1]", "Then small.[12][13]", "The end.", "Meet a.k.a. Bob.", "Smith et al. (2020) agree."])
+    #expect(ArticleSpeech.sentences(in: "J. K. Rowling wrote it. John F. Kennedy spoke.") == ["J. K. Rowling wrote it.", "John F. Kennedy spoke."])
 }
 
 @Test func pronunciationsLoad() {

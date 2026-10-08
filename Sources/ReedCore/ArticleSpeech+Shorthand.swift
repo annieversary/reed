@@ -17,6 +17,10 @@ extension ArticleSpeech {
                 || $0.properties.isEmoji && $0.value >= 0x2300)
         }))
         .replacing(#/\[(?:\d+|[a-z]{1,2}|note \d+|[a-z][a-z ]*(?:needed|\?))\]/#, with: "")
+        .replacing(#/\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`/#) { String($0.1 ?? $0.2 ?? $0.3 ?? "") }
+        .replacing(#/(^|[\s(])[*_]([^*_\s][^*_]*)[*_](?=[\s,.;:!?)]|$)/#) { "\($0.1)\($0.2)" }
+        .replacing(#/(\w)(?:\*+|[†‡])(?=[\s,.;:!?)]|$)/#) { String($0.1) }
+        .replacing(#/[₀-₉]/#) { String($0.0.unicodeScalars.first!.value - 0x2080) }
         .replacing(#/\b(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})(?:\/\S*?)?(?=[.,;:!?)\]]*(?:\s|$))/#.ignoresCase()) {
             String($0.1)
         }
@@ -29,7 +33,20 @@ extension ArticleSpeech {
             .replacing(#/\b(Prof|Gov|Sen|Rep|Gen|Capt|Lt|Col|Sgt|Rev|Pres|Hon|Adm|Maj|Cpl|Fr|Supt|Pt|Ste)\.\s+(?=[A-Z])/#) {
                 "\(titles[String($0.1)] ?? String($0.1)) "
             }
+            // Without the period, only titles that can't be mistaken for a word ("Gen Z", "Col" for a pass).
+            .replacing(#/\b(Prof|Capt|Lt|Sgt|Cpl|Supt)\s+(?=[A-Z][a-z])/#) { "\(titles[String($0.1)] ?? String($0.1)) " }
+            .replacing(#/\bMs\.?\s+(?=[A-Z])/#, with: "Miz ")
+            // Initials in a name, like "J. K." or the F in "John F. Kennedy", aren't the end of a sentence.
+            // A lone capital after a lowercase word, as in "vitamin D. Then", may well be.
+            .replacing(#/(\S+\s+)?\b((?:[A-Z]\.\s+)+)(?=[A-Z][a-z])/#) { match in
+                let (whole, before, initials) = match.output
+                if let before, before.first!.isLowercase, initials.count < 4 { return String(whole) }
+                return "\(before ?? "")\(initials.filter { $0 != "." })"
+            }
             .replacing(#/\bJct\.\s?/#, with: "Junction ")
+            .replacing(#/\b(Mon|Tues?|Wed|Thu(?:rs?)?|Fri|Sat|Sun)\.?\s?[-–—]\s?(Mon|Tues?|Wed|Thu(?:rs?)?|Fri|Sat|Sun)\b\.?/#) {
+                "\(days[String($0.1)] ?? String($0.1)) to \(days[String($0.2)] ?? String($0.2))"
+            }
             .replacing(#/\b(Mon|Tues?|Wed|Thu(?:rs?)?|Fri|Sat|Sun)\.(?=,|\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|\s+\d)/#) {
                 days[String($0.1)] ?? String($0.0)
             }
@@ -40,9 +57,13 @@ extension ArticleSpeech {
             .replacing(#/\b((?:[A-Z]\.){2,})(\s*$)?/#) {
                 "\($0.1.filter(\.isLetter).map(String.init).joined(separator: " "))\(period(".", before: $0.2))"
             }
-            .replacing(#/\b(Inc|Corp|Bros|Dept|Jr|Sr|approx|ibid|et al)\.(\s*$|\s+(?=[A-Z](?![A-Z.])))?/#) {
-                "\(shortWords[String($0.1)] ?? String($0.1))\(period(".", before: $0.2))"
+            .replacing(#/\b(Inc|Corp|Bros|Dept|Jr|Sr|approx|ibid|et al)\b(\.)?(\s*$|\s+(?=[A-Z](?![A-Z.])))?/#) {
+                "\(shortWords[String($0.1)] ?? String($0.1))\(period($0.2, before: $0.3))"
             }
+            .replacing(#/\b(Univ|Intl|Natl|Assn|Govt)\b(\.)?(\s*$)?/#) { "\(shortWords[String($0.1)] ?? String($0.1))\(period($0.2, before: $0.3))" }
+            .replacing(#/\b(\d{1,2}(?:st|nd|rd|th))\s?c\.(\s*$)?/#) { "\($0.1) century\(period(".", before: $0.2))" }
+            .replacing(#/\bETA\b/#, with: "E T A")
+            .replacing(#/(\w|\s)&c\b(\.)?(\s*$)?/#) { "\($0.1 == " " ? "" : $0.1) etcetera\(period($0.2, before: $0.3))" }
             .replacing(#/\b(?:a\.k\.a\.|aka|AKA)(?=\s)/#, with: "also known as")
             .replacing(#/\b(cf|viz)\.\s?/#) { "\($0.1 == "cf" ? "compare" : "namely") " }
             .replacing(#/\b(No|no|Fig|fig|Vol|vol|pp)\.\s?(?=\d)/#) { "\(numbered[String($0.1)] ?? String($0.1)) " }
@@ -58,14 +79,30 @@ extension ArticleSpeech {
         .replacing(#/(^|[^\w:.])(1[3-9]|2[0-3]):([0-5]\d)(?![\d:])/#) {
             "\($0.1)\($0.3 == "00" ? "\($0.2) hundred" : clock($0.2, $0.3))"
         }
+        .replacing(#/\b([01]\d|2[0-3])([0-5]\d)\s?(hours|hrs|h)\b/#) { match in
+            let (_, hour, minutes, _) = match.output
+            let said = hour.first == "0" ? "oh \(hour.dropFirst())" : String(hour)
+            return "\(said) \(minutes == "00" ? "hundred" : String(minutes)) hours"
+        }
+        .replacing(#/(\d|[AP] M|noon|midnight)\s?[-–—]\s?(?=\d{1,2}(?::\d\d|\s\d\d)?\s?[AP] M|\d{1,2} hundred|\d{1,2}:\d\d|noon|midnight)/#) {
+            "\($0.1) to "
+        }
         .replacing(#/((?:[AP] M|\d|noon|midnight)\s+)(ET|EST|EDT|CT|CST|CDT|MT|MST|MDT|PT|PST|PDT|GMT|UTC|BST|CET|CEST|IST|JST|AEST|AEDT)\b/#) {
             "\($0.1)\($0.2.map(String.init).joined(separator: " "))"
         }
     }
 
     private static func amounts(_ text: String) -> String {
+        text.replacing(#/(?:\b(R)\$|([£€¥₹]))(\d+(?:,\d{3})*(?:\.\d+)?)(?:(?i:([kmbt]|mn|bn|tn))\b|\s?(?i:(thousand|million|billion|trillion))\b)?/#) { match in
+            let (whole, real, symbol, number, letter, word) = match.output
+            let scale = (letter ?? word).flatMap { scales[$0.lowercased()] }
+            // Kokoro's normalization says pounds, euros and yen, but not with a "k", nor rupees or reais at all.
+            guard scale != nil || real != nil || symbol == "₹", let name = currencies[String(real ?? symbol ?? "")] else { return String(whole) }
+            let one = scale == nil && number == "1"
+            return "\(number) \(scale.map { "\($0) " } ?? "")\(one ? name.0 : name.1)"
+        }
         // Kokoro reads "US" as the pronoun, and "A$" letter by letter.
-        text.replacing(#/(?:\b(US|AU|A|CA|C|NZ|HK|S))?\$(\d+(?:,\d{3})*(?:\.\d+)?)(?:(?i:([kmbt]|mn|bn|tn))\b|\s?(?i:(thousand|million|billion|trillion))\b)?/#) { match in
+        .replacing(#/(?:\b(US|AU|A|CA|C|NZ|HK|S))?\$(\d+(?:,\d{3})*(?:\.\d+)?)(?:(?i:([kmbt]|mn|bn|tn))\b|\s?(?i:(thousand|million|billion|trillion))\b)?/#) { match in
             let (whole, country, number, letter, word) = match.output
             let scale = (letter ?? word).flatMap { scales[$0.lowercased()] }
             let place = country.flatMap { dollarCountries[String($0)] }
@@ -75,6 +112,8 @@ extension ArticleSpeech {
             case let (scale?, place): return "\(number) \(scale) \(place.map { "\($0) " } ?? "")dollars"
             }
         }
+        .replacing(#/(^|[\s(])-(?=[$£€¥₹]\d)/#) { "\($0.1)minus " }
+        .replacing(#/\b(10|100|1000|1,000)s\b/#) { ["10": "tens", "100": "hundreds"][String($0.1)] ?? "thousands" }
         .replacing(#/(\b[A-Za-z]+\s+)?\b(\d+(?:,\d{3})*(?:\.\d+)?)(K|k|M|B|T|bn|Bn|mn|tn)(?!\w)/#) { match in
             let (_, before, number, scale) = match.output
             let word = before?.trimmingCharacters(in: .whitespaces).lowercased()
@@ -104,12 +143,22 @@ extension ArticleSpeech {
     }
 
     private static func units(_ text: String) -> String {
-        text.replacing(#/\b(240|360|480|540|720|1080|1440|2160|4320)([pi])\b/#) { "\($0.1.dropLast(2)) \($0.1.suffix(2)) \($0.2.uppercased())" }
+        text.replacing(#/(\d+(?:\.\d+)?\s?)?(?:\bsq\.?\s?(km|cm|mm|mi|ft|in|m)\b|(km|cm|mm|mi|ft|m)([²³]))/#) { match in
+            let (_, number, square, base, power) = match.output
+            let name = lengths[String(square ?? base ?? "")] ?? ("", "")
+            let plural = number?.trimmingCharacters(in: .whitespaces) == "1" ? name.0 : name.1
+            return "\(number ?? "")\(power == "³" ? "cubic" : "square") \(plural)"
+        }
+        .replacing(#/\b(mg|g|µg|μg|mcg|mmol)\/(dL|L|mL|kg)\b/#) {
+            "\(massUnits[String($0.1)] ?? String($0.1)) per \(volumeUnits[String($0.2)] ?? String($0.2))"
+        }
+        .replacing(#/\b(1\s?)?kcal\b/#) { $0.1 == nil ? "kilocalories" : "\($0.1!)kilocalorie" }.replacing(#/\b(240|360|480|540|720|1080|1440|2160|4320)([pi])\b/#) { "\($0.1.dropLast(2)) \($0.1.suffix(2)) \($0.2.uppercased())" }
             .replacing(#/\b(\d)['’′](\d{1,2})(?:["”″]|'')?/#) { "\($0.1) foot \($0.2)" }
             .replacing(#/\b(\d+)['’′](?=[\s,.;)]|$)/#) { "\($0.1) \($0.1 == "1" ? "foot" : "feet")" }
             .replacing(#/\b(\d+(?:\.\d+)?)°\s?([NSEW])\b/#) { "\($0.1) degrees \(compass[String($0.2)] ?? String($0.2))" }
             .replacing(#/\b(\d+(?:\.\d+)?)°(?!\s?[CFK]\b)/#) { "\($0.1) \($0.1 == "1" ? "degree" : "degrees")" }
             .replacing(#/\b(\d+(?:\.\d+)?)\s?(km/h|kmh|kph|mi/h|m/s)\b/#) { "\($0.1) \(unit(speeds[String($0.2)], for: $0.1))" }
+            .replacing(#/\b(km\/h|mi\/h|m\/s)\b/#) { unit(speeds[String($0.1)], for: "") }
             .replacing(#/\b(\d+(?:\.\d+)?)\s?(KB|kB|MB|GB|TB|PB|Kbps|kbps|Mbps|Gbps|Mb|Gb|Tb)\b/#) {
                 "\($0.1) \(unit(dataUnits[String($0.2)], for: $0.1))"
             }
@@ -124,7 +173,33 @@ extension ArticleSpeech {
     }
 
     private static func symbols(_ text: String) -> String {
-        text.replacing(#/\b([1-9]\d*)\s?[x×]\s?(\d+)\b/#) { "\($0.1) by \($0.2)" }
+        // A date written with dots is day first, as in Europe.
+        text.replacing(#/\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b/#) { match in
+            let (whole, day, month, year) = match.output
+            guard let d = Int(day), let m = Int(month), (1...31).contains(d), (1...12).contains(m) else { return String(whole) }
+            return "\(d) \(months[m - 1]) \(year)"
+        }
+        .replacing(#/\b1-(8\d\d)-([A-Z]{4,}|\d{3}-\d{4})\b/#) { match in
+            let (_, area, rest) = match.output
+            let line = rest.first!.isLetter ? rest.capitalized : spelled(rest.replacing("-", with: ", "))
+            return "1, \(area.first!) hundred, \(line)"
+        }
+        .replacing(#/\((\d{3})\)\s?(?=\d{3}-\d{4})/#) { "\(spelled($0.1)), " }
+        .replacing(#/(\d%)\s?[-–—]\s?(?=\d)/#) { "\($0.1) to " }
+        .replacing(#/(\d)\s?[-–—]\s?(?=[$£€¥₹]\d)/#) { "\($0.1) to " }
+        .replacing(#/\b([A-Za-z]+)\((e?s)\)/#) { "\($0.1)\($0.2)" }
+        .replacing(#/(^|[^\/\w])([A-Za-z]+)\/([A-Za-z]+)(?![\/\w])/#) { match in
+            let (whole, before, first, second) = match.output
+            // "w/o" and units like "km/h" are said elsewhere.
+            if second.count == 1 && second.first!.isLowercase { return String(whole) }
+            if first.allSatisfy(\.isUppercase) && second.allSatisfy(\.isUppercase) || pronounSets.contains("\(first)/\(second)".lowercased()) {
+                return "\(before)\(first) \(second)"
+            }
+            return "\(before)\(first) \(first.lowercased() == "and" ? "" : "or ")\(second)"
+        }
+        .replacing("÷", with: " divided by ").replacing("≠", with: " does not equal ").replacing("∞", with: "infinity")
+        .replacing(#/§§\s?/#, with: "sections ").replacing(#/¶\s?/#, with: "paragraph ")
+        .replacing(#/(^|\s)['’](\d{2})\b(?!s)/#) { "\($0.1)\($0.2)" }.replacing(#/\b([1-9]\d*)\s?[x×]\s?(\d+)\b/#) { "\($0.1) by \($0.2)" }
             .replacing(#/\b(\d+(?:\.\d+)?)[x×](?!\w)/#) { "\($0.1) times" }
             .replacing(#/\b(\d+(?:\.\d+)?)\^(-?)(\d+)\b/#) { "\($0.1) \(power($0.2, $0.3))" }
             .replacing(#/\b(\d+(?:\.\d+)?)[eE]([+-]?)(\d+)\b/#) { "\($0.1) times 10 \(power($0.2 == "-" ? "-" : "", $0.3))" }
@@ -136,13 +211,13 @@ extension ArticleSpeech {
             }
             .replacing(#/\b24-7\b/#, with: "24 7")
             .replacing(#/(^|[^\w\-])(\d{3})-(\d{4})(?![\w\-])/#) {
-                "\($0.1)\($0.2.map(String.init).joined(separator: " ")), \($0.3.map(String.init).joined(separator: " "))"
+                "\($0.1)\(spelled($0.2)), \(spelled($0.3))"
             }
             // A range rises, and a score like "3-2" is said the same way; other pairs of numbers are left alone.
             .replacing(#/(^|[^\w\-–—/.:,])(\d+(?:\.\d+)?)\s?[-–—]\s?(\d+(?:\.\d+)?)(?![\w\-–—/]|\.\d)/#) { match in
                 let (_, before, low, high) = match.output
-                guard let a = Double(low), let b = Double(high), b > a || low.count <= 2 && high.count <= 2 else { return String(match.output.0) }
-                return "\(before)\(low) to \(high)"
+                guard let a = Double(low), let b = Double(high), b >= a || low.count <= 2 && high.count <= 2 else { return String(match.output.0) }
+                return "\(before)\(low) \(a == b ? "" : "to ")\(high)"
             }
             .replacing(#/(\b\d{2,4}s|'\d{2}s)\s?[-–—]\s?(\d{2,4}s|'\d{2}s)\b/#) { "\($0.1) to \($0.2)" }
             // A ratio's second number has one digit, where a time's minutes have two.
@@ -188,6 +263,11 @@ extension ArticleSpeech {
         if titles[name] != nil { return first.isUppercase }
         if days[name] != nil { return next.wholeMatch(of: #/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d).*/#.dotMatchesNewlines()) != nil }
         if ["a.k.a", "cf", "viz", "c", "ca", "Jct"].contains(name) { return true }
+        // An initial in a name, like "J. K. Rowling" or "John F. Kennedy".
+        if name.count == 1, name.first!.isUppercase, first.isUppercase {
+            let before = sentence.split(separator: " ").dropLast().last
+            return before.map { $0.first!.isUppercase } ?? true
+        }
         if name == "al", sentence.hasSuffix("et al.") { return first == "(" || first.isNumber }
         return false
     }
@@ -218,6 +298,11 @@ extension ArticleSpeech {
     private static func unit(_ name: (String, String)?, for number: Substring) -> String {
         guard let (noun, rest) = name else { return "" }
         return (number == "1" || noun.hasSuffix("z") ? noun : noun + "s") + rest
+    }
+
+    /// Digits said one at a time, as in a phone number.
+    private static func spelled(_ digits: some StringProtocol) -> String {
+        digits.map { $0.isNumber ? String($0) : $0 == "," ? "," : "" }.filter { !$0.isEmpty }.joined(separator: " ").replacing(" ,", with: ",")
     }
 
     /// A power as it's said: "squared", "cubed", or "to the 6th".
@@ -260,7 +345,8 @@ extension ArticleSpeech {
     private static let streets = ["Ave": "Avenue", "Blvd": "Boulevard", "Rd": "Road", "Hwy": "Highway", "Pkwy": "Parkway", "Ln": "Lane"]
     private static let shortWords = [
         "Inc": "Incorporated", "Corp": "Corporation", "Bros": "Brothers", "Dept": "Department", "Jr": "Junior", "Sr": "Senior",
-        "approx": "approximately", "ibid": "ibidem", "et al": "and others",
+        "approx": "approximately", "ibid": "ibidem", "Univ": "University", "Intl": "International",
+        "Natl": "National", "Assn": "Association", "Govt": "government", "et al": "and others",
     ]
     private static let numbered = [
         "No": "Number", "no": "number", "Fig": "Figure", "fig": "figure", "Vol": "Volume", "vol": "volume", "pp": "pages",
@@ -288,6 +374,20 @@ extension ArticleSpeech {
         "US": "US", "AU": "Australian", "A": "Australian", "CA": "Canadian", "C": "Canadian", "NZ": "New Zealand",
         "HK": "Hong Kong", "S": "Singapore",
     ]
+    private static let months = [
+        "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December",
+    ]
+    private static let currencies = [
+        "R": ("real", "reais"), "£": ("pound", "pounds"), "€": ("euro", "euros"), "¥": ("yen", "yen"), "₹": ("rupee", "rupees"),
+    ]
+    private static let lengths = [
+        "km": ("kilometer", "kilometers"), "cm": ("centimeter", "centimeters"), "mm": ("millimeter", "millimeters"),
+        "mi": ("mile", "miles"), "ft": ("foot", "feet"), "in": ("inch", "inches"), "m": ("meter", "meters"),
+    ]
+    private static let massUnits = ["mg": "milligrams", "g": "grams", "µg": "micrograms", "μg": "micrograms", "mcg": "micrograms", "mmol": "millimoles"]
+    private static let volumeUnits = ["dL": "deciliter", "L": "liter", "mL": "milliliter", "kg": "kilogram"]
+    /// Pronouns someone goes by, said as a set rather than as alternatives.
+    private static let pronounSets: Set = ["she/her", "he/him", "they/them", "she/they", "he/they", "xe/xem", "ze/zir"]
     private static let perUnits = ["mo": "month", "yr": "year", "wk": "week", "hr": "hour", "lb": "pound", "min": "minute", "litre": "liter"]
     private static let compass = ["N": "north", "S": "south", "E": "east", "W": "west"]
     private static let measures = [
