@@ -10,8 +10,10 @@ window.reedNotes = (() => {
         .reed-notes-shown { overflow-x: hidden; }
         .reed-notes-shown body { position: relative; }
         body { transition: transform .4s cubic-bezier(.2, .8, .2, 1); }
-        main { transition: opacity .4s; }
-        .reed-notes-dim main { opacity: .3; }
+        #reed-veil { position: absolute; inset: 0; display: none; opacity: 0; transition: opacity .4s; pointer-events: none; background: var(--paper); }
+        .reed-notes-shown #reed-veil { display: block; }
+        .reed-notes-dim #reed-veil { opacity: .7; }
+        @starting-style { .reed-notes-dim #reed-veil { opacity: 0; } }
         #reed-notes { position: absolute; top: 0; display: none; opacity: 0; transition: opacity .3s;
             font: calc(var(--font-size) * .8)/1.55 -apple-system, sans-serif; color: var(--ink); }
         .reed-notes-shown #reed-notes { display: block; }
@@ -24,6 +26,9 @@ window.reedNotes = (() => {
     document.head.appendChild(style);
     const column = document.createElement('div');
     column.id = 'reed-notes';
+    // The article is dimmed by fading a plain sheet over it, which is far cheaper to animate than the article's own opacity.
+    const veil = document.createElement('div');
+    veil.id = 'reed-veil';
 
     let open = false, shift = 0, slots = [], scheduled = false, hiding;
     // Zooming is held at 1 while the margin is open: the page is wider than the screen then, and a note's
@@ -221,7 +226,7 @@ window.reedNotes = (() => {
                 column.appendChild(note);
                 slots.push({element, note});
             });
-            if (!column.isConnected) document.body.appendChild(column);
+            if (!column.isConnected) document.body.append(veil, column);
             slide(shift);
             schedule();
         },
