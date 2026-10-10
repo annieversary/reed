@@ -14,10 +14,12 @@ extension Library {
             guard let self else { return }
             defer { self.worker = nil; self.activity = nil; self.imageActivity = nil }
             while !Task.isCancelled {
-                if let article = self.articles.last(where: { $0.state == .queued }) ?? self.cached.first(where: { $0.state == .queued }) {
+                if let article = self.articles.last(where: { $0.state == .queued }) {
                     await self.download(article)
                 } else if let book = self.books.last(where: { $0.state == .queued }) {
                     await self.convert(book)
+                } else if let article = self.cached.first(where: { $0.state == .queued }) {
+                    await self.download(article)
                 } else { break }
             }
         }
