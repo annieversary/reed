@@ -3,6 +3,8 @@ import SwiftUI
 /// Controls for the article being read aloud, along the bottom of the window wherever you are in the library.
 struct NarrationBar: View {
     @Bindable var narrator: Narrator
+    /// Shown just above the controls, so the reader running beneath them can't hide it.
+    var narrationReturn: NarrationReturn?
     var onOpen: () -> Void
 
     var body: some View {
@@ -34,6 +36,21 @@ struct NarrationBar: View {
         .padding(.horizontal, 20).padding(.vertical, 10)
         .background(.bar)
         .overlay(alignment: .top) { Divider() }
+        .overlay(alignment: .top) {
+            if let narrationReturn { returnButton(narrationReturn).offset(y: -54) }
+        }
+    }
+
+    private func returnButton(_ narrationReturn: NarrationReturn) -> some View {
+        Button("Back to the Paragraph Being Read", systemImage: narrationReturn.direction == .up ? "arrow.up" : "arrow.down",
+               action: narrationReturn.follow)
+            .labelStyle(.iconOnly).buttonStyle(.plain)
+            .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+            .frame(width: 38, height: 38)
+            .background(ReedStyle.accent, in: Circle())
+            .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
+            .transition(.opacity.combined(with: .offset(y: 8)))
+            .help("Back to the Paragraph Being Read")
     }
 
     @ViewBuilder private var status: some View {
@@ -67,4 +84,15 @@ struct NarrationBar: View {
     private static func label(_ rate: Float) -> String {
         rate.formatted(.number.precision(.fractionLength(0...1))) + "×"
     }
+}
+
+/// A way back to the paragraph being read, from a reader scrolled away from it.
+struct NarrationReturn {
+    let direction: NarrationDirection
+    let follow: () -> Void
+}
+
+extension EnvironmentValues {
+    /// Shows, or with nil hides, the way back to the paragraph being read.
+    @Entry var showNarrationReturn: (NarrationReturn?) -> Void = { _ in }
 }

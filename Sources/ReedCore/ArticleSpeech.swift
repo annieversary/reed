@@ -71,7 +71,7 @@ public enum ArticleSpeech {
     /// Plural initialisms ("LLMs", "APIs") are written as possessives, which Kokoro spells out letter by letter,
     /// where it would otherwise sound them out as a word.
     public static func spoken(_ sentence: String) -> String {
-        inWords(sentence)
+        verbLive(inWords(sentence))
             .replacing(#/\b([a-z]\d+[a-z]s?)\b/#.ignoresCase()) { numeronyms[$0.1.lowercased()] ?? String($0.0) }
             .replacing(#/\b([CF])[#]/#) { "\($0.1) sharp" }
             .replacing(#/\bC\+\+/#, with: "C plus plus")
@@ -84,6 +84,43 @@ public enum ArticleSpeech {
             .replacing(#/\b([A-Z][a-z]{2,})(DB|JS)\b/#) { "\($0.1) \($0.2)" }
             .replacing(#/\b([A-Z]{2,5})s\b/#) { "\($0.1)'s" }
     }
+
+    /// "live" and "lives" as verbs ("we live here", "she lives alone") written as "liv" and "livs":
+    /// Kokoro reads a word the same way wherever it stands, and its lexicon has them only as the adjective and noun
+    /// ("live music", "their lives"). Which one is meant is guessed from the words either side.
+    static func verbLive(_ text: String) -> String {
+        text.replacing(#/(?<before>[\w']+\s+)?\b(?<word>[Ll]ives?)\b(?!-)(?<after>\s+[\w']+)?/#) { match in
+            let before = match.before.map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? ""
+            let after = match.after.map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? ""
+            let plural = match.word.count == 5
+            let (notVerb, verbBefore) = plural ? (nounLivesBefore, verbLivesBefore) : (adjectiveLiveBefore, verbLiveBefore)
+            guard !notVerb.contains(before), verbBefore.contains(before) || verbLiveAfter.contains(after) else { return String(match.output.0) }
+            let word = (match.word.first == "L" ? "Liv" : "liv") + (plural ? "s" : "")
+            return (match.before.map(String.init) ?? "") + word + (match.after.map(String.init) ?? "")
+        }
+    }
+
+    private static let adjectiveLiveBefore: Set = ["a", "an", "the", "go", "goes", "going", "went", "gone", "is", "are", "was", "were", "be", "been", "being", "it's"]
+    private static let verbLiveBefore: Set = [
+        "i", "you", "we", "they", "to", "who", "will", "would", "can", "could", "should", "must", "might", "may", "shall",
+        "do", "does", "did", "don't", "doesn't", "didn't", "can't", "cannot", "won't", "wouldn't", "couldn't", "shouldn't",
+        "i'll", "you'll", "we'll", "they'll", "i'd", "you'd", "we'd", "they'd", "not", "never", "still", "also", "really",
+        "just", "actually", "people", "let",
+    ]
+    private static let nounLivesBefore: Set = [
+        "their", "our", "my", "your", "his", "her", "its", "the", "whose", "many", "of", "save", "saves", "saved", "saving",
+        "lost", "these", "those", "two", "three", "nine", "own", "other", "change", "changed", "changes", "ruin", "ruined",
+        "millions", "thousands", "hundreds", "daily", "everyday", "private", "personal", "past", "multiple",
+    ]
+    private static let verbLivesBefore: Set = [
+        "he", "she", "it", "who", "which", "still", "also", "now", "currently", "only", "actually", "really", "never", "always",
+        "everyone", "everybody", "someone", "somebody", "nobody", "one",
+    ]
+    private static let verbLiveAfter: Set = [
+        "in", "with", "near", "at", "here", "there", "together", "alone", "abroad", "forever", "longer", "without", "off",
+        "through", "among", "like", "happily", "by", "out", "up", "under", "within", "inside", "outside", "nearby", "apart",
+        "next", "where", "for",
+    ]
 
     /// Words abbreviated by their first and last letters around a count of the ones between, said in full.
     private static let numeronyms = [
@@ -401,5 +438,8 @@ public enum ArticleSpeech {
         "monero": "mənˈɛɹO",
         "defi": "dˈifˌI",
         "gwern": "ɡwˈɜɹn",
+        // "live" and "lives" as verbs (see `verbLive(_:)`)
+        "liv": "lˈɪv",
+        "livs": "lˈɪvz",
     ]
 }

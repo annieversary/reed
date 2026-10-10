@@ -274,6 +274,14 @@ import Testing
             == "io uring in version 1 dot 2 dot 3, Cockroach DB and Solid JS, e.g. at 3.5 or 192.168.0.1.")
 }
 
+@Test func liveAsAVerbIsSaidToRhymeWithGive() {
+    #expect(ArticleSpeech.spoken("Where we live, people live in boats. Learn to live and let live.") == "Where we liv, people liv in boats. Learn to liv and let liv.")
+    #expect(ArticleSpeech.spoken("She lives alone and still lives there.") == "She livs alone and still livs there.")
+    #expect(ArticleSpeech.spoken("Live music, a live-action film, going live on air, their lives, lives saved.")
+            == "Live music, a live-action film, going live on air, their lives, lives saved.")
+    #expect(ArticleSpeech.spoken("It saved the lives in the town.") == "It saved the lives in the town.")
+}
+
 @Test func numeronymsAreSaidInFull() {
     #expect(ArticleSpeech.spoken("K8s, a11y and i18n, not b2b or x86.") == "Kubernetes, accessibility and internationalization, not b2b or x86.")
 }

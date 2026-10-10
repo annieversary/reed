@@ -17,9 +17,9 @@ struct ReaderView: View {
     @AppStorage("readerFontSize") private var fontSize = 19.0
     @Environment(\.openURL) private var openURL
     @Environment(Narrator.self) private var narrator
+    @Environment(\.showNarrationReturn) private var showNarrationReturn
     @State private var passages: [[String]]?
     @State private var reader = ReaderProxy()
-    @State private var narrationAway: NarrationDirection?
     @State private var notes: [ArticleNote]?
     @State private var notesOpen = false
     @State private var findingChapters = false
@@ -75,7 +75,8 @@ struct ReaderView: View {
                 } onNarrateFrom: { passage in
                     if !isSaving { narrator.play(readable, from: passage, in: library) }
                 } onNarrationAway: { direction in
-                    withAnimation(.easeOut(duration: 0.2)) { narrationAway = direction }
+                    let follow = reader.followNarration
+                    withAnimation(.easeOut(duration: 0.2)) { showNarrationReturn(isNarrating ? direction.map { NarrationReturn(direction: $0, follow: follow) } : nil) }
                 } onNotesOpen: { open in
                     notesOpen = open
                 } onNoteChange: { passage, text in
@@ -95,10 +96,8 @@ struct ReaderView: View {
                     notes = speech.map { library.notes(for: readable, passages: $0.passages) }
                     passages = speech?.sentences
                 }
-                // Drawn by the app rather than the page, so it sits above the narration controls.
-                .overlay(alignment: .bottom) {
-                    if isNarrating, let narrationAway { returnToNarrationButton(narrationAway) }
-                }
+                .onChange(of: isNarrating) { if !isNarrating { showNarrationReturn(nil) } }
+                .onDisappear { showNarrationReturn(nil) }
             } else if let article {
                 VStack(spacing: 18) {
                     if article.state == .downloading || article.state == .queued {
@@ -196,20 +195,6 @@ struct ReaderView: View {
             .buttonStyle(.borderless)
             #endif
             .help("Listen")
-    }
-
-    private func returnToNarrationButton(_ direction: NarrationDirection) -> some View {
-        Button("Back to the Paragraph Being Read", systemImage: direction == .up ? "arrow.up" : "arrow.down") {
-            reader.followNarration()
-        }
-        .labelStyle(.iconOnly).buttonStyle(.plain)
-        .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
-        .frame(width: 38, height: 38)
-        .background(ReedStyle.accent, in: Circle())
-        .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
-        .padding(.bottom, 16)
-        .transition(.opacity.combined(with: .offset(y: 8)))
-        .help("Back to the Paragraph Being Read")
     }
 
     private var readerMenu: some View {

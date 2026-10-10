@@ -38,6 +38,7 @@ struct LibraryView: View {
     @State private var selection: SidebarItem?
     @State private var selectedID: UUID?
     @State private var selectedBookID: UUID?
+    @State private var narrationReturn: NarrationReturn?
     /// The chapter open in the selected book, if any.
     @State private var bookPath: [BookPage] = []
     @State private var bookToDelete: Book?
@@ -207,7 +208,8 @@ struct LibraryView: View {
                     readerPlaceholder
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) { narrationBar(when: true) }
+            .safeAreaInset(edge: .bottom, spacing: 0) { narrationBar(when: true, narrationReturn: narrationReturn) }
+            .environment(\.showNarrationReturn) { narrationReturn = $0 }
         }
         .sheet(isPresented: $showingAdd) {
             AddArticleView { url in
@@ -285,9 +287,9 @@ struct LibraryView: View {
 
     /// Narration controls, attached to each column's own content: an inset around the whole split view
     /// doesn't reach into the columns on iOS, which would leave the reader running underneath it.
-    @ViewBuilder private func narrationBar(when shown: Bool) -> some View {
+    @ViewBuilder private func narrationBar(when shown: Bool, narrationReturn: NarrationReturn? = nil) -> some View {
         if shown, narrator.readableID != nil {
-            NarrationBar(narrator: narrator, onOpen: openNarrated)
+            NarrationBar(narrator: narrator, narrationReturn: narrationReturn, onOpen: openNarrated)
         }
     }
 
