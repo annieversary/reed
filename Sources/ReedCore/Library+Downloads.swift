@@ -111,6 +111,15 @@ extension Library {
                 (extracted, pictures) = try await readPDF(data, url: url)
                 pageURL = url
             }
+            var earlier: (html: String, directory: URL)?
+            if let version = article.contentVersion {
+                let url = storage.contentURL(article.id, version: version)
+                earlier = await Self.read(url).map { (String(decoding: $0, as: UTF8.self), url.deletingLastPathComponent()) }
+            }
+            // A first save can be read while its images are fetched; a refresh keeps the copy already saved until it's done.
+            if contentURL(for: article) == nil {
+                try? await savePreview(of: article, extracted, pageURL: pageURL, pictures: pictures)
+            }
             let directory = try storage.createStagingDirectory()
             staging = directory
             var missing: [ExtractedArticle.Image] = []
@@ -136,32 +145,19 @@ extension Library {
                 catch { missing.append(image) }
             }
             var body = await Self.replacing(missing, in: extracted.html)
-            var earlier: (html: String, directory: URL)?
-            if let version = article.contentVersion {
-                let url = storage.contentURL(article.id, version: version)
-                earlier = await Self.read(url).map { (String(decoding: $0, as: UTF8.self), url.deletingLastPathComponent()) }
-            }
             let descriptions = try await describeImages(in: body, directory: directory, limit: 20, from: "an article titled \"\(extracted.title)\"",
                                                         previous: earlier) { message in
                 imageActivity = message
                 report(message)
             }
             body = await ImageDescriptions.applying(descriptions, to: body)
-            let document = ArticleHTML.document(title: extracted.title, author: extracted.author,
-                                                domain: Article.domain(of: pageURL) ?? "", minutes: Article.readingMinutes(words: extracted.wordCount), body: body)
-            try await Self.write(Data(document.utf8), to: directory.appendingPathComponent("index.html"))
+            try await Self.write(Data(Self.document(extracted, pageURL: pageURL, body: body).utf8), to: directory.appendingPathComponent("index.html"))
             let version = UUID().uuidString
             try storage.commit(staging: directory, id: article.id, version: version)
             staging = nil
-            article.title = extracted.title
-            article.author = extracted.author
-            article.publishedAt = extracted.publishedAt.map { Date(timeIntervalSince1970: $0 / 1000) }
-            article.excerpt = extracted.excerpt
-            article.resolvedURL = pageURL.absoluteString
-            article.wordCount = extracted.wordCount
+            describe(article, as: extracted, at: pageURL)
             article.imageCount = extracted.images.count - missing.count
             article.missingImageCount = missing.count
-            article.leadsToOtherChapters = ChapterLinks(page: extracted.page, url: pageURL).leadsToOtherChapters
             let previous = article.contentVersion
             article.contentVersion = version
             article.downloadedAt = .now
@@ -182,6 +178,45 @@ extension Library {
             save()
         }
         if discarded.remove(article.id) != nil { erase(article) }
+    }
+
+    /// Saves the article's text, with any pictures that came with it, as its content until the full copy replaces it.
+    /// The images still to fetch count as missing, so the copy reads as partial if saving stops short.
+    func savePreview(of article: Article, _ extracted: ExtractedArticle, pageURL: URL, pictures: [String: Data]) async throws {
+        let directory = try storage.createStagingDirectory()
+        let pending = extracted.images.filter { pictures[$0.filename] == nil }
+        let version = UUID().uuidString
+        do {
+            for image in extracted.images {
+                if let data = pictures[image.filename] { try await Self.write(data, to: directory.appendingPathComponent(image.filename)) }
+            }
+            let body = await Self.replacing(pending, in: extracted.html, note: "Saving image")
+            try await Self.write(Data(Self.document(extracted, pageURL: pageURL, body: body).utf8), to: directory.appendingPathComponent("index.html"))
+            try storage.commit(staging: directory, id: article.id, version: version)
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            throw error
+        }
+        describe(article, as: extracted, at: pageURL)
+        article.imageCount = extracted.images.count - pending.count
+        article.missingImageCount = pending.count
+        article.contentVersion = version
+        try container.mainContext.save()
+    }
+
+    func describe(_ article: Article, as extracted: ExtractedArticle, at pageURL: URL) {
+        article.title = extracted.title
+        article.author = extracted.author
+        article.publishedAt = extracted.publishedAt.map { Date(timeIntervalSince1970: $0 / 1000) }
+        article.excerpt = extracted.excerpt
+        article.resolvedURL = pageURL.absoluteString
+        article.wordCount = extracted.wordCount
+        article.leadsToOtherChapters = ChapterLinks(page: extracted.page, url: pageURL).leadsToOtherChapters
+    }
+
+    nonisolated static func document(_ extracted: ExtractedArticle, pageURL: URL, body: String) -> String {
+        ArticleHTML.document(title: extracted.title, author: extracted.author, domain: Article.domain(of: pageURL) ?? "",
+                             minutes: Article.readingMinutes(words: extracted.wordCount), body: body)
     }
 
     /// Alt text for the pictures in `html` saved in `directory` that have none, by file name: as `previous` described them,
@@ -206,12 +241,12 @@ extension Library {
 
     nonisolated static func write(_ data: Data, to url: URL) async throws { try data.write(to: url, options: .atomic) }
 
-    /// `html` with each of `images` replaced by a note that it's unavailable, keeping its alt text, so the reader
+    /// `html` with each of `images` replaced by a note, such as that it's unavailable, keeping its alt text, so the reader
     /// never makes a remote or broken image request.
-    nonisolated static func replacing(_ images: [ExtractedArticle.Image], in html: String) async -> String {
+    nonisolated static func replacing(_ images: [ExtractedArticle.Image], in html: String, note: String = "Image unavailable") async -> String {
         guard !images.isEmpty else { return html }
         let notes = Dictionary(images.map { image in
-            (image.filename, "<span class=\"missing-image\">[Image unavailable\(image.alt.isEmpty ? "" : ": " + ArticleHTML.escape(image.alt))]</span>")
+            (image.filename, "<span class=\"missing-image\">[\(note)\(image.alt.isEmpty ? "" : ": " + ArticleHTML.escape(image.alt))]</span>")
         }) { first, _ in first }
         let names = images.map { NSRegularExpression.escapedPattern(for: $0.filename) }.joined(separator: "|")
         guard let regex = try? NSRegularExpression(pattern: "<img\\b[^>]*\\bsrc=\"(" + names + ")\"[^>]*>") else { return html }

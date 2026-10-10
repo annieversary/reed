@@ -30,6 +30,8 @@ struct ReaderView: View {
     private var article: Article? { readable as? Article }
     private var chapter: BookChapter? { readable as? BookChapter }
     private var isNarrating: Bool { narrator.readableID == readable.id }
+    /// Whether what's shown is about to be replaced by a fuller copy, as while a new article's images are fetched.
+    private var isSaving: Bool { article.map { $0.state == .downloading || $0.state == .queued } ?? false }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,7 +41,7 @@ struct ReaderView: View {
                 Spacer()
                 if library.contentURL(for: readable) != nil {
                     progressLabel
-                    if !isNarrating { listenButton }
+                    if !isNarrating && !isSaving { listenButton }
                 }
                 readerMenu
             }
@@ -47,7 +49,14 @@ struct ReaderView: View {
             Divider()
             #endif
             if let url = library.contentURL(for: readable) {
-                if let article, article.state == .partial {
+                if let article, isSaving {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(article.state == .queued ? "Waiting to save…" : library.imageActivity ?? "Saving…")
+                        Spacer()
+                    }
+                    .font(.caption).foregroundStyle(.secondary).padding(12)
+                } else if let article, article.state == .partial {
                     HStack {
                         Image(systemName: "photo.badge.exclamationmark")
                         Text("Text is saved. \(article.missingImageCount) \(article.missingImageCount == 1 ? "image is" : "images are") unavailable.")
@@ -64,7 +73,7 @@ struct ReaderView: View {
                     do { try library.add(link.absoluteString) }
                     catch { library.errorMessage = error.localizedDescription }
                 } onNarrateFrom: { passage in
-                    narrator.play(readable, from: passage, in: library)
+                    if !isSaving { narrator.play(readable, from: passage, in: library) }
                 } onNarrationAway: { direction in
                     withAnimation(.easeOut(duration: 0.2)) { narrationAway = direction }
                 } onNotesOpen: { open in
@@ -119,7 +128,7 @@ struct ReaderView: View {
         .toolbar {
             if library.contentURL(for: readable) != nil {
                 ToolbarItem(placement: .principal) { progressLabel }
-                if !isNarrating { ToolbarItem(placement: .primaryAction) { listenButton } }
+                if !isNarrating && !isSaving { ToolbarItem(placement: .primaryAction) { listenButton } }
             }
             ToolbarItem(placement: .primaryAction) { readerMenu }
         }

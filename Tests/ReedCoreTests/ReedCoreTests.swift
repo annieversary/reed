@@ -651,3 +651,27 @@ import Testing
         """)
     #expect(await Library.replacing([], in: html) == html)
 }
+
+@MainActor @Test func previewsAreReadableBeforeTheirImagesAreFetched() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let library = try Library(root: root)
+    let article = Article(url: URL(string: "https://example.com/story")!)
+    article.state = .downloading
+    library.container.mainContext.insert(article)
+    let extracted = ExtractedArticle(
+        title: "A story", author: "Ann", publishedAt: nil, excerpt: "",
+        html: #"<p>Hello there</p><img src="image-0.png" alt="a chart"><img src="image-1.png">"#, wordCount: 2,
+        images: [.init(url: "https://example.com/a.png", filename: "image-0.png", alt: "a chart"),
+                 .init(url: "", filename: "image-1.png", alt: "")],
+        page: PageLinks(title: "A story", links: []))
+    try await library.savePreview(of: article, extracted, pageURL: URL(string: "https://example.com/story")!, pictures: ["image-1.png": Data([1, 2])])
+    let url = try #require(library.contentURL(for: article))
+    let html = try String(contentsOf: url, encoding: .utf8)
+    #expect(html.contains("Hello there"))
+    #expect(html.contains(#"<span class="missing-image">[Saving image: a chart]</span>"#))
+    #expect(html.contains(#"<img src="image-1.png">"#))
+    #expect(try Data(contentsOf: url.deletingLastPathComponent().appendingPathComponent("image-1.png")) == Data([1, 2]))
+    #expect(article.title == "A story" && article.imageCount == 1 && article.missingImageCount == 1)
+    #expect(article.state == .downloading)
+}
