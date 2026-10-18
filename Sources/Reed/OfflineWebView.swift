@@ -216,6 +216,19 @@ enum NarrationDirection: String {
             if parent.narrating != nil { applyNarration(webView) }
         }
 
+        /// The system ends the page's process when memory runs short, such as while narrating with the phone locked,
+        /// which leaves the page blank until it's loaded again.
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            loaded = false
+            currentFontSize = nil
+            sentPassages = nil
+            shownNarration = nil
+            sentNotes = false
+            shownNotesOpen = false
+            shownCards = nil
+            webView.loadFileURL(parent.url, allowingReadAccessTo: parent.url.deletingLastPathComponent())
+        }
+
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             if message.name == "contextLink" {
                 contextLink = (message.body as? String).flatMap(URL.init(string:)).flatMap { isWebLink($0) ? $0 : nil }
