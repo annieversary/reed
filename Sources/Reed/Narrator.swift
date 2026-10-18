@@ -276,7 +276,7 @@ final class Narrator {
                 let url = directory.appendingPathComponent("\(voice).m4a")
                 if !FileManager.default.fileExists(atPath: url.path) {
                     guard let kokoro = try await self?.loadKokoro() else { return }
-                    let samples = try await kokoro.synthesizeDetailed(text: Self.sample, voice: voice).samples
+                    let samples = try await Self.synthesize(Self.sample, voice: voice, with: kokoro)
                     try Task.checkCancellation()
                     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                     try await PassageAudio.write(samples, to: url)
@@ -537,7 +537,7 @@ final class Narrator {
                         try Task.checkCancellation()
                         if number > 0 { samples += [Float](repeating: 0, count: Int(Self.sentencePause * PassageAudio.sampleRate)) }
                         starts.append(Double(samples.count) / PassageAudio.sampleRate)
-                        samples += try await kokoro.synthesizeDetailed(text: ArticleSpeech.spoken(sentence), voice: voice).samples
+                        samples += try await Self.synthesize(ArticleSpeech.spoken(sentence), voice: voice, with: kokoro)
                     }
                     try Task.checkCancellation()
                     // Written first, so a passage's audio is never there without its sentence times.
@@ -552,6 +552,21 @@ final class Narrator {
                 self?.errorMessage = "Couldn't synthesize the next part: \(error.localizedDescription)"
             } catch {}
         }
+    }
+
+    /// Kokoro's Core ML chain crashes in libBNNS on iOS 26 when given exactly 46 phonemes, whatever they are,
+    /// so those get a leading space, one more token that doesn't change how the sentence sounds.
+    private static let crashingPhonemeCount = 46
+
+    private static func synthesize(_ text: String, voice: String, with kokoro: KokoroAneManager) async throws -> [Float] {
+        var phonemes = try await kokoro.phonemes(for: text)
+        let length = KokoroAneVocab.phonemeLength(phonemes)
+        // Longer sentences are split into chunks, which only synthesizing from the text does.
+        guard length <= KokoroAneConstants.maxPhonemeLength else {
+            return try await kokoro.synthesizeDetailed(text: text, voice: voice).samples
+        }
+        if length == crashingPhonemeCount { phonemes = " " + phonemes }
+        return try await kokoro.synthesizeFromPhonemesDetailed(phonemes, voice: voice).samples
     }
 
     /// The model downloads (about 120 MB) the first time, then loads from disk.
