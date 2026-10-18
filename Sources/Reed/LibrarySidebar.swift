@@ -59,6 +59,15 @@ struct LibrarySidebar: View {
                     discoverLink(.feeds, symbol: "dot.radiowaves.up.forward")
                 } header: { Text("DISCOVER").font(.system(size: 10, weight: .medium)).tracking(1.7) }
                 Section {
+                    NavigationLink(value: SidebarItem.downloads) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "arrow.down.circle").frame(width: 18)
+                            Text("Downloads")
+                            Spacer(minLength: 2)
+                            downloadsBadge
+                        }
+                        .padding(.vertical, 5)
+                    }
                     NavigationLink(value: SidebarItem.stats) {
                         HStack(spacing: 10) {
                             Image(systemName: "chart.bar").frame(width: 18)
@@ -76,6 +85,18 @@ struct LibrarySidebar: View {
         #else
         .toolbar(.hidden, for: .navigationBar)
         #endif
+    }
+
+    /// How many are being saved or waiting, or a warning when only failures are left.
+    @ViewBuilder private var downloadsBadge: some View {
+        let waiting = library.waiting
+        let pending = waiting.articles.count + waiting.books.count + (library.saving == nil ? 0 : 1)
+        if pending > 0 {
+            Text("\(pending)").font(.caption).monospacedDigit().foregroundStyle(.secondary)
+        } else if library.articles.contains(where: { $0.state == .failed }) || library.books.contains(where: { $0.state == .failed }) {
+            Image(systemName: "exclamationmark.circle").font(.caption).foregroundStyle(.secondary)
+                .accessibilityLabel("Some couldn't be saved")
+        }
     }
 
     private func discoverLink(_ origin: Discover, symbol: String) -> some View {

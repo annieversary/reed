@@ -12,7 +12,8 @@ public final class Library {
     /// Cached articles kept even once they are no longer wanted, such as the one being read.
     public var retained: Set<UUID> = []
     public var errorMessage: String?
-    public internal(set) var activity: String?
+    /// The article or book being saved to the library, and how far along it is. Caching ahead goes unreported.
+    public internal(set) var saving: SaveProgress?
     /// Image progress of the article being saved, such as "Saving image 2 of 5…".
     public internal(set) var imageActivity: String?
     /// The front page last fetched from each source, kept between launches.

@@ -74,15 +74,19 @@ extension Library {
         book.state = .downloading
         save()
         var staging: URL?
-        defer { if let staging { try? FileManager.default.removeItem(at: staging) } }
+        func report(_ message: String, fraction: Double? = nil) { saving = SaveProgress(id: book.id, step: message, fraction: fraction) }
+        defer {
+            saving = nil
+            if let staging { try? FileManager.default.removeItem(at: staging) }
+        }
         do {
-            activity = "Opening \(book.title)…"
+            report("Opening \(book.title)…")
             let epub = try await Self.openBook(at: storage.bookFileURL(book.id))
             let directory = try storage.createStagingDirectory()
             staging = directory
             var chapters = epub.chapters
             func extract(_ index: Int, links: [String: Int]) async throws -> ExtractedArticle {
-                activity = "Converting chapter \(index + 1) of \(chapters.count)…"
+                report("Converting chapter \(index + 1) of \(chapters.count)…", fraction: Double(index) / Double(chapters.count))
                 let files = try await Self.files(of: chapters[index], in: epub)
                 return try await extractor.chapter(files: files, title: chapters[index].title, index: index, links: links)
             }
@@ -101,7 +105,7 @@ extension Library {
                 return extracted
             }
             guard extracted.contains(where: { $0.wordCount > 0 }) else { throw ReedError.unreadableBook }
-            activity = "Saving \(book.title)…"
+            report("Saving \(book.title)…")
             var images = extracted.flatMap { $0.images.map { (path: $0.url, filename: $0.filename) } }
             let cover = epub.cover.map { (path: $0, filename: BookFiles.imageName(for: $0)) }
             if let cover { images.append(cover) }
@@ -113,7 +117,7 @@ extension Library {
                 earlier = (await Self.joined(chapters), storage.bookDirectory(book.id).appendingPathComponent(version, isDirectory: true))
             }
             let descriptions = try await describeImages(in: extracted.map(\.html).joined(), directory: directory, limit: 60,
-                                                        from: "the book \"\(book.title)\"", previous: earlier) { activity = $0 }
+                                                        from: "the book \"\(book.title)\"", previous: earlier) { report($0, fraction: $1) }
             for index in extracted.indices { extracted[index].html = await ImageDescriptions.applying(descriptions, to: extracted[index].html) }
             for (index, chapter) in extracted.enumerated() {
                 let after = extracted.indices.contains(index + 1) ? BookFiles.nextChapterCard(index: index + 1, title: extracted[index + 1].title) : ""

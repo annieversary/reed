@@ -25,7 +25,7 @@ enum CollectionFilter: String, CaseIterable, Identifiable {
 }
 
 enum SidebarItem: Hashable {
-    case collection(CollectionFilter), books(BookFilter), discover(Discover), stats
+    case collection(CollectionFilter), books(BookFilter), discover(Discover), stats, downloads
 }
 
 struct LibraryView: View {
@@ -186,12 +186,15 @@ struct LibraryView: View {
                     BookShelfView(library: library, filter: filter, selection: $selectedBookID) { bookToDelete = $0 }
                 } else if selection == .stats {
                     StatsView(library: library)
+                } else if selection == .downloads {
+                    DownloadsView(library: library, selection: $selectedID) { articleToDelete = $0 } onDeleteBook: { bookToDelete = $0 }
                 } else {
                     articleList
                 }
             }
             .navigationSplitViewColumnWidth(min: 270, ideal: 340, max: 430)
             .safeAreaInset(edge: .bottom, spacing: 0) { narrationBar(when: columnsStack) }
+            .environment(\.showDownloads) { selection = .downloads }
         } detail: {
             Group {
                 if case .books = selection {

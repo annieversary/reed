@@ -54,21 +54,35 @@ struct HeaderButton: View {
     }
 }
 
-/// What the library is busy with, such as saving an article, at the foot of a column.
+/// What the library is busy with, such as saving an article, at the foot of a column. Opens the downloads.
 struct ActivityFooter: View {
     let library: Library
+    @Environment(\.showDownloads) private var showDownloads
 
     var body: some View {
-        if let activity = library.activity {
+        if let saving = library.saving {
             Divider()
-            HStack(spacing: 7) {
-                ProgressView().controlSize(.mini)
-                Text(activity).lineLimit(1)
-                Spacer(minLength: 0)
+            Button(action: showDownloads) {
+                HStack(spacing: 7) {
+                    ProgressView().controlSize(.mini)
+                    Text(saving.step).lineLimit(1)
+                    Spacer(minLength: 0)
+                    let waiting = library.waiting.articles.count + library.waiting.books.count
+                    if waiting > 0 { Text("+\(waiting) waiting") }
+                    Image(systemName: "chevron.right").imageScale(.small)
+                }
+                .font(.system(size: 10)).foregroundStyle(.secondary).padding(14)
+                .contentShape(Rectangle())
             }
-            .font(.system(size: 10)).foregroundStyle(.secondary).padding(14)
+            .buttonStyle(.plain)
+            .help("Show downloads")
         }
     }
+}
+
+extension EnvironmentValues {
+    /// Opens the downloads in the list column.
+    @Entry var showDownloads: () -> Void = {}
 }
 
 extension View {

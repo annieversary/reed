@@ -1,8 +1,21 @@
 import Foundation
 import SwiftData
 
+/// How far saving an article or book has got: the step it's on and, while counting through images or chapters, the share of that step done.
+public struct SaveProgress: Equatable, Sendable {
+    public let id: UUID
+    public let step: String
+    /// From 0 to 1; nil while the step can't tell how long it will take.
+    public let fraction: Double?
+}
+
 /// Saving articles: fetching, extracting and storing each in turn, with its images.
 extension Library {
+    /// What's waiting to be saved, in the order it will be: articles first, then books, oldest of each first.
+    public var waiting: (articles: [Article], books: [Book]) {
+        (articles.filter { $0.state == .queued }.reversed(), books.filter { $0.state == .queued }.reversed())
+    }
+
     /// Waits until nothing is queued to download or convert.
     func idle() async {
         while let worker { await worker.value }
@@ -12,7 +25,7 @@ extension Library {
         guard worker == nil else { return }
         worker = Task { [weak self] in
             guard let self else { return }
-            defer { self.worker = nil; self.activity = nil; self.imageActivity = nil }
+            defer { self.worker = nil; self.saving = nil; self.imageActivity = nil }
             while !Task.isCancelled {
                 if let article = self.articles.last(where: { $0.state == .queued }) {
                     await self.download(article)
@@ -67,8 +80,11 @@ extension Library {
         save()
         var staging: URL?
         // Caching happens quietly; only saving to the library is reported.
-        func report(_ message: String) { if !article.isCached { activity = message } }
+        func report(_ message: String, fraction: Double? = nil) {
+            if !article.isCached { saving = SaveProgress(id: article.id, step: message, fraction: fraction) }
+        }
         defer {
+            saving = nil
             imageActivity = nil
             if let staging { try? FileManager.default.removeItem(at: staging) }
         }
@@ -91,7 +107,7 @@ extension Library {
                     pageURL = url
                 case .page(let page):
                     report("Finding the article…")
-                    let found = try await extract(page, report: report)
+                    let found = try await extract(page) { report($0) }
                     if let paperURL = ArticleDownloader.arxivPDF(for: page.url, extracted: found.html) {
                         // The abstract page names the paper, and without an HTML rendering its PDF is the paper.
                         report("Fetching the paper…")
@@ -134,7 +150,7 @@ extension Library {
                 }
                 let message = "Saving image \(index + 1) of \(extracted.images.count)…"
                 imageActivity = message
-                report(message)
+                report(message, fraction: Double(index) / Double(extracted.images.count))
                 do {
                     guard index < 40, totalBytes < 64 * 1024 * 1024, let url = URL(string: image.url) else {
                         throw ReedError.oversizedDownload
@@ -148,9 +164,9 @@ extension Library {
             }
             var body = await Self.replacing(missing, in: extracted.html)
             let descriptions = try await describeImages(in: body, directory: directory, limit: 20, from: "an article titled \"\(extracted.title)\"",
-                                                        previous: earlier) { message in
+                                                        previous: earlier) { message, fraction in
                 imageActivity = message
-                report(message)
+                report(message, fraction: fraction)
             }
             body = await ImageDescriptions.applying(descriptions, to: body)
             try await Self.write(Data(Self.document(extracted, pageURL: pageURL, body: body).utf8), to: directory.appendingPathComponent("index.html"))
@@ -224,7 +240,7 @@ extension Library {
     /// Alt text for the pictures in `html` saved in `directory` that have none, by file name: as `previous` described them,
     /// or else from the on-device model.
     func describeImages(in html: String, directory: URL, limit: Int, from source: String, previous: (html: String, directory: URL)?,
-                        report: (String) -> Void) async throws -> [String: String] {
+                        report: (String, Double) -> Void) async throws -> [String: String] {
         guard ImageDescriptions.available || previous != nil else { return [:] }
         let undescribed = await ImageDescriptions.undescribed(in: html, directory: directory, limit: limit)
         var descriptions: [String: String] = [:]
@@ -233,7 +249,7 @@ extension Library {
         let remaining = undescribed.filter { descriptions[$0] == nil }
         for (index, name) in remaining.enumerated() {
             try Task.checkCancellation()
-            report("Describing image \(index + 1) of \(remaining.count)…")
+            report("Describing image \(index + 1) of \(remaining.count)…", Double(index) / Double(remaining.count))
             descriptions[name] = await ImageDescriptions.describe(directory.appendingPathComponent(name), from: source)
         }
         return descriptions
