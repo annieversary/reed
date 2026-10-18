@@ -130,6 +130,9 @@ final class PDFReflow {
     /// The most pixels drawn at once. A page's size comes from the file, so it may be absurdly large.
     private static let maxPixels: CGFloat = 50_000_000
     private var drawn: (page: Int, image: CGImage)?
+    /// The most pages reflowed. Each is laid out by Vision and may be cropped, so a whole book would hold up
+    /// every other save for minutes and fill memory with its pictures.
+    static let pageLimit = 150
 
     init(document: PDFDocument, url: URL) {
         self.document = document
@@ -137,7 +140,7 @@ final class PDFReflow {
     }
 
     func article() async throws -> ExtractedArticle {
-        for index in 0..<document.pageCount {
+        for index in 0..<min(document.pageCount, Self.pageLimit) {
             try Task.checkCancellation()
             pages.append(await blocks(on: index))
         }
@@ -363,7 +366,7 @@ final class PDFReflow {
             let text = text(block), words = text.split(separator: " ").count
             let lastMark = text.last.map { ".:?!".contains($0) } ?? false
             if isAtEdge(block, page: index) && block.rows.count <= 2
-                && (text.allSatisfy { $0.isNumber || $0.isWhitespace } || (edgeCounts[letters(text)] ?? 0) >= max(3, document.pageCount / 3)) {
+                && (text.allSatisfy { $0.isNumber || $0.isWhitespace } || (edgeCounts[letters(text)] ?? 0) >= max(3, pages.count / 3)) {
                 block.kind = .furniture
             } else if text.contains(PDFText.caption) {
                 block.kind = .caption
@@ -763,6 +766,9 @@ final class PDFReflow {
             }
         }
         flush()
+        if document.pageCount > pages.count {
+            html.append("<p><em>Only the first \(pages.count) of the PDF's \(document.pageCount) pages were saved.</em></p>")
+        }
         if !footnotes.isEmpty {
             html.append("<hr><section class=\"footnotes\">" + footnotes.map { "<p>\(ArticleHTML.escape($0))</p>" }.joined() + "</section>")
         }
