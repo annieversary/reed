@@ -32,11 +32,12 @@ import ReedCore
                 let article = try library.add(base + "/article")
                 let duplicate = try library.add(base + "/article#section")
                 try check(article.id == duplicate.id, "URL fragments do not create duplicate articles")
-                let failed = try library.add(base + "/unavailable")
+                let failed = try library.add(base + "/missing")
+                let busy = try library.add(base + "/unavailable")
                 let unsupported = try library.add(base + "/document.pdf")
                 let paper = try library.add(base + "/paper.pdf")
                 let deadline = Date().addingTimeInterval(90)
-                while library.articles.contains(where: { $0.state == .queued || $0.state == .downloading }) && Date() < deadline {
+                while library.articles.contains(where: { ($0.state == .queued && !$0.isWaitingToRetry) || $0.state == .downloading }) && Date() < deadline {
                     try await Task.sleep(for: .milliseconds(100))
                 }
                 try check(article.state == .partial, "Article text survives a missing image (\(article.failureMessage ?? article.state.rawValue))")
@@ -44,7 +45,8 @@ import ReedCore
                 try check(article.title == "The art of paying attention", "Readability extracts the article title")
                 try check(article.author == "Reed Studio", "Readability extracts the author")
                 try check(article.resolvedURL == base + "/story", "Redirected source URL is retained")
-                try check(failed.state == .failed && failed.failureMessage?.contains("503") == true, "HTTP errors are surfaced")
+                try check(failed.state == .failed && failed.failureMessage?.contains("404") == true, "HTTP errors are surfaced")
+                try check(busy.isWaitingToRetry && busy.failureMessage?.contains("503") == true, "Saves from a busy site are tried again later")
                 try check(unsupported.state == .failed, "Content that is neither HTML nor a readable PDF is rejected")
                 try check(rendered.state == .ready && rendered.wordCount > 150, "Pages built by script are rendered before extraction")
                 try check(paper.state == .ready && paper.title == "Reading Papers Offline" && paper.wordCount > 150,
@@ -66,7 +68,7 @@ import ReedCore
                     library.save()
                 }
             } else {
-                try check(library.articles.count == 5, "Library survives a full app restart")
+                try check(library.articles.count == 6, "Library survives a full app restart")
                 if argument("--smoke-book") != nil {
                     try check(library.books.count == 1 && library.books[0].orderedChapters.first?.isRead == true, "Books and their reading survive a restart")
                 }

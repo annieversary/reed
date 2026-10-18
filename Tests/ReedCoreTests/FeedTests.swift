@@ -202,7 +202,7 @@ private let base = URL(string: "https://example.com/feed.xml")!
     #expect(library.feeds[0].failure != nil)
     #expect(library.feedItems.count == 1)
     // Lets the entry's cache download settle before its files go.
-    while library.cached.contains(where: { $0.state == .queued || $0.state == .downloading }) { await Task.yield() }
+    while library.cached.contains(where: { ($0.state == .queued && !$0.isWaitingToRetry) || $0.state == .downloading }) { await Task.yield() }
 
     #expect(library.visitFeeds() == nil)
     let reopened = try Library(root: root)

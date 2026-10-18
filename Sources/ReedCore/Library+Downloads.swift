@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import SwiftData
 
 /// How far saving an article or book has got: the step it's on and, while counting through images or chapters, the share of that step done.
@@ -23,25 +24,64 @@ extension Library {
 
     public func resumeDownloads() {
         guard worker == nil else { return }
+        retryWake?.cancel()
+        retryWake = nil
         worker = Task { [weak self] in
             guard let self else { return }
-            defer { self.worker = nil; self.saving = nil; self.imageActivity = nil }
+            defer { self.worker = nil; self.saving = nil; self.imageActivity = nil; self.wakeForRetry() }
             while !Task.isCancelled {
-                if let article = self.articles.last(where: { $0.state == .queued }) {
+                let now = Date.now
+                func due(_ article: Article) -> Bool { article.state == .queued && (article.retryAt ?? now) <= now }
+                if let article = self.articles.last(where: due) {
                     await self.download(article)
                 } else if let book = self.books.last(where: { $0.state == .queued }) {
                     await self.convert(book)
-                } else if let article = self.cached.first(where: { $0.state == .queued }) {
+                } else if let article = self.cached.first(where: due) {
                     await self.download(article)
                 } else { break }
             }
         }
     }
 
+    /// Starts the worker again when the soonest save waiting to be retried is due.
+    func wakeForRetry() {
+        retryWake?.cancel()
+        retryWake = nil
+        guard let next = (articles + cached).filter(\.isWaitingToRetry).compactMap(\.retryAt).min() else { return }
+        retryWake = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(max(next.timeIntervalSinceNow, 0))) } catch { return }
+            self?.resumeDownloads()
+        }
+    }
+
+    /// Tries the saves waiting to be retried now, such as once the network is back.
+    public func retryWaiting() {
+        for article in articles + cached where article.isWaitingToRetry { article.retryAt = nil }
+        resumeDownloads()
+    }
+
+    /// Retries waiting saves whenever the network comes back.
+    public func watchNetwork() {
+        guard networkMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            let connected = path.status == .satisfied
+            Task { @MainActor in
+                guard let self else { return }
+                if connected && self.connected == false { self.retryWaiting() }
+                self.connected = connected
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "town.versary.reed.network"))
+        networkMonitor = monitor
+    }
+
     public func retry(_ article: Article) {
-        guard article.state != .downloading && article.state != .queued else { return }
+        guard article.state != .downloading && !(article.state == .queued && article.retryAt == nil) else { return }
         article.state = .queued
         article.failureMessage = nil
+        article.retryAt = nil
+        article.failedAttempts = 0
         save()
         resumeDownloads()
     }
@@ -181,6 +221,8 @@ extension Library {
             article.downloadedAt = .now
             article.state = missing.isEmpty ? .ready : .partial
             article.failureMessage = nil
+            article.retryAt = nil
+            article.failedAttempts = 0
             try container.mainContext.save()
             if let previous { try? storage.removeArticleVersion(article.id, version: previous) }
             if !article.isCached, !discarded.contains(article.id) { reindex(article) }
@@ -189,9 +231,15 @@ extension Library {
             if contentURL(for: article) != nil {
                 article.state = article.missingImageCount > 0 ? .partial : .ready
                 if !article.isCached, !discarded.contains(article.id) { errorMessage = error.localizedDescription }
+            } else if let wait = SaveRetry.wait(after: error, failures: &article.failedAttempts) {
+                article.state = .queued
+                article.retryAt = .now + wait
+                article.failureMessage = SaveRetry.message(for: error)
             } else {
                 article.state = .failed
                 article.failureMessage = error.localizedDescription
+                article.retryAt = nil
+                article.failedAttempts = 0
             }
             save()
         }
@@ -275,5 +323,41 @@ extension Library {
             last = whole.upperBound
         }
         return result + html[last...]
+    }
+}
+
+/// When to try a save again after it fails in a way that may pass: offline, or the site slow or busy.
+enum SaveRetry {
+    /// How long to wait after each failure in a row, the last failure being given up on.
+    static let backoff: [TimeInterval] = [30, 2 * 60, 10 * 60, 30 * 60]
+    /// Being offline says nothing about the site, so it's waited out without counting as a failure,
+    /// and the network coming back or Reed being opened tries again sooner.
+    static let offlineWait: TimeInterval = 5 * 60
+
+    /// How long to wait before trying again after `error`, counting it in `failures`; nil to give up.
+    static func wait(after error: Error, failures: inout Int) -> TimeInterval? {
+        if isOffline(error) { return offlineWait }
+        guard mayPass(error) else { return nil }
+        failures += 1
+        return failures <= backoff.count ? backoff[failures - 1] : nil
+    }
+
+    static func message(for error: Error) -> String {
+        if isOffline(error) { return "Waiting for a connection to save." }
+        if case ReedError.httpStatus(let code) = error { return "The site is busy (HTTP \(code)), so Reed will try again shortly." }
+        return "The site didn't answer, so Reed will try again shortly."
+    }
+
+    static func isOffline(_ error: Error) -> Bool {
+        guard let error = error as? URLError else { return false }
+        return [.notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .internationalRoamingOff, .callIsActive].contains(error.code)
+    }
+
+    static func mayPass(_ error: Error) -> Bool {
+        switch error {
+        case let error as URLError: [.timedOut, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed].contains(error.code)
+        case ReedError.httpStatus(let code): [408, 425, 429, 500, 502, 503, 504].contains(code)
+        default: false
+        }
     }
 }

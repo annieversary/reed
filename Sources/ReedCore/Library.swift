@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Observation
 import os
 import SwiftData
@@ -40,6 +41,11 @@ public final class Library {
     let renderer = PageRenderer()
     let searchIndex: SearchIndex
     var worker: Task<Void, Never>?
+    /// Wakes the worker when the next save waiting to be retried is due.
+    var retryWake: Task<Void, Never>?
+    @ObservationIgnored var networkMonitor: NWPathMonitor?
+    /// Whether the network was last seen reachable; nil until it has been looked at.
+    @ObservationIgnored var connected: Bool?
     var progressSave: Task<Void, Never>?
     /// Articles removed while downloading, deleted once their download settles.
     var discarded: Set<UUID> = []
@@ -66,6 +72,8 @@ public final class Library {
         try storage.cleanStaging()
         for article in stored {
             if article.state == .downloading { article.state = .queued }
+            // Opening Reed is as good a time as any to try again.
+            article.retryAt = nil
             if article.state.isReadable && contentURL(for: article) == nil {
                 article.state = .failed
                 article.failureMessage = ReedError.damagedArticle.localizedDescription
@@ -145,6 +153,7 @@ public final class Library {
             article = existing
             note(discussion, of: article)
             if article.state == .failed { article.state = .queued }
+            article.retryAt = nil
             save()
         } else {
             article = Article(url: url)

@@ -50,7 +50,7 @@ struct DownloadsView: View {
                     Section {
                         ForEach(Array(upNext.enumerated()), id: \.element.id) { index, item in
                             row(item) {
-                                ItemSummary(item: item) {
+                                ItemSummary(item: item, detail: waitingMessage(of: item)) {
                                     Text("\(index + 1)").monospacedDigit().foregroundStyle(.tertiary)
                                 }
                             }
@@ -141,6 +141,11 @@ struct DownloadsView: View {
         case .article(let article): article.failureMessage
         case .book(let book): book.failureMessage
         }
+    }
+
+    private func waitingMessage(of item: Item) -> String? {
+        guard case .article(let article) = item, article.isWaitingToRetry else { return nil }
+        return article.failureMessage
     }
 
     private func header(_ title: String) -> some View {

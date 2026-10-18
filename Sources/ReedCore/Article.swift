@@ -49,6 +49,13 @@ public final class Article {
     public var discussionURLs: [String]?
     /// When it was first opened in the reader, whether or not it was read any further.
     public var openedAt: Date?
+    /// When a save that failed in a way that may pass, such as being offline, is tried again; nil to try as soon as its turn comes.
+    public var retryAt: Date?
+    /// How many times in a row saving has failed in a way that may pass, besides being offline.
+    public var failedAttempts: Int = 0
+
+    /// Queued, but waiting to be tried again after a save that may yet work.
+    public var isWaitingToRetry: Bool { state == .queued && retryAt != nil }
 
     public init(url: URL, id: UUID = UUID()) {
         self.id = id

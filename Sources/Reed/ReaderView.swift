@@ -103,7 +103,9 @@ struct ReaderView: View {
                     if article.state == .downloading || article.state == .queued {
                         ProgressView().controlSize(.large)
                         Text("Saving").font(.system(size: 25, design: .serif))
-                        if article.state == .downloading, let imageActivity = library.imageActivity {
+                        if article.isWaitingToRetry, let message = article.failureMessage {
+                            Text(message).font(.subheadline).foregroundStyle(.secondary)
+                        } else if article.state == .downloading, let imageActivity = library.imageActivity {
                             Text(imageActivity).font(.subheadline).foregroundStyle(.secondary)
                         }
                     } else {

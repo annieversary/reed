@@ -27,7 +27,8 @@ struct ArticleRow: View {
                 Text(article.excerpt).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2).lineSpacing(3)
             }
             HStack(spacing: 5) {
-                if article.state == .downloading || article.state == .queued { ProgressView().controlSize(.mini) }
+                if article.isWaitingToRetry { Image(systemName: "clock").font(.system(size: 10)) }
+                else if article.state == .downloading || article.state == .queued { ProgressView().controlSize(.mini) }
                 else if !article.state.isReadable { Image(systemName: "exclamationmark.circle").font(.system(size: 10)) }
                 Text(article.state.isReadable ? "\(article.readingMinutes) min read" : article.state.label)
                 if article.state == .partial { Image(systemName: "photo.badge.exclamationmark") }

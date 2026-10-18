@@ -74,6 +74,7 @@ import ReedCore
                 #endif
                 addShared(to: library)
                 library.resumeDownloads()
+                library.watchNetwork()
                 for url in pendingFiles { openBook(at: url, in: library) }
                 pendingFiles = []
             }
@@ -116,7 +117,7 @@ import ReedCore
     func applicationDidBecomeActive(_ notification: Notification) {
         guard let library else { return }
         addShared(to: library)
-        library.resumeDownloads()
+        library.retryWaiting()
     }
     func applicationDidResignActive(_ notification: Notification) { library?.save() }
     func applicationWillTerminate(_ notification: Notification) { library?.save() }
@@ -185,7 +186,7 @@ import ReedCore
             Group {
                 if let library {
                     LibraryView(library: library)
-                        .task { addShared(to: library); library.resumeDownloads() }
+                        .task { addShared(to: library); library.resumeDownloads(); library.watchNetwork() }
                         .onReceive(NotificationCenter.default.publisher(for: ShareInbox.didDeposit)) { _ in addShared(to: library) }
                         .onOpenURL { url in
                             guard url.isFileURL, url.pathExtension.lowercased() == "epub" else { return }
@@ -201,7 +202,7 @@ import ReedCore
             .onChange(of: scenePhase) { _, phase in
                 guard let library else { return }
                 // Synthesis can fail in the background, so it's picked up again on return.
-                if phase == .active { addShared(to: library); library.resumeDownloads(); narrator.retry() }
+                if phase == .active { addShared(to: library); library.retryWaiting(); narrator.retry() }
                 else { library.save() }
             }
         }
