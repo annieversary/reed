@@ -42,6 +42,32 @@ import WebKit
     #expect(found as? [String] == ["H1:T", "P:and more.", "IMG:A barn", "P:Look  here now", "IMG:A diagram", "DIV:and more.", "P:After"])
 }
 
+@Test @MainActor func narrationFindsHeadingsRepeatingTheTextBefore() async throws {
+    let page = try await LoadedPage(html: """
+        <html><head></head><body><main><p>The first is <em>interacting</em>. Then more.</p><h4>interacting</h4><p>After</p></main></body></html>
+        """)
+    _ = try await page.view.callAsyncJavaScript(try BundledResource.text("ReaderNarration", extension: "js") + "\nreturn true;",
+                                                contentWorld: .page)
+    let found = try await page.view.callAsyncJavaScript("""
+        reedNarration.setPassages([["The first is interacting.", "Then more."], ["interacting"], ["After"]]);
+        return reedNarration.elements.map(element => element && element.tagName);
+        """, contentWorld: .page)
+    #expect(found as? [String] == ["P", "H4", "P"])
+}
+
+@Test @MainActor func narrationKeepsItsPlacePastAPassageFoundFarAhead() async throws {
+    let page = try await LoadedPage(html: """
+        <html><head></head><body><main><ul><li>Alpha</li></ul><h2>Alpha</h2><p>Text</p><footer><p>Site</p></footer></main></body></html>
+        """)
+    _ = try await page.view.callAsyncJavaScript(try BundledResource.text("ReaderNarration", extension: "js") + "\nreturn true;",
+                                                contentWorld: .page)
+    let found = try await page.view.callAsyncJavaScript("""
+        reedNarration.setPassages([["Site"], ["Alpha"], ["Alpha"], ["Text"]]);
+        return reedNarration.elements.map(element => element && element.tagName);
+        """, contentWorld: .page)
+    #expect(found as? [String] == ["P", "LI", "H2", "P"])
+}
+
 @Test @MainActor func narrationTintsSentencesAcrossFootnoteMarkers() async throws {
     let body = ##"<p>Africa<sup>1</sup>, then<sup><a href="#fn:2">2</a></sup> and<a href="#fn3"><sup>3</sup></a> 10<sup>6</sup> cells. Next.</p>"##
     let page = try await LoadedPage(html: "<html><head></head><body><main>\(body)</main></body></html>")

@@ -59,7 +59,6 @@ window.reedNarration = (() => {
         return parts;
     };
     const partText = part => part.nodeType === Node.TEXT_NODE ? part.data : part.localName === 'img' ? imageText(part) : formulaText(part);
-    const spokenText = element => element.localName === 'img' ? imageText(element) : spokenParts(element).map(partText).join('');
     const style = document.createElement('style');
     style.textContent = `
         :root { --narrating: color-mix(in srgb, var(--accent) 9%, transparent); }
@@ -85,27 +84,51 @@ window.reedNarration = (() => {
     // What's being read: the sentence's range when it was found, otherwise its passage's element.
     let target = null, marks = [], tintedFormulas = [];
 
+    // The page's spoken text, without whitespace, is read through once in order: each passage is found after the one
+    // before it, so text that repeats is matched where it's read. Its element is the innermost block holding all of it.
+    // A passage not found from there is looked for from the start, leaving where the next is looked for unchanged,
+    // as does one found far out of place.
     const locate = passages => {
-        const all = Array.from(document.body.querySelectorAll(blocks));
-        const texts = new Map(all.map(element => [element, squash(spokenText(element))]));
-        // Each passage is looked for from the last one found on, which may be a picture inside the block it continues.
-        let last = null;
-        const fromLast = element => !last || element === last || element.contains(last)
-            || (last.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING);
-        return passages.map(text => {
-            const target = squash(text);
-            const contains = element => texts.get(element).includes(target);
-            let found = all.find(element => fromLast(element) && contains(element));
-            const fits = found ? fromLast : () => true;
-            found ??= all.find(contains);
-            if (!found) return null;
-            // The innermost block holding it, looking through wrappers that aren't blocks, like lists.
-            const outer = found;
-            for (let at = all.indexOf(outer) + 1; at < all.length && outer.contains(all[at]); at++) {
-                if (found.contains(all[at]) && contains(all[at]) && fits(all[at])) found = all[at];
+        let text = '';
+        // The part holding each character, and the span of characters each block holds.
+        const owners = [], spans = new Map();
+        for (const part of spokenParts(document.body)) {
+            const start = text.length;
+            text += squash(partText(part));
+            if (text.length === start) continue;
+            owners.length = text.length;
+            owners.fill(part, start);
+            for (let element = part.nodeType === Node.ELEMENT_NODE ? part : part.parentElement;
+                 element && element !== document.body; element = element.parentElement) {
+                if (!element.matches(blocks)) continue;
+                const span = spans.get(element);
+                if (span) span[1] = text.length; else spans.set(element, [start, text.length]);
             }
-            last = found;
-            return found;
+        }
+        const targets = passages.map(squash);
+        const onPage = targets.map(target => Boolean(target) && text.includes(target));
+        let read = 0;
+        return targets.map((target, index) => {
+            if (!onPage[index]) return null;
+            let at = text.indexOf(target, read);
+            const ordered = at >= 0;
+            if (!ordered) at = text.indexOf(target);
+            const end = at + target.length;
+            // A passage found out of place, far ahead, would leave the ones after it behind; one of the next few
+            // being found only between here and there gives it away.
+            const following = [];
+            for (let after = index + 1; after < targets.length && following.length < 3; after++) {
+                if (onPage[after]) following.push(targets[after]);
+            }
+            const ahead = ordered && following.some(next => text.includes(next, read) && !text.includes(next, end));
+            const part = owners[at];
+            let found = part.nodeType === Node.ELEMENT_NODE ? part : part.parentElement;
+            for (; found && found !== document.body; found = found.parentElement) {
+                const span = spans.get(found);
+                if (span && span[1] >= end) break;
+            }
+            if (ordered && !ahead) read = end;
+            return found === document.body ? null : found;
         });
     };
     // The range of each sentence of the passages at `indexes`, all held by `element`, matching text the same way passages
