@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import LinkPresentation
 #if SWIFT_PACKAGE
 import ReedCore
 #endif
@@ -283,7 +284,7 @@ enum NarrationDirection: String {
         #if os(iOS)
         func webView(_ webView: WKWebView, contextMenuConfigurationFor elementInfo: WKContextMenuElementInfo) async -> UIContextMenuConfiguration? {
             guard let url = elementInfo.linkURL, isWebLink(url) else { return nil }
-            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] suggested in
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: { LinkPreviewController(url: url) }) { [weak self] suggested in
                 let save = UIAction(title: "Save", image: UIImage(systemName: "tray.and.arrow.down")) { _ in self?.parent.onAddLink(url) }
                 return UIMenu(children: [save] + suggested)
             }
@@ -291,6 +292,76 @@ enum NarrationDirection: String {
         #endif
     }
 }
+
+#if os(iOS)
+/// A held link's title and address, shown above its menu. Until the title arrives, or if it can't be fetched, the site's name stands in.
+final class LinkPreviewController: UIViewController {
+    private let url: URL
+    private let titleLabel = UILabel()
+    private let stack = UIStackView()
+    private let provider = LPMetadataProvider()
+
+    init(url: URL) {
+        self.url = url
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
+
+        titleLabel.font = .preferredFont(forTextStyle: .headline)
+        titleLabel.numberOfLines = 3
+        titleLabel.text = url.host() ?? url.absoluteString
+
+        let addressLabel = UILabel()
+        addressLabel.font = .preferredFont(forTextStyle: .footnote)
+        addressLabel.textColor = .secondaryLabel
+        addressLabel.numberOfLines = 2
+        addressLabel.lineBreakMode = .byTruncatingMiddle
+        addressLabel.text = url.absoluteString
+
+        stack.axis = .vertical
+        stack.spacing = 4
+        stack.addArrangedSubview(titleLabel)
+        stack.addArrangedSubview(addressLabel)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+        ])
+        fit()
+
+        provider.shouldFetchSubresources = false
+        provider.timeout = 10
+        provider.startFetchingMetadata(for: url) { [weak self] metadata, _ in
+            let title = metadata?.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+            DispatchQueue.main.async {
+                guard let self, let title, !title.isEmpty else { return }
+                self.titleLabel.text = title
+                self.fit()
+            }
+        }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        provider.cancel()
+    }
+
+    private func fit() {
+        let width: CGFloat = 320
+        let height = stack.systemLayoutSizeFitting(CGSize(width: width - 32, height: 0),
+                                                   withHorizontalFittingPriority: .required,
+                                                   verticalFittingPriority: .fittingSizeLevel).height
+        preferredContentSize = CGSize(width: width, height: height + 32)
+    }
+}
+#endif
 
 extension OfflineWebView {
     /// Notes still waiting to be saved are sent before the page stops being listened to.
