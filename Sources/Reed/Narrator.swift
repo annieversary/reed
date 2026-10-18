@@ -105,6 +105,8 @@ final class Narrator {
     @ObservationIgnored var heard: Double = 0
     /// Nothing is queued for the current passage, so resuming must start it afresh.
     @ObservationIgnored var needsStart = false
+    /// When playback was last paused, to pick up the thread again after a long break.
+    @ObservationIgnored private var pausedAt: Date?
     /// An interruption paused playback, so it may carry on once the interruption ends.
     @ObservationIgnored var interruptedWhilePlaying = false
     /// Lengths of synthesized passages, in seconds.
@@ -127,6 +129,10 @@ final class Narrator {
     private static let wordsPerSecond = 2.8
     /// "Previous" restarts the passage rather than going back once it's this far in.
     private static let restartThreshold = 3.0
+    /// Resuming after a pause this long starts the sentence again.
+    private static let sentenceRewindPause: TimeInterval = 20
+    /// Resuming after a pause this long starts the passage again.
+    private static let passageRewindPause: TimeInterval = 180
     /// Decibels narration is raised by before the limiter.
     private static let gain: AudioUnitParameterValue = 10
     #if os(iOS)
@@ -188,13 +194,19 @@ final class Narrator {
         // A running engine counts as playing, so the lock screen would keep offering Pause.
         engine.pause()
         isPlaying = false
+        pausedAt = .now
         stopTracking()
         updateNowPlaying()
     }
 
     func resume() {
         guard readableID != nil, !isPlaying else { return }
-        if !needsStart, restartEngine() {
+        let pausedFor = pausedAt.map { Date.now.timeIntervalSince($0) } ?? 0
+        if pausedFor >= Self.passageRewindPause {
+            start(at: current)
+        } else if pausedFor >= Self.sentenceRewindPause {
+            start(at: current, offset: starts(of: current)[sentenceIndex(at: heard)])
+        } else if !needsStart, restartEngine() {
             isPlaying = true
             player.play()
             track()
@@ -333,6 +345,7 @@ final class Narrator {
         startOffset = AVAudioFramePosition(offset * PassageAudio.sampleRate)
         heard = offset
         needsStart = false
+        pausedAt = nil
         sentence = sentenceIndex(at: offset)
         rememberPosition()
         do {
