@@ -232,6 +232,7 @@ struct LibraryView: View {
         }
         .onAppear { if !columnsStack { selection = .collection(.all) } }
         .onChange(of: [selectedID, narrator.readableID], initial: true) { _, ids in library.retained = Set(ids.compactMap { $0 }) }
+        .onChange(of: narrator.savedVersion) { narrator.followNewVersion() }
         .onChange(of: selectedBookID) { bookPath = [] }
         .onChange(of: following, initial: true) { old, new in
             if let next = new.next { nextID = next } else if old.current != new.current { nextID = nil }

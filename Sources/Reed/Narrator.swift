@@ -78,6 +78,8 @@ final class Narrator {
     /// Names each passage's audio by what it says, so audio made before the passages were split differently isn't reused.
     @ObservationIgnored private var keys: [String] = []
     @ObservationIgnored private var item: (any Readable)?
+    /// The saved version of `item` being read.
+    @ObservationIgnored private var version: String?
     @ObservationIgnored private var library: Library?
     @ObservationIgnored private var directory: URL?
     @ObservationIgnored private var kokoro: KokoroAneManager?
@@ -187,23 +189,57 @@ final class Narrator {
             let artwork = Self.artwork(from: await library.leadImage(for: item))
             guard !Task.isCancelled else { return }
             opening = nil
-            reset()
-            self.item = item
-            self.library = library
-            readableID = item.id
-            title = item.title
-            source = item.source
-            book = item is BookChapter ? item.source : nil
-            passages = speech.passages
-            sentences = speech.sentences
-            keys = speech.sentences.map(PassageAudio.key(for:))
-            estimates = passages.map { Double($0.split(whereSeparator: \.isWhitespace).count) / Self.wordsPerSecond + PassageAudio.pause }
-            passageCount = passages.count
-            directory = library.storage.audioDirectory(item.location, version: version, voice: voice)
-            self.artwork = artwork
-            measure()
+            load(item, speech: speech, version: version, artwork: artwork, in: library)
             let resumed = item.narrationPassage.map { ArticleNotes.passage(near: $0, anchor: item.narrationAnchor, in: passages) }
             start(at: min(max(passage ?? resumed ?? 0, 0), passages.count - 1), sentence: passage == nil ? 0 : sentence)
+        }
+    }
+
+    /// Takes up `item` in place of whatever was being read, ready to start.
+    private func load(_ item: any Readable, speech: Speech, version: String, artwork: MPMediaItemArtwork?, in library: Library) {
+        reset()
+        self.item = item
+        self.library = library
+        self.version = version
+        readableID = item.id
+        title = item.title
+        source = item.source
+        book = item is BookChapter ? item.source : nil
+        passages = speech.passages
+        sentences = speech.sentences
+        keys = speech.sentences.map(PassageAudio.key(for:))
+        estimates = passages.map { Double($0.split(whereSeparator: \.isWhitespace).count) / Self.wordsPerSecond + PassageAudio.pause }
+        passageCount = passages.count
+        directory = library.storage.audioDirectory(item.location, version: version, voice: voice)
+        self.artwork = artwork
+        measure()
+    }
+
+    /// The version of what's being read last saved, which narration follows once it's refreshed.
+    var savedVersion: String? { item?.contentVersion }
+
+    /// Carries on in a newly saved version of what's being read, from the passage that reads the same, or the nearest,
+    /// since a refresh can add, drop or reword passages.
+    func followNewVersion() {
+        guard let item, let library, let version = item.contentVersion, version != self.version, opening == nil,
+              passages.indices.contains(current) else { return }
+        let reached = current, anchor = ArticleNotes.anchor(for: passages[current]), wasPlaying = isPlaying
+        opening = Task {
+            let speech = await library.speech(for: item)
+            let artwork = Self.artwork(from: await library.leadImage(for: item))
+            guard !Task.isCancelled, item.contentVersion == version, let speech, !speech.passages.isEmpty else { return }
+            opening = nil
+            let passage = ArticleNotes.passage(near: reached, anchor: anchor, in: speech.passages)
+            load(item, speech: speech, version: version, artwork: artwork, in: library)
+            if wasPlaying {
+                start(at: passage)
+            } else {
+                current = passage
+                heard = 0
+                needsStart = true
+                rememberPosition()
+                updateNowPlaying()
+            }
         }
     }
 
@@ -314,6 +350,7 @@ final class Narrator {
         errorMessage = nil
         directory = nil
         item = nil
+        version = nil
         library = nil
         artwork = nil
         durations = [:]
@@ -380,8 +417,8 @@ final class Narrator {
         var offset = offset
         pendingSentence = nil
         if sentence > 0 {
-            let starts = starts(of: index)
-            if starts.count > 1 { offset = starts[min(sentence, starts.count - 1)] } else { pendingSentence = sentence }
+            // Otherwise the sentence is found once the passage is queued and its times are read.
+            if let starts = sentenceStarts[index], starts.count > 1 { offset = starts[min(sentence, starts.count - 1)] } else { pendingSentence = sentence }
         }
         startOffset = AVAudioFramePosition(offset * PassageAudio.sampleRate)
         heard = offset
@@ -440,14 +477,16 @@ final class Narrator {
         guard loader == nil else { needsScheduling = true; return }
         needsScheduling = false
         guard let directory, scheduled + 1 < passageCount, scheduled + 1 < current + Self.lookahead else { return }
-        let index = scheduled + 1, epoch = epoch, url = PassageAudio.audioURL(keys[index], in: directory)
+        let index = scheduled + 1, epoch = epoch, key = keys[index]
         loader = Task { [weak self] in
-            let buffer = await PassageAudio.buffer(at: url)
+            let buffer = await PassageAudio.buffer(at: PassageAudio.audioURL(key, in: directory))
+            let starts = await PassageAudio.sentenceStarts(at: PassageAudio.sentencesURL(key, in: directory))
             guard let self else { return }
             loader = nil
             if epoch != self.epoch || index != scheduled + 1 {
                 needsScheduling = true
             } else if let buffer {
+                if let starts, starts.count == sentences[index].count { sentenceStarts[index] = starts }
                 enqueue(buffer, at: index)
                 needsScheduling = true
             }
@@ -458,6 +497,7 @@ final class Narrator {
     private func enqueue(_ buffer: AVAudioPCMBuffer, at index: Int) {
         var buffer = buffer
         scheduled = index
+        durations[index] = Double(buffer.frameLength) / PassageAudio.sampleRate
         if index == current, let pending = pendingSentence {
             pendingSentence = nil
             let starts = starts(of: index)
@@ -465,7 +505,6 @@ final class Narrator {
             startOffset = AVAudioFramePosition(heard * PassageAudio.sampleRate)
         }
         let epoch = epoch
-        durations[index] = Double(buffer.frameLength) / PassageAudio.sampleRate
         var skipped: AVAudioFramePosition = 0
         if index == current, startOffset > 0, let rest = PassageAudio.slice(buffer, from: AVAudioFrameCount(startOffset)) {
             buffer = rest
@@ -516,18 +555,12 @@ final class Narrator {
         starts(of: current).lastIndex { $0 <= time } ?? 0
     }
 
-    /// Read from beside the passage's audio, or estimated from sentence lengths for audio made before it was recorded.
+    /// As read from beside the passage's audio when it was queued, or estimated from sentence lengths for audio made
+    /// before they were kept. Called as playback is followed, so it never touches the disk itself.
     private func starts(of index: Int) -> [Double] {
         if let known = sentenceStarts[index] { return known }
         let parts = sentences.indices.contains(index) ? sentences[index] : []
-        guard parts.count > 1 else { return [0] }
-        if let directory, let data = try? Data(contentsOf: PassageAudio.sentencesURL(keys[index], in: directory)),
-           let starts = try? JSONDecoder().decode([Double].self, from: data), starts.count == parts.count {
-            sentenceStarts[index] = starts
-            return starts
-        }
-        guard durations[index] != nil || (directory.map { FileManager.default.fileExists(atPath: PassageAudio.audioURL(keys[index], in: $0).path) } ?? false)
-        else { return [0] }
+        guard parts.count > 1, durations[index] != nil else { return [0] }
         let lengths = parts.map { Double($0.count) }
         let spoken = max(duration(of: index) - PassageAudio.pause, 0)
         var starts: [Double] = [], total = 0.0
@@ -535,7 +568,8 @@ final class Narrator {
             starts.append(total * spoken / lengths.reduce(0, +))
             total += length
         }
-        sentenceStarts[index] = starts
+        // Kept once queued, when the times saved with the audio, if any, have been read in its place.
+        if index <= scheduled { sentenceStarts[index] = starts }
         return starts
     }
 

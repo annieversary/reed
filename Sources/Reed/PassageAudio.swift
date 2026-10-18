@@ -28,6 +28,12 @@ enum PassageAudio {
         return buffer
     }
 
+    /// When each sentence of a passage begins, in seconds into it, if they were kept beside its audio.
+    @concurrent static func sentenceStarts(at url: URL) async -> [Double]? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode([Double].self, from: data)
+    }
+
     /// The length in seconds of each of `files` that's there, by its place in the list.
     @concurrent static func lengths(of files: [URL]) async -> [Int: Double] {
         var lengths: [Int: Double] = [:]
