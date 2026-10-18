@@ -198,6 +198,16 @@ import Testing
             == ["T", "Before", "Image: A red barn & snow", "Look here now", "Image: A map > a list", "Caption-like text", "After"])
 }
 
+@Test func narrationSkipsFootnoteMarkersButNotExponents() {
+    let body = """
+        <p>Africa<sup>1</sup>, then<sup id="fnref:2"><a href="#fn:2">2</a></sup> and<a href="#fn3"><sup>3</sup></a> \
+        ECMAScript<sup>†</sup> with<a href="#fn-4" id="fnref-4">[4]</a> 10<sup>6</sup> cells.</p>\
+        <p>Back <a href="#fnref:2">↩︎</a></p>
+        """
+    #expect(ArticleSpeech.passages(title: "T", html: "<main>\(body)</main>")
+            == ["T", "Africa, then and ECMAScript with 10 6 cells.", "Back"])
+}
+
 @Test func narrationResumesAtThePassageItReached() {
     let passages = ["T", "Image: A barn", "First", "Second", "First"]
     #expect(ArticleNotes.passage(near: 2, anchor: "Second", in: passages) == 3)

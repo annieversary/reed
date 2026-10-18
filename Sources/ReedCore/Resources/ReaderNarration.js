@@ -31,11 +31,27 @@ window.reedNarration = (() => {
         const alt = img.alt.trim().replace(/\s+/g, ' ');
         return worthReading(alt) && !img.closest('figure.equation') && !besideText(img) ? `Image: ${alt}` : '';
     };
+    // Footnote markers, which ArticleSpeech leaves out: a superscript holding just a number, letter or symbol,
+    // unless it follows a digit as an exponent would, or an in-page link holding just a number or symbol.
+    const isFootnote = element => {
+        const text = element.textContent.trim();
+        if (element.localName === 'sup') {
+            return /^\[?(\d{1,3}|[a-z]|[*†‡§]{1,3})\]?$/u.test(text) && !/\d$/.test(element.previousSibling?.textContent ?? '');
+        }
+        return /^\[?(\d{1,3}|[*†‡§]{1,3}|↩[︎️]?)\]?$/u.test(text);
+    };
+    const markers = 'sup, a[href^="#"]';
+    const inFootnote = node => {
+        for (let element = node.parentElement.closest(markers); element; element = element.parentElement?.closest(markers)) {
+            if (isFootnote(element)) return true;
+        }
+        return false;
+    };
     // The text nodes, formulas and pictures narration reads within `element`, in order.
     const spokenParts = element => {
         const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
             acceptNode: node => node.localName === 'math' || (node.localName === 'img' && imageText(node))
-                || (node.nodeType === Node.TEXT_NODE && !node.parentElement.closest('math'))
+                || (node.nodeType === Node.TEXT_NODE && !node.parentElement.closest('math') && !inFootnote(node))
                 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
         });
         const parts = [];

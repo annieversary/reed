@@ -14,11 +14,20 @@ public enum ArticleSpeech {
         let block = #/</?(?:p|div|h[1-6]|li|ul|ol|dl|dt|dd|blockquote|section|article|header|footer|aside|hr)\b[^>]*>|<br\s*/?>/#
             .ignoresCase()
         // Source line breaks fall inside paragraphs, so blocks are separated with a character HTML text never contains.
-        let blocks = String(body).replacing(unspoken, with: "\u{1}")
+        let blocks = String(body).replacing(footnoteMarker()) { $0.1.isEmpty || !$0.2.hasPrefix("<sup") ? String($0.1) : String($0.0) }
+            .replacing(unspoken, with: "\u{1}")
             .replacing(figure) { "\u{1}" + $0.output.1.matches(of: ArticleHTML.imageTag()).map { "\($0.output)\u{1}" }.joined() }
             .replacing(block, with: "\u{1}").split(separator: "\u{1}")
         return ([title] + blocks.flatMap { spoken(block: String($0)) })
             .filter { $0.contains { $0.isLetter || $0.isNumber } }
+    }
+
+    /// A footnote marker, with the digit before it if there is one: a superscript holding just a number, letter or symbol,
+    /// which after a digit is an exponent instead, or an in-page link holding just a number or symbol, like a note's way back.
+    /// The reader's narration highlighting skips the same ones.
+    private static func footnoteMarker() -> Regex<(Substring, Substring, Substring)> {
+        #/(\d?)(<sup\b[^>]*>(?:\s|<(?!/?sup\b)[^>]*>)*\[?(?:\d{1,3}|[a-z]|[*†‡§]{1,3})\]?(?:\s|<(?!/?sup\b)[^>]*>)*</sup\s*>|<a\s[^>]*\bhref="#[^"]*"[^>]*>(?:\s|<(?!/?a\b)[^>]*>)*\[?(?:\d{1,3}|[*†‡§]{1,3}|↩[\x{FE0E}\x{FE0F}]?)\]?(?:\s|<(?!/?a\b)[^>]*>)*</a\s*>)/#
+            .matchingSemantics(.unicodeScalar)
     }
 
     /// A block's text, or each of its pictures by its alt text when it has nothing else to read.
