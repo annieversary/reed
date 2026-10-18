@@ -109,6 +109,8 @@ final class Narrator {
     @ObservationIgnored var needsStart = false
     /// When playback was last paused, to pick up the thread again after a long break.
     @ObservationIgnored private var pausedAt: Date?
+    /// Stops narration once it's been paused long enough that it's unlikely to be picked up again soon.
+    @ObservationIgnored private var idleStop: Task<Void, Never>?
     /// An interruption paused playback, so it may carry on once the interruption ends.
     @ObservationIgnored var interruptedWhilePlaying = false
     /// Lengths of synthesized passages, in seconds.
@@ -135,6 +137,8 @@ final class Narrator {
     private static let sentenceRewindPause: TimeInterval = 20
     /// Resuming after a pause this long starts the passage again.
     private static let passageRewindPause: TimeInterval = 180
+    /// Narration paused this long is stopped, letting go of the audio session and the model.
+    private static let idleStopPause: TimeInterval = 300
     /// Decibels narration is raised by before the limiter.
     private static let gain: AudioUnitParameterValue = 10
     #if os(iOS)
@@ -202,6 +206,15 @@ final class Narrator {
         isPlaying = false
         pausedAt = .now
         stopTracking()
+        // Synthesis carries on from where it's resumed, so the Neural Engine rests while nothing is heard.
+        generator?.cancel()
+        idleStop = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.idleStopPause))
+            guard !Task.isCancelled, let self else { return }
+            stop()
+            kokoro = nil
+            loadingKokoro = nil
+        }
         updateNowPlaying()
     }
 
@@ -213,6 +226,8 @@ final class Narrator {
         } else if pausedFor >= Self.sentenceRewindPause {
             start(at: current, offset: starts(of: current)[sentenceIndex(at: heard)])
         } else if !needsStart, restartEngine() {
+            idleStop?.cancel()
+            idleStop = nil
             isPlaying = true
             player.play()
             track()
@@ -220,7 +235,7 @@ final class Narrator {
         } else {
             start(at: current, offset: heard)
         }
-        if generator == nil { generate(from: current) }
+        if generator == nil || generator?.isCancelled == true { generate(from: current) }
     }
 
     func togglePlayback() { isPlaying ? pause() : resume() }
@@ -271,6 +286,8 @@ final class Narrator {
         epoch += 1
         generator?.cancel()
         generator = nil
+        idleStop?.cancel()
+        idleStop = nil
         player.stop()
         stopTracking()
         readableID = nil
@@ -358,6 +375,8 @@ final class Narrator {
         heard = offset
         needsStart = false
         pausedAt = nil
+        idleStop?.cancel()
+        idleStop = nil
         self.sentence = pendingSentence ?? sentenceIndex(at: offset)
         rememberPosition()
         do {

@@ -35,7 +35,9 @@ extension Narrator {
                 guard let self else { return }
                 switch type {
                 case .began:
-                    self.interruptedWhilePlaying = self.isPlaying
+                    // Another app's audio taking over while narration sits paused means it's been left for now.
+                    guard self.isPlaying else { return self.stop() }
+                    self.interruptedWhilePlaying = true
                     self.pause()
                     self.needsStart = true
                 case .ended:
