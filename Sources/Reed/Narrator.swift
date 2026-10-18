@@ -486,13 +486,16 @@ final class Narrator {
         if playerFrame != nil { heard = elapsedInPassage }
     }
 
-    /// Counts the passage just heard as listened to, by its share of the words.
+    /// Counts the passage just heard as listened to, by its share of the words, and moves the progress past it,
+    /// which the reader only updates while it's on screen.
     private func creditListening(through index: Int) {
         guard let item, let library else { return }
         let words = passages.map { Double($0.split(whereSeparator: \.isWhitespace).count) }
         let total = words.reduce(0, +)
         guard total > 0 else { return }
-        library.creditListening(item, through: words[...index].reduce(0, +) / total, share: words[index] / total)
+        let through = words[...index].reduce(0, +) / total
+        library.creditListening(item, through: through, share: words[index] / total)
+        library.updateProgress(item, value: through, listening: true)
     }
 
     private func stopTracking() {
