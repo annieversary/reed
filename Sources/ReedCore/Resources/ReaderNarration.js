@@ -99,7 +99,11 @@ window.reedNarration = (() => {
             const fits = found ? fromLast : () => true;
             found ??= all.find(contains);
             if (!found) return null;
-            for (let child; (child = Array.from(found.children).find(c => texts.has(c) && contains(c) && fits(c)));) found = child;
+            // The innermost block holding it, looking through wrappers that aren't blocks, like lists.
+            const outer = found;
+            for (let at = all.indexOf(outer) + 1; at < all.length && outer.contains(all[at]); at++) {
+                if (found.contains(all[at]) && contains(all[at]) && fits(all[at])) found = all[at];
+            }
             last = found;
             return found;
         });

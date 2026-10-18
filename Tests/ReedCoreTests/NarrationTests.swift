@@ -56,3 +56,17 @@ import WebKit
         """, arguments: ["passages": passages], contentWorld: .page)
     #expect(tinted as? String == "Africa|1|, then|2| and|3| 10|6| cells.")
 }
+
+@Test @MainActor func narrationFindsListItemsInsideLists() async throws {
+    let page = try await LoadedPage(html: """
+        <html><head></head><body><main><p>Intro</p><ul><li>One<ul><li>Sub</li></ul></li><li><p>Two</p></li></ul>\
+        <p>After</p></main></body></html>
+        """)
+    _ = try await page.view.callAsyncJavaScript(try BundledResource.text("ReaderNarration", extension: "js") + "\nreturn true;",
+                                                contentWorld: .page)
+    let found = try await page.view.callAsyncJavaScript("""
+        reedNarration.setPassages([["Intro"], ["One"], ["Sub"], ["Two"], ["After"]]);
+        return reedNarration.elements.map(element => element && element.tagName + ':' + element.textContent);
+        """, contentWorld: .page)
+    #expect(found as? [String] == ["P:Intro", "LI:OneSub", "LI:Sub", "P:Two", "P:After"])
+}
