@@ -22,8 +22,9 @@ extension Narrator {
         // The engine stops itself when the output device changes; carry on from the same passage.
         center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.isPlaying else { return }
-                self.start(at: self.current, offset: self.heard)
+                guard let self, self.readableID != nil else { return }
+                // What was queued on the player is gone too.
+                if self.isPlaying { self.start(at: self.current, offset: self.heard) } else { self.needsStart = true }
             }
         }
         #if os(iOS)
@@ -36,6 +37,7 @@ extension Narrator {
                 case .began:
                     self.interruptedWhilePlaying = self.isPlaying
                     self.pause()
+                    self.needsStart = true
                 case .ended:
                     if self.interruptedWhilePlaying, options.contains(.shouldResume) { self.resume() }
                     self.interruptedWhilePlaying = false
@@ -83,12 +85,12 @@ extension Narrator {
             #endif
             return
         }
-        let elapsed = (0..<current).reduce(0) { $0 + duration(of: $1) } + elapsedInPassage
+        let elapsed = (0..<current).reduce(0) { $0 + duration(of: $1) } + position
         let total = (0..<passageCount).reduce(0) { $0 + duration(of: $1) }
         var info: [String: Any] = [MPMediaItemPropertyTitle: title, MPMediaItemPropertyArtist: source,
                                    MPMediaItemPropertyPlaybackDuration: total,
                                    MPNowPlayingInfoPropertyElapsedPlaybackTime: min(elapsed, total),
-                                   MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? Double(rate) : 0.0,
+                                   MPNowPlayingInfoPropertyPlaybackRate: isPlaying && !isWaiting ? Double(rate) : 0.0,
                                    MPNowPlayingInfoPropertyDefaultPlaybackRate: Double(rate)]
         if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
         center.nowPlayingInfo = info

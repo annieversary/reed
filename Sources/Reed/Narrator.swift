@@ -100,7 +100,7 @@ final class Narrator {
     /// How far into the current passage was last heard. The player's clock is lost when the engine stops.
     @ObservationIgnored var heard: Double = 0
     /// Nothing is queued for the current passage, so resuming must start it afresh.
-    @ObservationIgnored private var needsStart = false
+    @ObservationIgnored var needsStart = false
     /// An interruption paused playback, so it may carry on once the interruption ends.
     @ObservationIgnored var interruptedWhilePlaying = false
     /// Lengths of synthesized passages, in seconds.
@@ -176,6 +176,8 @@ final class Narrator {
         guard isPlaying else { return }
         noteHeard()
         player.pause()
+        // A running engine counts as playing, so the lock screen would keep offering Pause.
+        engine.pause()
         isPlaying = false
         stopTracking()
         updateNowPlaying()
@@ -183,7 +185,7 @@ final class Narrator {
 
     func resume() {
         guard readableID != nil, !isPlaying else { return }
-        if engine.isRunning, !needsStart {
+        if !needsStart, restartEngine() {
             isPlaying = true
             player.play()
             track()
@@ -204,7 +206,7 @@ final class Narrator {
     /// Back to the start of the passage, or to the one before if it has only just begun.
     func previous() {
         guard readableID != nil else { return }
-        if elapsedInPassage > Self.restartThreshold || current == 0 { start(at: current) } else { skip(by: -1) }
+        if position > Self.restartThreshold || current == 0 { start(at: current) } else { skip(by: -1) }
     }
 
     /// Jumps to a point in the whole article, as when scrubbing on the lock screen.
@@ -283,11 +285,7 @@ final class Narrator {
                 }
                 try Task.checkCancellation()
                 guard let self else { return }
-                #if os(iOS)
-                let session = AVAudioSession.sharedInstance()
-                try session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio)
-                try session.setActive(true)
-                #endif
+                try activateSession()
                 let player = try AVAudioPlayer(contentsOf: url)
                 previewPlayer = player
                 player.play()
@@ -329,16 +327,13 @@ final class Narrator {
         sentence = sentenceIndex(at: offset)
         rememberPosition()
         do {
-            #if os(iOS)
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio)
-            try session.setActive(true)
-            #endif
+            try activateSession()
             connectEngine()
             if !engine.isRunning { try engine.start() }
         } catch {
             errorMessage = error.localizedDescription
             isPlaying = false
+            updateNowPlaying()
             return
         }
         player.play()
@@ -347,6 +342,25 @@ final class Narrator {
         scheduleReady()
         generate(from: index)
         updateNowPlaying()
+    }
+
+    private func activateSession() throws {
+        #if os(iOS)
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio)
+        try session.setActive(true)
+        #endif
+    }
+
+    /// Brings back the engine paused with narration, keeping what's queued on the player.
+    private func restartEngine() -> Bool {
+        do {
+            try activateSession()
+            if !engine.isRunning { try engine.start() }
+            return true
+        } catch {
+            return false
+        }
     }
 
     /// Connected to the output only once narration starts, since bringing up the engine's output pauses other apps' audio.
@@ -405,6 +419,9 @@ final class Narrator {
         guard let begins = startFrames[current], let now = playerFrame else { return Double(startOffset) / PassageAudio.sampleRate }
         return max(0, Double(now - begins) / PassageAudio.sampleRate)
     }
+
+    /// How far into the current passage playback has got, kept while paused, when the player's clock may be gone.
+    var position: Double { isPlaying ? elapsedInPassage : heard }
 
     /// Exact once a passage is synthesized and measured, estimated from its words until then.
     func duration(of index: Int) -> Double {
@@ -543,7 +560,10 @@ final class Narrator {
                     // Written first, so a passage's audio is never there without its sentence times.
                     try JSONEncoder().encode(starts).write(to: PassageAudio.sentencesURL(keys[index], in: directory), options: .atomic)
                     let length = try await PassageAudio.write(samples, to: url)
-                    if self?.directory == directory { self?.durations[index] = length }
+                    if self?.directory == directory {
+                        self?.durations[index] = length
+                        self?.updateNowPlaying()
+                    }
                     self?.scheduleReady()
                 }
                 if !Task.isCancelled { self?.generator = nil }
