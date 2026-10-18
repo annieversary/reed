@@ -90,6 +90,10 @@ final class Narrator {
     @ObservationIgnored let engine = AVAudioEngine()
     @ObservationIgnored private let player = AVAudioPlayerNode()
     @ObservationIgnored private let timePitch = AVAudioUnitTimePitch()
+    /// Kokoro speaks well below the level music is mastered to, so narration is raised and its peaks held under clipping.
+    @ObservationIgnored private let limiter = AVAudioUnitEffect(audioComponentDescription: AudioComponentDescription(
+        componentType: kAudioUnitType_Effect, componentSubType: kAudioUnitSubType_PeakLimiter,
+        componentManufacturer: kAudioUnitManufacturer_Apple, componentFlags: 0, componentFlagsMask: 0))
     /// Bumped whenever the player is flushed, so callbacks from discarded buffers are ignored.
     @ObservationIgnored private var epoch = 0
     /// Where each queued passage starts on the player's timeline, which restarts whenever the player is flushed.
@@ -123,6 +127,8 @@ final class Narrator {
     private static let wordsPerSecond = 2.8
     /// "Previous" restarts the passage rather than going back once it's this far in.
     private static let restartThreshold = 3.0
+    /// Decibels narration is raised by before the limiter.
+    private static let gain: AudioUnitParameterValue = 10
     #if os(iOS)
     /// iOS aborts apps that use the GPU in the background, so synthesis stays on the Neural Engine and CPU,
     /// letting it continue while the phone is locked.
@@ -134,7 +140,10 @@ final class Narrator {
     init() {
         engine.attach(player)
         engine.attach(timePitch)
+        engine.attach(limiter)
         engine.connect(player, to: timePitch, format: PassageAudio.format)
+        engine.connect(timePitch, to: limiter, format: PassageAudio.format)
+        AudioUnitSetParameter(limiter.audioUnit, kLimiterParam_PreGain, kAudioUnitScope_Global, 0, Self.gain, 0)
         timePitch.rate = rate
         observeAudioChanges()
         installRemoteCommands()
@@ -365,8 +374,8 @@ final class Narrator {
 
     /// Connected to the output only once narration starts, since bringing up the engine's output pauses other apps' audio.
     private func connectEngine() {
-        guard engine.outputConnectionPoints(for: timePitch, outputBus: 0).isEmpty else { return }
-        engine.connect(timePitch, to: engine.mainMixerNode, format: PassageAudio.format)
+        guard engine.outputConnectionPoints(for: limiter, outputBus: 0).isEmpty else { return }
+        engine.connect(limiter, to: engine.mainMixerNode, format: PassageAudio.format)
     }
 
     /// Queues synthesized passages until the player holds a few ahead of the one being heard.
