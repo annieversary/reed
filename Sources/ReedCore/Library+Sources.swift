@@ -153,10 +153,16 @@ extension Library {
         let feed: ParsedFeed, etag: String?, lastModified: String?
     }
 
+    /// How many feeds are fetched at once. Fetching them all together leaves many on one host queued behind each other
+    /// long enough to time out.
+    nonisolated static let feedFetches = 6
+
     /// Each feed's new contents, or nil where it hasn't changed.
     nonisolated static func fetch(_ requests: [FeedRequest], using downloader: ArticleDownloader) async -> [UUID: Result<FetchedFeed?, any Error>] {
         await withTaskGroup(of: (UUID, Result<FetchedFeed?, any Error>).self) { group in
-            for request in requests {
+            var waiting = requests[...]
+            func fetchNext() {
+                guard let request = waiting.popFirst() else { return }
                 group.addTask {
                     do {
                         switch try await downloader.feed(at: request.url, etag: request.etag, lastModified: request.lastModified) {
@@ -168,8 +174,12 @@ extension Library {
                     } catch { return (request.id, .failure(error)) }
                 }
             }
+            for _ in 0..<feedFetches { fetchNext() }
             var results: [UUID: Result<FetchedFeed?, any Error>] = [:]
-            for await (id, result) in group { results[id] = result }
+            for await (id, result) in group {
+                results[id] = result
+                fetchNext()
+            }
             return results
         }
     }

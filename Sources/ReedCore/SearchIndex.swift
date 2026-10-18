@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import os
 
 /// Full-text index of the library, in its own SQLite database beside the SwiftData store.
 /// Everything in it can be rebuilt from the saved articles, so a damaged or outdated file is discarded.
@@ -34,7 +35,11 @@ public actor SearchIndex {
     public static let highlightStart = "\u{2}"
     public static let highlightEnd = "\u{3}"
     private static let schemaVersion = 1
+    /// At most this many matches are found, best first.
+    static let matchLimit = 200
     private let connection: Connection
+    /// The search running, so cancelling it can stop it partway, and nothing else.
+    private nonisolated let running = OSAllocatedUnfairLock<UUID?>(initialState: nil)
 
     public init(url: URL) throws {
         do { connection = try Self.open(url) } catch {
@@ -82,20 +87,32 @@ public actor SearchIndex {
         }
     }
 
-    /// Articles containing every word of `text` (each also as a prefix), best match first.
-    public func search(_ text: String) throws -> [Match] {
-        guard let expression = Self.expression(for: text) else { return [] }
-        var matches: [Match] = []
-        // Weights follow the column order: id, version, title, author, domain, body.
-        try connection.run("""
-            SELECT id, snippet(articles, 5, ?, ?, '…', 14) FROM articles WHERE articles MATCH ?
-            ORDER BY bm25(articles, 0, 0, 10, 4, 2, 1)
-            """, [Self.highlightStart, Self.highlightEnd, expression]) { row in
-            guard let id = Connection.text(row, 0).flatMap(UUID.init(uuidString:)) else { return }
-            let snippet = Connection.text(row, 1)
-            matches.append(Match(id: id, snippet: snippet?.contains(Self.highlightStart) == true ? snippet : nil))
+    /// Articles containing every word of `text` (each also as a prefix), best match first. Cancelling it stops it partway,
+    /// as when typing on makes it moot, and finds nothing.
+    public func search(_ text: String) async throws -> [Match] {
+        guard let expression = Self.expression(for: text), !Task.isCancelled else { return [] }
+        let search = UUID()
+        running.withLock { $0 = search }
+        defer { running.withLock { $0 = nil } }
+        return try await withTaskCancellationHandler {
+            var matches: [Match] = []
+            // Ranked inside FTS5, so only the matches returned are given snippets. Weights follow the column order:
+            // id, version, title, author, domain, body.
+            do {
+                try connection.run("""
+                    SELECT id, snippet(articles, 5, ?, ?, '…', 14) FROM articles
+                    WHERE articles MATCH ? AND rank MATCH 'bm25(0, 0, 10, 4, 2, 1)'
+                    ORDER BY rank LIMIT \(Self.matchLimit)
+                    """, [Self.highlightStart, Self.highlightEnd, expression]) { row in
+                    guard let id = Connection.text(row, 0).flatMap(UUID.init(uuidString:)) else { return }
+                    let snippet = Connection.text(row, 1)
+                    matches.append(Match(id: id, snippet: snippet?.contains(Self.highlightStart) == true ? snippet : nil))
+                }
+            } catch where Task.isCancelled { return [] }
+            return matches
+        } onCancel: {
+            running.withLock { if $0 == search { connection.interrupt() } }
         }
-        return matches
     }
 
     /// Quotes each word so FTS5 syntax typed by the reader is matched literally.
@@ -135,7 +152,7 @@ public enum ArticleText {
     }
 }
 
-private final class Connection {
+private final class Connection: @unchecked Sendable {
     struct Failure: LocalizedError {
         let message: String
         var errorDescription: String? { "Search index: \(message)" }
@@ -156,6 +173,9 @@ private final class Connection {
     }
 
     deinit { sqlite3_close(handle) }
+
+    /// Stops what's running on the connection, from any thread.
+    func interrupt() { sqlite3_interrupt(handle) }
 
     func execute(_ sql: String) throws {
         guard sqlite3_exec(handle, sql, nil, nil, nil) == SQLITE_OK else { throw failure() }

@@ -53,16 +53,43 @@ public actor ArticleDownloader {
     }
 
     private static func page(from data: Data, response: HTTPURLResponse) throws -> DownloadedPage {
-        let encoding: String.Encoding
-        switch response.textEncodingName?.lowercased() {
-        case "iso-8859-1", "latin1": encoding = .isoLatin1
-        case "windows-1252": encoding = .windowsCP1252
-        case "utf-16": encoding = .utf16
-        default: encoding = .utf8
+        guard let html = text(of: data, declared: response.textEncodingName), let finalURL = response.url else {
+            throw ReedError.unsupportedContent
         }
-        guard let html = String(data: data, encoding: encoding) ?? String(data: data, encoding: .windowsCP1252),
-              let finalURL = response.url else { throw ReedError.unsupportedContent }
         return DownloadedPage(html: html, url: finalURL)
+    }
+
+    /// A page's text, in the encoding its header names, or else its `<meta>` tag, falling back to UTF-8 and then Windows-1252.
+    static func text(of data: Data, declared: String?) -> String? {
+        let named = (declared ?? metaCharset(in: data)).flatMap(encoding(named:))
+        for encoding in [named, .utf8, .windowsCP1252].compactMap({ $0 }) {
+            if let text = String(data: data, encoding: encoding) { return text }
+        }
+        return nil
+    }
+
+    /// Labels that browsers read as a broader encoding, since pages labelled with them use its extra characters.
+    private static let broaderEncodings = [
+        "iso-8859-1": "windows-1252", "latin1": "windows-1252", "us-ascii": "windows-1252", "ascii": "windows-1252",
+        "gb2312": "gb18030", "gbk": "gb18030", "x-gbk": "gb18030",
+        "euc-kr": "windows-949", "ks_c_5601-1987": "windows-949",
+        "shift_jis": "windows-31j", "sjis": "windows-31j", "x-sjis": "windows-31j",
+    ]
+
+    static func encoding(named name: String) -> String.Encoding? {
+        let label = name.trimmingCharacters(in: .whitespaces).lowercased()
+        let cf = CFStringConvertIANACharSetNameToEncoding((broaderEncodings[label] ?? label) as CFString)
+        guard cf != kCFStringEncodingInvalidId else { return nil }
+        return String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(cf))
+    }
+
+    /// The charset a page names in a `<meta>` tag near its start.
+    static func metaCharset(in data: Data) -> String? {
+        let head = String(decoding: data.prefix(2048), as: UTF8.self)
+        guard let match = head.firstMatch(of: /(?i)<meta\b[^>]*?charset\s*=\s*["']?\s*([A-Za-z0-9_.:\-]+)/) else { return nil }
+        let name = String(match.1)
+        // A tag read as ASCII can't be UTF-16, so browsers take it to mean UTF-8.
+        return name.lowercased().hasPrefix("utf-16") ? "utf-8" : name
     }
 
     /// The PDF of an arXiv paper saved from its abstract page without the paper itself, because arXiv has no
