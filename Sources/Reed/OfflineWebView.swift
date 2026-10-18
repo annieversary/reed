@@ -21,7 +21,7 @@ import ReedCore
     }
 }
 
-/// The sentence being read aloud, and the passage it's in.
+/// A sentence, by its passage and its number there, such as the one being read aloud.
 struct NarrationPosition: Equatable {
     var passage: Int
     var sentence: Int
@@ -35,6 +35,14 @@ struct EndCard: Equatable {
     var source: String
     var title: String
     var detail: String
+}
+
+/// What a note is written on.
+enum NotePlace {
+    case overall
+    case sentence(NarrationPosition)
+    /// A picture, by its file and alt text.
+    case picture(source: String, alt: String)
 }
 
 /// Where the passage being read is, once you've scrolled away from it.
@@ -53,8 +61,8 @@ enum NarrationDirection: String {
     /// What's being read aloud, if this article is being narrated.
     var narrating: NarrationPosition?
     var proxy: ReaderProxy?
-    /// The notes beside the article's passages, once loaded.
-    var notes: [ArticleNote]?
+    /// The notes on the article and beside its sentences, once loaded.
+    var notes: ReadableNotes?
     var notesOpen = false
     var cards: [EndCard] = []
     var onProgress: (Double) -> Void
@@ -62,7 +70,7 @@ enum NarrationDirection: String {
     var onNarrateFrom: (NarrationPosition) -> Void = { _ in }
     var onNarrationAway: (NarrationDirection?) -> Void = { _ in }
     var onNotesOpen: (Bool) -> Void = { _ in }
-    var onNoteChange: (Int, String) -> Void = { _, _ in }
+    var onNoteChange: (NotePlace, String) -> Void = { _, _ in }
     /// Another saved document beside this one, such as a book's next chapter, by file name and element ID.
     var onOpenSibling: (String, String?) -> Void = { _, _ in }
     var onOpenCard: (String) -> Void = { _ in }
@@ -131,7 +139,7 @@ enum NarrationDirection: String {
         coordinator.applyNotesOpen(webView)
         coordinator.applyCards(webView)
         #if os(iOS)
-        // Swiping back from the screen's edge closes the margin, rather than leaving the article.
+        // Swiping back from the screen's edge closes the notes, rather than leaving the article.
         if coordinator.backSwipeDisabled != notesOpen { coordinator.setBackSwipe(enabled: !notesOpen, from: webView) }
         #endif
     }
@@ -178,7 +186,9 @@ enum NarrationDirection: String {
             sentPassages = passages
             sentNotes = true
             shownNarration = nil
-            let written = notes.map { ["passage": $0.passage, "text": $0.text] as [String: Any] }
+            let written: [String: Any] = ["overall": notes.overall,
+                                          "sentences": notes.sentences.map { ["passage": $0.passage, "sentence": $0.sentence, "text": $0.text] },
+                                          "pictures": notes.pictures.map { ["source": $0.source, "alt": $0.alt, "text": $0.text] }]
             webView.callAsyncJavaScript("reedNarration.setPassages(passages); reedNotes.setNotes(notes)",
                                         arguments: ["passages": passages, "notes": written], in: nil, in: .defaultClient) { _ in }
         }
@@ -250,8 +260,14 @@ enum NarrationDirection: String {
                 return
             }
             if message.name == "noteChanged" {
-                guard let body = message.body as? [String: Any], let passage = body["passage"] as? Int, let text = body["text"] as? String else { return }
-                parent.onNoteChange(passage, text)
+                guard let body = message.body as? [String: Any], let text = body["text"] as? String else { return }
+                if let source = body["source"] as? String {
+                    parent.onNoteChange(.picture(source: source, alt: body["alt"] as? String ?? ""), text)
+                } else if let passage = body["passage"] as? Int, let sentence = body["sentence"] as? Int {
+                    parent.onNoteChange(.sentence(NarrationPosition(passage: passage, sentence: sentence)), text)
+                } else if body["passage"] == nil {
+                    parent.onNoteChange(.overall, text)
+                }
                 return
             }
             if message.name == "narrationAway" {

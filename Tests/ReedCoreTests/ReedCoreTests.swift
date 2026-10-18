@@ -262,14 +262,30 @@ import Testing
     #expect(ArticleSpeech.sentences(in: "A Title") == ["A Title"])
 }
 
-@Test func notesFollowTheirPassagesWhenAnArticleChanges() {
-    let note = { (passage: Int, text: String) in ArticleNote(passage: passage, anchor: ArticleNotes.anchor(for: text), text: "On \(text)") }
-    let notes = [note(1, "Second"), note(2, "Third"), note(3, "Gone")]
-    #expect(ArticleNotes.placed(notes, in: ["Title", "Inserted", "Second", "Third"]).map { [String($0.passage), $0.text] }
-            == [["2", "On Second"], ["3", "On Third\n\nOn Gone"]])
+@Test func notesFollowTheirSentencesWhenAnArticleChanges() {
+    let split = { (passages: [String]) in passages.map(ArticleSpeech.sentences(in:)) }
+    let note = { (passage: Int, text: String, sentence: Int, quote: String) in
+        ArticleNote(passage: passage, anchor: ArticleNotes.anchor(for: text), sentence: sentence, quote: quote, text: "On \(quote)")
+    }
+    let notes = [note(1, "Second. Two.", 1, "Two."), note(2, "Third.", 0, "Third."), note(3, "Gone.", 0, "Gone.")]
+    let passages = ["Title", "Inserted.", "Second. Added. Two.", "Third."]
+    #expect(ArticleNotes.placed(notes, in: passages, sentences: split(passages)).map { [String($0.passage), String($0.sentence), $0.text] }
+            == [["2", "2", "On Two."], ["3", "0", "On Third.\n\nOn Gone."]])
     // Repeated passages keep the note on the one nearest where it was.
-    #expect(ArticleNotes.placed([note(3, "Same")], in: ["Same", "a", "b", "Same", "c"]).map(\.passage) == [3])
-    #expect(ArticleNotes.placed(notes, in: []).isEmpty)
+    let same = ["Same.", "a", "b", "Same.", "c"]
+    #expect(ArticleNotes.placed([note(3, "Same.", 0, "Same.")], in: same, sentences: split(same)).map(\.passage) == [3])
+    // A passage whose start changed is found by the sentence noted.
+    let edited = ["Title", "Reworded start. Kept."]
+    #expect(ArticleNotes.placed([note(1, "Old start. Kept.", 1, "Kept.")], in: edited, sentences: split(edited)).map { [$0.passage, $0.sentence] } == [[1, 1]])
+    #expect(ArticleNotes.placed(notes, in: [], sentences: []).isEmpty)
+}
+
+@Test func notesKeptBesidePassagesAreReadBesideTheirFirstSentence() throws {
+    let old = #"[{"passage":2,"anchor":"Second","text":"Hm"}]"#
+    let notes = try JSONDecoder().decode(ReadableNotes.self, from: Data(old.utf8))
+    #expect(notes.overall.isEmpty && notes.sentences.map { [$0.passage, $0.sentence] } == [[2, 0]])
+    let round = try JSONDecoder().decode(ReadableNotes.self, from: JSONEncoder().encode(ReadableNotes(overall: "Good", sentences: notes.sentences)))
+    #expect(round.overall == "Good" && round.sentences == notes.sentences)
 }
 
 @Test func pluralInitialismsAreSpokenAsLetters() {

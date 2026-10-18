@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-/// What narration and notes work from: an article's passages and sentences, and the notes beside them.
+/// What narration and notes work from: an article's passages and sentences, and the notes written on it.
 public struct Speech: Sendable {
     public let passages: [String]
     public let sentences: [[String]]
@@ -21,35 +21,63 @@ extension Library {
         return speech
     }
 
-    /// The passages of what's open in the reader, which `speech(for:)` has usually read already.
-    public func passages(for readable: any Readable) -> [String]? {
-        guard let url = contentURL(for: readable) else { return nil }
-        if let known = speechCache[PassageKey(content: url, title: readable.title)] { return known.passages }
-        return (try? String(contentsOf: url, encoding: .utf8)).map { ArticleSpeech.passages(title: readable.title, html: $0) }
-    }
-
     nonisolated static func speech(at url: URL, title: String) async -> Speech? {
         guard let html = try? String(contentsOf: url, encoding: .utf8) else { return nil }
         let passages = ArticleSpeech.passages(title: title, html: html)
         return Speech(passages: passages, sentences: passages.map(ArticleSpeech.sentences(in:)))
     }
 
-    /// The notes written beside the saved passages, as `passages(for:)` gives them.
-    public func notes(for readable: any Readable, passages: [String]) -> [ArticleNote] {
-        ArticleNotes.placed(storedNotes(for: readable), in: passages)
+    /// The saved passages and sentences of what's open in the reader, which `speech(for:)` has usually read already.
+    func knownSpeech(for readable: any Readable) -> Speech? {
+        guard let url = contentURL(for: readable) else { return nil }
+        if let known = speechCache[PassageKey(content: url, title: readable.title)] { return known }
+        return (try? String(contentsOf: url, encoding: .utf8)).map {
+            let passages = ArticleSpeech.passages(title: readable.title, html: $0)
+            return Speech(passages: passages, sentences: passages.map(ArticleSpeech.sentences(in:)))
+        }
     }
 
-    /// Replaces the note beside a passage; empty text removes it. Writing a note keeps a cached article,
-    /// so the note isn't evicted with it.
-    public func setNote(_ text: String, at passage: Int, for readable: any Readable) {
-        guard let passages = passages(for: readable), passages.indices.contains(passage) else { return }
-        var notes = ArticleNotes.placed(storedNotes(for: readable), in: passages).filter { $0.passage != passage }
+    /// The notes written on `readable`, those on its sentences placed beside them as `speech` gives them.
+    public func notes(for readable: any Readable, speech: Speech) -> ReadableNotes {
+        var notes = storedNotes(for: readable)
+        notes.sentences = ArticleNotes.placed(notes.sentences, in: speech.passages, sentences: speech.sentences)
+        return notes
+    }
+
+    /// Replaces the note beside a sentence; empty text removes it.
+    public func setNote(_ text: String, at passage: Int, sentence: Int, for readable: any Readable) {
+        guard let speech = knownSpeech(for: readable), speech.passages.indices.contains(passage),
+              speech.sentences[passage].indices.contains(sentence) else { return }
+        var notes = self.notes(for: readable, speech: speech)
+        notes.sentences.removeAll { $0.passage == passage && $0.sentence == sentence }
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !text.isEmpty {
-            notes.append(ArticleNote(passage: passage, anchor: ArticleNotes.anchor(for: passages[passage]), text: text))
-            notes.sort { $0.passage < $1.passage }
-            if let article = readable as? Article { keep(article) }
+            notes.sentences.append(ArticleNote(passage: passage, anchor: ArticleNotes.anchor(for: speech.passages[passage]),
+                                               sentence: sentence, quote: speech.sentences[passage][sentence], text: text))
+            notes.sentences.sort { ($0.passage, $0.sentence) < ($1.passage, $1.sentence) }
         }
+        store(notes, for: readable)
+    }
+
+    /// Replaces the note on a picture, by its file; empty text removes it.
+    public func setPictureNote(_ text: String, source: String, alt: String, for readable: any Readable) {
+        var notes = storedNotes(for: readable)
+        notes.pictures.removeAll { $0.source == source }
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty { notes.pictures.append(PictureNote(source: source, alt: alt, text: text)) }
+        store(notes, for: readable)
+    }
+
+    /// Replaces the note on the whole of `readable`; empty text removes it.
+    public func setOverallNote(_ text: String, for readable: any Readable) {
+        var notes = storedNotes(for: readable)
+        notes.overall = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        store(notes, for: readable)
+    }
+
+    /// Writing a note keeps a cached article, so the note isn't evicted with it.
+    private func store(_ notes: ReadableNotes, for readable: any Readable) {
+        if !notes.isEmpty, let article = readable as? Article { keep(article) }
         let url = storage.notesURL(readable.location)
         do {
             if !notes.isEmpty {
@@ -60,8 +88,8 @@ extension Library {
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func storedNotes(for readable: any Readable) -> [ArticleNote] {
-        guard let data = try? Data(contentsOf: storage.notesURL(readable.location)) else { return [] }
-        return (try? JSONDecoder().decode([ArticleNote].self, from: data)) ?? []
+    func storedNotes(for readable: any Readable) -> ReadableNotes {
+        guard let data = try? Data(contentsOf: storage.notesURL(readable.location)) else { return ReadableNotes() }
+        return (try? JSONDecoder().decode(ReadableNotes.self, from: data)) ?? ReadableNotes()
     }
 }

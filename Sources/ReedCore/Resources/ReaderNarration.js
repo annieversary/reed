@@ -237,28 +237,44 @@ window.reedNarration = (() => {
         if (leftView && inView(target)) { following = true; leftView = false; }
         reportAway();
     }, {passive: true});
-    // Reads from the sentence tapped, found by where the caret would go.
-    document.addEventListener('click', event => {
-        if (currentIndex === null || event.target.closest('a, button') || !getSelection().isCollapsed) return;
-        let element = event.target;
+    // The passage and sentence at a point on screen, found by where the caret would go there.
+    const sentenceAt = (x, y, target) => {
+        let element = target ?? document.elementFromPoint(x, y);
         while (element && !passagesOf.has(element)) element = element.parentElement;
-        if (!element) return;
+        if (!element) return null;
         const indexes = passagesOf.get(element);
         let passage = indexes[0], sentence = 0;
-        const caret = document.caretRangeFromPoint?.(event.clientX, event.clientY);
+        const caret = document.caretRangeFromPoint?.(x, y);
         if (caret && element.contains(caret.startContainer)) {
             sentenceRanges(element, indexes).forEach((ranges, at) => ranges.forEach((range, number) => {
                 if (range && range.comparePoint(caret.startContainer, caret.startOffset) >= 0) [passage, sentence] = [indexes[at], number];
             }));
         }
-        if (passage !== currentIndex || sentence !== currentSentence) {
-            window.webkit.messageHandlers.narrationJump.postMessage({passage, sentence});
+        return {passage, sentence};
+    };
+    // Reads from the sentence tapped.
+    document.addEventListener('click', event => {
+        if (currentIndex === null || event.target.closest('a, button') || !getSelection().isCollapsed) return;
+        const found = sentenceAt(event.clientX, event.clientY, event.target);
+        if (found && (found.passage !== currentIndex || found.sentence !== currentSentence)) {
+            window.webkit.messageHandlers.narrationJump.postMessage(found);
         }
     });
 
     return {
         // The element holding each passage, or null where it wasn't found.
         get elements() { return elements; },
+        // Each passage's sentences, as narration reads them.
+        get sentences() { return sentences; },
+        sentenceAt,
+        // The range of each of the passage's sentences, found afresh since tinting what's read moves the text into new nodes;
+        // null where a sentence can't be found.
+        ranges(passage) {
+            const element = elements[passage];
+            if (!element) return [];
+            const shared = passagesOf.get(element);
+            return sentenceRanges(element, shared)[shared.indexOf(passage)];
+        },
         setPassages(passages) {
             sentences = passages;
             elements = locate(passages.map(list => list.join(' ')));
@@ -291,6 +307,7 @@ window.reedNarration = (() => {
             target = marked ?? current;
             if (following) scrollToCurrent(false);
             reportAway();
+            window.reedNotes?.refresh();
         },
         // Back to what's being read, following it again.
         follow() {
@@ -310,6 +327,7 @@ window.reedNarration = (() => {
             following = true;
             leftView = false;
             reportAway();
+            window.reedNotes?.refresh();
         },
     };
 })();

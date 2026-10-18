@@ -20,7 +20,7 @@ struct ReaderView: View {
     @Environment(\.showNarrationReturn) private var showNarrationReturn
     @State private var passages: [[String]]?
     @State private var reader = ReaderProxy()
-    @State private var notes: [ArticleNote]?
+    @State private var notes: ReadableNotes?
     @State private var notesOpen = false
     @State private var findingChapters = false
     @State private var commentsOpen = false
@@ -79,8 +79,12 @@ struct ReaderView: View {
                     withAnimation(.easeOut(duration: 0.2)) { showNarrationReturn(isNarrating ? direction.map { NarrationReturn(direction: $0, follow: follow) } : nil) }
                 } onNotesOpen: { open in
                     notesOpen = open
-                } onNoteChange: { passage, text in
-                    library.setNote(text, at: passage, for: readable)
+                } onNoteChange: { place, text in
+                    switch place {
+                    case .overall: library.setOverallNote(text, for: readable)
+                    case .sentence(let at): library.setNote(text, at: at.passage, sentence: at.sentence, for: readable)
+                    case .picture(let source, let alt): library.setPictureNote(text, source: source, alt: alt, for: readable)
+                    }
                 } onOpenSibling: { file, anchor in
                     guard let index = BookFiles.chapterIndex(of: file),
                           let target = chapter?.book?.orderedChapters.first(where: { $0.index == index }) else { return }
@@ -93,7 +97,7 @@ struct ReaderView: View {
                 .ignoresSafeArea(edges: narrator.readableID == nil ? .bottom : [])
                 .task(id: url) {
                     let speech = await library.speech(for: readable)
-                    notes = speech.map { library.notes(for: readable, passages: $0.passages) }
+                    notes = speech.map { library.notes(for: readable, speech: $0) }
                     passages = speech?.sentences
                 }
                 .onChange(of: isNarrating) { if !isNarrating { showNarrationReturn(nil) } }

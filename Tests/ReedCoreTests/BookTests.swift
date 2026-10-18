@@ -82,14 +82,19 @@ private func fixture(_ name: String) throws -> URL {
     #expect(!two.contains("next-chapter\""))
 
     // The card isn't read aloud.
-    let passages = try #require(library.passages(for: chapters[0]))
-    #expect(!passages.contains { $0.contains("NEXT CHAPTER") })
-    library.setNote("A good mill", at: 1, for: chapters[0])
-    #expect(library.notes(for: chapters[0], passages: passages).map(\.text) == ["A good mill"])
-    #expect(library.notes(for: chapters[1], passages: try #require(library.passages(for: chapters[1]))).isEmpty)
+    let speech = try #require(library.knownSpeech(for: chapters[0]))
+    #expect(!speech.passages.contains { $0.contains("NEXT CHAPTER") })
+    library.setNote("A good mill", at: 1, sentence: 0, for: chapters[0])
+    library.setOverallNote("Slow going", for: chapters[0])
+    library.setPictureNote("Lovely plate", source: "book-OEBPS_Images_plate.png", alt: "", for: chapters[0])
+    let written = library.notes(for: chapters[0], speech: speech)
+    #expect(written.sentences.map(\.text) == ["A good mill"] && written.overall == "Slow going")
+    #expect(written.pictures.map(\.text) == ["Lovely plate"])
+    #expect(written.sentences.first?.quote == speech.sentences[1][0])
+    #expect(library.notes(for: chapters[1], speech: try #require(library.knownSpeech(for: chapters[1]))).isEmpty)
 
     // Converting again moves notes with their chapters, and sets aside those of chapters that are gone.
-    library.setNote("A good river", at: 1, for: chapters[1])
+    library.setNote("A good river", at: 1, sentence: 0, for: chapters[1])
     library.moveNotes(of: book, as: [0: 1])
     let notes = library.storage.bookDirectory(book.id).appendingPathComponent("Notes")
     #expect(try String(contentsOf: notes.appendingPathComponent("1.json"), encoding: .utf8).contains("A good mill"))
