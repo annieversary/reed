@@ -58,7 +58,7 @@ enum NarrationDirection: String {
     var cards: [EndCard] = []
     var onProgress: (Double) -> Void
     var onAddLink: (URL) -> Void
-    var onNarrateFrom: (Int) -> Void = { _ in }
+    var onNarrateFrom: (NarrationPosition) -> Void = { _ in }
     var onNarrationAway: (NarrationDirection?) -> Void = { _ in }
     var onNotesOpen: (Bool) -> Void = { _ in }
     var onNoteChange: (Int, String) -> Void = { _, _ in }
@@ -225,7 +225,8 @@ enum NarrationDirection: String {
                 return
             }
             if message.name == "narrationJump" {
-                if let index = message.body as? Int { parent.onNarrateFrom(index) }
+                guard let body = message.body as? [String: Any], let passage = body["passage"] as? Int, let sentence = body["sentence"] as? Int else { return }
+                parent.onNarrateFrom(NarrationPosition(passage: passage, sentence: sentence))
                 return
             }
             if message.name == "notesOpen" {

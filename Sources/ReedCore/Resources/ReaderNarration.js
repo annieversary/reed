@@ -1,7 +1,7 @@
 // Matches each passage read aloud to the element holding it, by text and in reading order. While narrating,
 // the current sentence is tinted (or its whole passage, if the sentence can't be found) and kept in view;
 // scrolling away stops that and reports which way it went.
-// Tapping a paragraph asks to read from there.
+// Tapping a sentence asks to read from there.
 window.reedNarration = (() => {
     const blocks = 'p,h1,h2,h3,h4,h5,h6,li,dt,dd,blockquote,div,section,article,header,footer,aside,main,figure,img';
     const squash = text => text.replace(/\s+/g, '');
@@ -80,8 +80,8 @@ window.reedNarration = (() => {
         new Promise(resolve => setTimeout(resolve, 1500)),
     ]);
 
-    let elements = [], sentences = [], firstPassage = new Map();
-    let current = null, currentIndex = null, following = true, leftView = false, reportedAway = '', lastScrolled = 0;
+    let elements = [], sentences = [], passagesOf = new Map();
+    let current = null, currentIndex = null, currentSentence = null, following = true, leftView = false, reportedAway = '', lastScrolled = 0;
     // What's being read: the sentence's range when it was found, otherwise its passage's element.
     let target = null, marks = [], tintedFormulas = [];
 
@@ -108,8 +108,9 @@ window.reedNarration = (() => {
             return found;
         });
     };
-    // The range of the `number`th sentence within `element`, matching text the same way passages are matched.
-    const sentenceRange = (element, list, number) => {
+    // The range of each sentence of the passages at `indexes`, all held by `element`, matching text the same way passages
+    // are matched and each sentence after the one before; null where a sentence can't be found.
+    const sentenceRanges = (element, indexes) => {
         // Each character's range: within its text node, or around its whole formula or picture.
         const characters = [];
         let text = '';
@@ -122,18 +123,17 @@ window.reedNarration = (() => {
                 text += content[offset];
             }
         }
-        let from = 0, at = -1, length = 0;
-        for (let index = 0; index <= number; index++) {
-            const sentence = squash(list[index] ?? '');
-            at = sentence ? text.indexOf(sentence, from) : -1;
+        let from = 0;
+        return indexes.map(index => (sentences[index] ?? []).map(sentence => {
+            sentence = squash(sentence);
+            const at = sentence ? text.indexOf(sentence, from) : -1;
             if (at < 0) return null;
-            length = sentence.length;
-            from = at + length;
-        }
-        const range = document.createRange();
-        range.setStart(characters[at][0], characters[at][1]);
-        range.setEnd(characters[at + length - 1][2], characters[at + length - 1][3]);
-        return range;
+            from = at + sentence.length;
+            const range = document.createRange();
+            range.setStart(characters[at][0], characters[at][1]);
+            range.setEnd(characters[from - 1][2], characters[from - 1][3]);
+            return range;
+        }));
     };
     // Wraps the text in `range` in tinted spans, one per text node, so it can cross inline elements like links.
     // Formulas are tinted whole, since spans inside one would break its layout.
@@ -214,13 +214,22 @@ window.reedNarration = (() => {
         if (leftView && inView(target)) { following = true; leftView = false; }
         reportAway();
     }, {passive: true});
+    // Reads from the sentence tapped, found by where the caret would go.
     document.addEventListener('click', event => {
         if (currentIndex === null || event.target.closest('a, button') || !getSelection().isCollapsed) return;
-        for (let element = event.target; element; element = element.parentElement) {
-            if (!firstPassage.has(element)) continue;
-            const index = firstPassage.get(element);
-            if (index !== currentIndex) window.webkit.messageHandlers.narrationJump.postMessage(index);
-            return;
+        let element = event.target;
+        while (element && !passagesOf.has(element)) element = element.parentElement;
+        if (!element) return;
+        const indexes = passagesOf.get(element);
+        let passage = indexes[0], sentence = 0;
+        const caret = document.caretRangeFromPoint?.(event.clientX, event.clientY);
+        if (caret && element.contains(caret.startContainer)) {
+            sentenceRanges(element, indexes).forEach((ranges, at) => ranges.forEach((range, number) => {
+                if (range && range.comparePoint(caret.startContainer, caret.startOffset) >= 0) [passage, sentence] = [indexes[at], number];
+            }));
+        }
+        if (passage !== currentIndex || sentence !== currentSentence) {
+            window.webkit.messageHandlers.narrationJump.postMessage({passage, sentence});
         }
     });
 
@@ -230,10 +239,11 @@ window.reedNarration = (() => {
         setPassages(passages) {
             sentences = passages;
             elements = locate(passages.map(list => list.join(' ')));
-            firstPassage = new Map();
+            passagesOf = new Map();
             elements.forEach((element, index) => {
-                if (!element || firstPassage.has(element)) return;
-                firstPassage.set(element, index);
+                if (!element) return;
+                if (!passagesOf.has(element)) passagesOf.set(element, []);
+                passagesOf.get(element).push(index);
                 element.classList.add('reed-passage');
             });
         },
@@ -245,12 +255,14 @@ window.reedNarration = (() => {
         show(index, sentence) {
             document.documentElement.classList.add('reed-narration-active');
             currentIndex = index;
+            currentSentence = sentence;
             // A scroll that left what was being read on screen, and has settled, didn't mean to stop following it.
             if (!following && target && inView(target) && Date.now() - lastScrolled > 1000) following = true;
             current?.classList.remove('reed-narrating');
             unmark();
             current = elements[index] ?? null;
-            const range = current ? sentenceRange(current, sentences[index] ?? [], sentence) : null;
+            const shared = current ? passagesOf.get(current) : [];
+            const range = current ? sentenceRanges(current, shared)[shared.indexOf(index)]?.[sentence] : null;
             const marked = range ? mark(range) : null;
             if (!marked) current?.classList.add('reed-narrating');
             target = marked ?? current;
@@ -271,6 +283,7 @@ window.reedNarration = (() => {
             current = null;
             target = null;
             currentIndex = null;
+            currentSentence = null;
             following = true;
             leftView = false;
             reportAway();

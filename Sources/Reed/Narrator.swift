@@ -101,6 +101,8 @@ final class Narrator {
     @ObservationIgnored private var nextFrame: AVAudioFramePosition = 0
     /// How far into the current passage playback began, after seeking.
     @ObservationIgnored private var startOffset: AVAudioFramePosition = 0
+    /// The sentence of the current passage to start from, once its audio is made and where the sentence begins is known.
+    @ObservationIgnored private var pendingSentence: Int?
     /// How far into the current passage was last heard. The player's clock is lost when the engine stops.
     @ObservationIgnored var heard: Double = 0
     /// Nothing is queued for the current passage, so resuming must start it afresh.
@@ -155,10 +157,14 @@ final class Narrator {
         installRemoteCommands()
     }
 
-    /// Reads `item` from `passage`, or from where it was last left off.
-    func play(_ item: any Readable, from passage: Int? = nil, in library: Library) {
+    /// Reads `item` from `passage` and its `sentence`, or from where it was last left off.
+    func play(_ item: any Readable, from passage: Int? = nil, sentence: Int = 0, in library: Library) {
         if item.id == readableID {
-            if let passage, passage != current { start(at: min(max(passage, 0), passageCount - 1)) } else { resume() }
+            if let passage, passage != current || sentence != self.sentence {
+                start(at: min(max(passage, 0), passageCount - 1), sentence: sentence)
+            } else {
+                resume()
+            }
             return
         }
         Task {
@@ -183,7 +189,7 @@ final class Narrator {
             self.artwork = artwork
             measure()
             let resumed = item.narrationPassage.map { ArticleNotes.passage(near: $0, anchor: item.narrationAnchor, in: passages) }
-            start(at: min(max(passage ?? resumed ?? 0, 0), passages.count - 1))
+            start(at: min(max(passage ?? resumed ?? 0, 0), passages.count - 1), sentence: passage == nil ? 0 : sentence)
         }
     }
 
@@ -335,18 +341,24 @@ final class Narrator {
         isPreviewPlaying = false
     }
 
-    func start(at index: Int, offset: Double = 0) {
+    func start(at index: Int, offset: Double = 0, sentence: Int = 0) {
         epoch += 1
         player.stop()
         current = index
         scheduled = index - 1
         startFrames = [:]
         nextFrame = 0
+        var offset = offset
+        pendingSentence = nil
+        if sentence > 0 {
+            let starts = starts(of: index)
+            if starts.count > 1 { offset = starts[min(sentence, starts.count - 1)] } else { pendingSentence = sentence }
+        }
         startOffset = AVAudioFramePosition(offset * PassageAudio.sampleRate)
         heard = offset
         needsStart = false
         pausedAt = nil
-        sentence = sentenceIndex(at: offset)
+        self.sentence = pendingSentence ?? sentenceIndex(at: offset)
         rememberPosition()
         do {
             try activateSession()
@@ -415,6 +427,12 @@ final class Narrator {
     private func enqueue(_ buffer: AVAudioPCMBuffer, at index: Int) {
         var buffer = buffer
         scheduled = index
+        if index == current, let pending = pendingSentence {
+            pendingSentence = nil
+            let starts = starts(of: index)
+            heard = starts[min(pending, starts.count - 1)]
+            startOffset = AVAudioFramePosition(heard * PassageAudio.sampleRate)
+        }
         let epoch = epoch
         durations[index] = Double(buffer.frameLength) / PassageAudio.sampleRate
         var skipped: AVAudioFramePosition = 0
@@ -497,7 +515,7 @@ final class Narrator {
                 if let self {
                     noteHeard()
                     let reached = sentenceIndex(at: elapsedInPassage)
-                    if reached != sentence { sentence = reached }
+                    if reached != sentence, pendingSentence == nil { sentence = reached }
                 } else { return }
                 try? await Task.sleep(for: .milliseconds(100))
             }
@@ -545,6 +563,7 @@ final class Narrator {
         }
         current += 1
         sentence = 0
+        pendingSentence = nil
         startOffset = 0
         rememberPosition()
         scheduleReady()

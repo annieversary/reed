@@ -72,8 +72,8 @@ struct ReaderView: View {
                 } onAddLink: { link in
                     do { try library.add(link.absoluteString) }
                     catch { library.errorMessage = error.localizedDescription }
-                } onNarrateFrom: { passage in
-                    if !isSaving { narrator.play(readable, from: passage, in: library) }
+                } onNarrateFrom: { position in
+                    if !isSaving { narrator.play(readable, from: position.passage, sentence: position.sentence, in: library) }
                 } onNarrationAway: { direction in
                     let follow = reader.followNarration
                     withAnimation(.easeOut(duration: 0.2)) { showNarrationReturn(isNarrating ? direction.map { NarrationReturn(direction: $0, follow: follow) } : nil) }
