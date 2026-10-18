@@ -83,6 +83,8 @@ final class Narrator {
     @ObservationIgnored private var kokoro: KokoroAneManager?
     @ObservationIgnored private var loadingKokoro: Task<KokoroAneManager, any Error>?
     @ObservationIgnored private var generator: Task<Void, Never>?
+    /// Reads the speech of what `play` was last asked to read, so asking for something else, or stopping, drops it.
+    @ObservationIgnored private var opening: Task<Void, Never>?
     /// Reads the next passage's audio to queue it.
     @ObservationIgnored private var loader: Task<Void, Never>?
     /// More passages may be ready to queue once the loader finishes.
@@ -163,6 +165,8 @@ final class Narrator {
 
     /// Reads `item` from `passage` and its `sentence`, or from where it was last left off.
     func play(_ item: any Readable, from passage: Int? = nil, sentence: Int = 0, in library: Library) {
+        opening?.cancel()
+        opening = nil
         if item.id == readableID {
             if let passage, passage != current || sentence != self.sentence {
                 start(at: min(max(passage, 0), passageCount - 1), sentence: sentence)
@@ -171,12 +175,18 @@ final class Narrator {
             }
             return
         }
-        Task {
-            guard let version = item.contentVersion, let speech = await library.speech(for: item), !speech.passages.isEmpty else {
+        opening = Task {
+            let speech = await library.speech(for: item)
+            guard !Task.isCancelled else { return }
+            guard let version = item.contentVersion, let speech, !speech.passages.isEmpty else {
                 library.errorMessage = ReedError.damagedArticle.localizedDescription
+                // Nothing is left playing, such as after the chapter before it ended.
+                if !isPlaying { stop() }
                 return
             }
             let artwork = Self.artwork(from: await library.leadImage(for: item))
+            guard !Task.isCancelled else { return }
+            opening = nil
             reset()
             self.item = item
             self.library = library
@@ -273,6 +283,8 @@ final class Narrator {
     }
 
     func stop() {
+        opening?.cancel()
+        opening = nil
         reset()
         engine.stop()
         #if os(iOS)
@@ -574,6 +586,7 @@ final class Narrator {
             if let next = library.next(after: item) {
                 isPlaying = false
                 stopTracking()
+                updateNowPlaying()
                 play(next, from: 0, in: library)
             } else {
                 stop()
