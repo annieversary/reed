@@ -603,15 +603,31 @@ final class Narrator {
     /// so those get a leading space, one more token that doesn't change how the sentence sounds.
     private static let crashingPhonemeCount = 46
 
+    /// The Neural Engine fails on some sentences, by how long their speech comes out rather than what it says,
+    /// so one that fails is tried again a touch slower or faster, too slight to hear.
+    private static let speeds: [Float] = [1, 0.98, 1.02, 0.96, 1.04]
+
     private static func synthesize(_ text: String, voice: String, with kokoro: KokoroAneManager) async throws -> [Float] {
         var phonemes = try await kokoro.phonemes(for: text)
         let length = KokoroAneVocab.phonemeLength(phonemes)
+        if length == crashingPhonemeCount { phonemes = " " + phonemes }
+        for speed in speeds.dropLast() {
+            do {
+                return try await synthesize(text: text, phonemes: phonemes, length: length, speed: speed, voice: voice, with: kokoro)
+            } catch KokoroAneError.predictionFailed {
+                try Task.checkCancellation()
+            }
+        }
+        return try await synthesize(text: text, phonemes: phonemes, length: length, speed: speeds.last!, voice: voice, with: kokoro)
+    }
+
+    private static func synthesize(text: String, phonemes: String, length: Int, speed: Float, voice: String,
+                                   with kokoro: KokoroAneManager) async throws -> [Float] {
         // Longer sentences are split into chunks, which only synthesizing from the text does.
         guard length <= KokoroAneConstants.maxPhonemeLength else {
-            return try await kokoro.synthesizeDetailed(text: text, voice: voice).samples
+            return try await kokoro.synthesizeDetailed(text: text, voice: voice, speed: speed).samples
         }
-        if length == crashingPhonemeCount { phonemes = " " + phonemes }
-        return try await kokoro.synthesizeFromPhonemesDetailed(phonemes, voice: voice).samples
+        return try await kokoro.synthesizeFromPhonemesDetailed(phonemes, voice: voice, speed: speed).samples
     }
 
     /// The model downloads (about 120 MB) the first time, then loads from disk.
