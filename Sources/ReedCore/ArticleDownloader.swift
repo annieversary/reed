@@ -26,7 +26,8 @@ public actor ArticleDownloader {
     public init(session: URLSession? = nil) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 60
+        // Only a backstop: each download is given time by its size, as `Receiver` keeps.
+        configuration.timeoutIntervalForResource = 30 * 60
         configuration.httpAdditionalHeaders = ["User-Agent": Self.userAgent]
         self.session = session ?? URLSession(configuration: configuration)
     }
@@ -92,7 +93,10 @@ public actor ArticleDownloader {
     }
 
     public func image(at url: URL) async throws -> Data {
-        try await fetch(url, limit: 12 * 1024 * 1024, kind: .image).0
+        // Pictures are fetched beside each other, so one host that doesn't answer is better given up on soon.
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        return try await fetch(request, limit: 12 * 1024 * 1024, kind: .image).0
     }
 
     /// JSON, sent with `cookie` alone when one is given.
@@ -182,8 +186,17 @@ public actor ArticleDownloader {
         return limit
     }
 
-    /// Gathers a response as it arrives, a piece at a time, and stops it as soon as it's refused or grows past its limit.
-    private final class Receiver: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    /// Gathers a response as it arrives, a piece at a time, and stops it as soon as it's refused, grows past its limit
+    /// or runs out of time.
+    final class Receiver: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+        /// The time any download is given.
+        static let leastTime: TimeInterval = 60
+        /// The slowest a download may arrive, on average, in bytes a second, so a large one has time to finish on a slow connection.
+        static let slowestRate: Double = 64 * 1024
+
+        /// How long a response of up to `limit` bytes is given to arrive.
+        static func time(for limit: Int) -> TimeInterval { max(leastTime, Double(limit) / slowestRate) }
+
         private let lock = NSLock()
         private let check: @Sendable (HTTPURLResponse) throws -> Int
         private var limit = 0
@@ -191,12 +204,33 @@ public actor ArticleDownloader {
         private var response: HTTPURLResponse?
         private var failure: Error?
         private var continuation: CheckedContinuation<(Data, HTTPURLResponse), Error>?
+        private var task: URLSessionTask?
+        /// Counts the deadlines set, so one replaced by a later one passes unheeded.
+        private var deadlines = 0
 
         init(check: @escaping @Sendable (HTTPURLResponse) throws -> Int) { self.check = check }
 
         func start(_ task: URLSessionDataTask, continuation: CheckedContinuation<(Data, HTTPURLResponse), Error>) {
-            lock.withLock { self.continuation = continuation }
+            lock.withLock {
+                self.continuation = continuation
+                self.task = task
+            }
+            expire(after: Self.leastTime)
             task.resume()
+        }
+
+        /// Gives up on the download as timed out after `seconds`, unless another deadline is set first.
+        private func expire(after seconds: TimeInterval) {
+            let deadline = lock.withLock { deadlines += 1; return deadlines }
+            DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { [weak self] in
+                guard let self else { return }
+                let task = self.lock.withLock { () -> URLSessionTask? in
+                    guard self.deadlines == deadline, self.continuation != nil, self.failure == nil else { return nil }
+                    self.failure = URLError(.timedOut)
+                    return self.task
+                }
+                task?.cancel()
+            }
         }
 
         func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
@@ -209,6 +243,7 @@ public actor ArticleDownloader {
                     self.limit = limit
                     data.reserveCapacity(min(max(Int(response.expectedContentLength), 0), limit))
                 }
+                expire(after: Self.time(for: limit))
                 completionHandler(.allow)
             } catch {
                 lock.withLock { failure = error }
@@ -227,7 +262,7 @@ public actor ArticleDownloader {
 
         func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
             let (continuation, result) = lock.withLock { () -> (CheckedContinuation<(Data, HTTPURLResponse), Error>?, Result<(Data, HTTPURLResponse), Error>) in
-                defer { self.continuation = nil }
+                defer { self.continuation = nil; self.task = nil }
                 if let failure { return (self.continuation, .failure(failure)) }
                 if let error = error as? URLError, error.code == .cancelled { return (self.continuation, .failure(CancellationError())) }
                 if let error { return (self.continuation, .failure(error)) }

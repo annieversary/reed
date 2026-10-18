@@ -11,7 +11,9 @@ public final class Library {
     /// library until saved.
     public internal(set) var cached: [Article] = []
     /// Cached articles kept even once they are no longer wanted, such as the one being read.
-    public var retained: Set<UUID> = []
+    public var retained: Set<UUID> = [] { didSet { removeClosedVersions() } }
+    /// Replaced versions kept while they're open.
+    @ObservationIgnored var retiredVersions: Set<RetiredVersion> = []
     public var errorMessage: String?
     /// The article or book being saved to the library, and how far along it is. Caching ahead goes unreported.
     public internal(set) var saving: SaveProgress?
@@ -105,6 +107,7 @@ public final class Library {
         }
         syncCache()
         syncSearch()
+        removeLeftoverVersions()
     }
 
     /// What was saved at `url`, or nil if nothing was. A file that can't be read is moved aside to

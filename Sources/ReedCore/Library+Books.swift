@@ -130,6 +130,7 @@ extension Library {
             try storage.commitBook(staging: directory, id: book.id, version: version)
             staging = nil
             let previous = book.contentVersion
+            let holders = Set(book.chapters.map(\.id)).union([book.id])
             // Converting again keeps how far each chapter was read, and its notes, though chapters may have moved.
             // Chapters saved before they knew where they start are known by title, in the same place if it's still there.
             let byStart = Dictionary(book.chapters.compactMap { old in old.start.map { ($0, old) } }) { first, _ in first }
@@ -159,7 +160,7 @@ extension Library {
             book.failureMessage = nil
             try container.mainContext.save()
             moveNotes(of: book, as: moved)
-            if let previous { try? storage.removeBookVersion(book.id, version: previous) }
+            if let previous { retire(previous, of: .book(book.id), heldBy: holders) }
         } catch {
             // A failed refresh leaves the copy already saved readable.
             if hasContent(book) {

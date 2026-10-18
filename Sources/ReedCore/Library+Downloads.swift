@@ -180,27 +180,11 @@ extension Library {
             }
             let directory = try storage.createStagingDirectory()
             staging = directory
-            var missing: [ExtractedArticle.Image] = []
-            var totalBytes = 0
-            for (index, image) in extracted.images.enumerated() {
-                try Task.checkCancellation()
-                if let data = pictures[image.filename] {
-                    try await Self.write(data, to: directory.appendingPathComponent(image.filename))
-                    continue
-                }
-                let message = "Saving image \(index + 1) of \(extracted.images.count)…"
+            let missing = try await saveImages(extracted.images, pictures: pictures, into: directory) { done in
+                let count = extracted.images.count
+                let message = "Saving image \(min(done + 1, count)) of \(count)…"
                 imageActivity = message
-                report(message, fraction: Double(index) / Double(extracted.images.count))
-                do {
-                    guard index < 40, totalBytes < 64 * 1024 * 1024, let url = URL(string: image.url) else {
-                        throw ReedError.oversizedDownload
-                    }
-                    let data = try await downloader.image(at: url)
-                    guard totalBytes + data.count <= 64 * 1024 * 1024 else { throw ReedError.oversizedDownload }
-                    try await Self.write(data, to: directory.appendingPathComponent(image.filename))
-                    totalBytes += data.count
-                } catch is CancellationError { throw CancellationError() }
-                catch { missing.append(image) }
+                report(message, fraction: Double(done) / Double(count))
             }
             var body = await Self.replacing(missing, in: extracted.html)
             let descriptions = try await describeImages(in: body, directory: directory, limit: 20, from: "an article titled \"\(extracted.title)\"",
@@ -224,7 +208,7 @@ extension Library {
             article.retryAt = nil
             article.failedAttempts = 0
             try container.mainContext.save()
-            if let previous { try? storage.removeArticleVersion(article.id, version: previous) }
+            if let previous { retire(previous, of: .article(article.id), heldBy: [article.id]) }
             if !article.isCached, !discarded.contains(article.id) { reindex(article) }
         } catch {
             // A failed refresh leaves the copy already saved readable.
@@ -244,6 +228,61 @@ extension Library {
             save()
         }
         if discarded.remove(article.id) != nil { erase(article) }
+    }
+
+    /// How many images are fetched at once.
+    static let imageFetches = 4
+
+    /// Writes `images` into `directory`, those in `pictures` as they are and the rest fetched a few at a time, and returns
+    /// those it couldn't. Fetching stops at 40 images or 64MB, and a host that doesn't answer isn't asked for the rest of its images.
+    /// `report` is told how many are done as each one is.
+    func saveImages(_ images: [ExtractedArticle.Image], pictures: [String: Data], into directory: URL,
+                    report: (Int) -> Void) async throws -> [ExtractedArticle.Image] {
+        let budget = 64 * 1024 * 1024
+        var next = 0, running = 0, done = 0, totalBytes = 0
+        var failed = Set<Int>(), unresponsive = Set<String>()
+        report(0)
+        try await withThrowingTaskGroup(of: (index: Int, result: Result<Data, Error>).self) { group in
+            while true {
+                try Task.checkCancellation()
+                while running < Self.imageFetches, next < images.count {
+                    let index = next, image = images[index]
+                    next += 1
+                    if let data = pictures[image.filename] {
+                        try await Self.write(data, to: directory.appendingPathComponent(image.filename))
+                        done += 1
+                        continue
+                    }
+                    guard index < 40, totalBytes < budget, let url = URL(string: image.url),
+                          !unresponsive.contains(url.host() ?? "") else {
+                        failed.insert(index)
+                        done += 1
+                        continue
+                    }
+                    running += 1
+                    group.addTask { [downloader] in
+                        do { return (index, .success(try await downloader.image(at: url))) }
+                        catch is CancellationError { throw CancellationError() }
+                        catch { return (index, .failure(error)) }
+                    }
+                }
+                guard let fetched = try await group.next() else { break }
+                running -= 1
+                done += 1
+                switch fetched.result {
+                case .success(let data) where totalBytes + data.count <= budget:
+                    try await Self.write(data, to: directory.appendingPathComponent(images[fetched.index].filename))
+                    totalBytes += data.count
+                case .failure(let error as URLError) where [.timedOut, .cannotConnectToHost].contains(error.code):
+                    if let host = URL(string: images[fetched.index].url)?.host() { unresponsive.insert(host) }
+                    failed.insert(fetched.index)
+                default:
+                    failed.insert(fetched.index)
+                }
+                report(done)
+            }
+        }
+        return images.indices.filter(failed.contains).map { images[$0] }
     }
 
     /// Saves the article's text, with any pictures that came with it, as its content until the full copy replaces it.
