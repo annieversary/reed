@@ -140,6 +140,7 @@ public enum ArticleSpeech {
         "WASI": "wˈɑzi",
         "OAuth": "ˈO ˌɔθ",
         "CORS": "kˈɔɹz",
+        "ssh": "ˌɛs ˌɛs ˈAʧ",
         "grpc": "ʤˌi ˌɑɹ pˌi sˈi",
         "protobuf": "pɹˈOtObˌʌf",
         "avro": "ˈævɹO",
