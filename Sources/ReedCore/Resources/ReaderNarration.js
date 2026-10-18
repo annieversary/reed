@@ -55,11 +55,17 @@ window.reedNarration = (() => {
         .reed-sentence { background-color: var(--narrating-sentence); }
         .reed-narration-active .reed-passage { cursor: pointer; }`;
     document.head.appendChild(style);
-    const imagesLoaded = Promise.all(Array.from(document.images).map(img => img.complete ? null
-        : new Promise(resolve => { img.addEventListener('load', resolve); img.addEventListener('error', resolve); })));
+    // Pictures are local files, so they load at once rather than lazily as they near the screen; following waits for them
+    // so the page doesn't shift under what's being read, but not for long, in case one never settles.
+    for (const img of document.images) img.loading = 'eager';
+    const imagesLoaded = Promise.race([
+        Promise.all(Array.from(document.images).map(img => img.complete ? null
+            : new Promise(resolve => { img.addEventListener('load', resolve); img.addEventListener('error', resolve); }))),
+        new Promise(resolve => setTimeout(resolve, 1500)),
+    ]);
 
     let elements = [], sentences = [], firstPassage = new Map();
-    let current = null, currentIndex = null, following = true, leftView = false, reportedAway = '';
+    let current = null, currentIndex = null, following = true, leftView = false, reportedAway = '', lastScrolled = 0;
     // What's being read: the sentence's range when it was found, otherwise its passage's element.
     let target = null, marks = [], tintedFormulas = [];
 
@@ -174,13 +180,18 @@ window.reedNarration = (() => {
         window.webkit.messageHandlers.narrationAway.postMessage(away);
     };
 
-    for (const type of ['wheel', 'touchmove', 'keydown']) {
-        window.addEventListener(type, () => { if (currentIndex !== null) { following = false; leftView = false; } }, {passive: true});
-    }
+    const scrollKeys = ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '];
+    const scrolledByHand = event => {
+        if (currentIndex === null || (event.type === 'keydown' && !scrollKeys.includes(event.key))) return;
+        following = false;
+        lastScrolled = Date.now();
+    };
+    for (const type of ['wheel', 'touchmove', 'keydown']) window.addEventListener(type, scrolledByHand, {passive: true});
     window.addEventListener('scroll', () => {
         if (following || !target) return;
+        lastScrolled = Date.now();
         // Scrolling back to what's being read picks following up again.
-        if (leftView && inView(target)) following = true;
+        if (leftView && inView(target)) { following = true; leftView = false; }
         reportAway();
     }, {passive: true});
     document.addEventListener('click', event => {
@@ -214,6 +225,8 @@ window.reedNarration = (() => {
         show(index, sentence) {
             document.documentElement.classList.add('reed-narration-active');
             currentIndex = index;
+            // A scroll that left what was being read on screen, and has settled, didn't mean to stop following it.
+            if (!following && target && inView(target) && Date.now() - lastScrolled > 1000) following = true;
             current?.classList.remove('reed-narrating');
             unmark();
             current = elements[index] ?? null;
@@ -227,6 +240,7 @@ window.reedNarration = (() => {
         // Back to what's being read, following it again.
         follow() {
             following = true;
+            leftView = false;
             reportAway();
             scrollToCurrent(true);
         },
@@ -238,6 +252,7 @@ window.reedNarration = (() => {
             target = null;
             currentIndex = null;
             following = true;
+            leftView = false;
             reportAway();
         },
     };
