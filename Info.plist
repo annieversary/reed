@@ -21,6 +21,11 @@
         <key>LSHandlerRank</key><string>Alternate</string>
         <key>LSItemContentTypes</key><array><string>org.idpf.epub-container</string></array>
     </dict></array>
+    <!-- reed://add?url=… saves a link, for scripts and other apps. -->
+    <key>CFBundleURLTypes</key><array><dict>
+        <key>CFBundleURLName</key><string>town.versary.reed</string>
+        <key>CFBundleURLSchemes</key><array><string>reed</string></array>
+    </dict></array>
     <!-- Opened books arrive as copies for Reed to keep its own copy of. -->
     <key>LSSupportsOpeningDocumentsInPlace</key><false/>
     <key>UIBackgroundModes</key><array><string>audio</string></array>
