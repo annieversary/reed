@@ -374,7 +374,10 @@ import Testing
     #expect(ArticleSpeech.spoken("Q&A, AT&T, 3rd-party, 24-7, the 1990s–2000s, RTX 4090, ISO 8601, RTX 4000.")
             == "Q and A, A T and T, 3rd party, 24 7, the 1990s to 2000s, RTX 40 90, ISO 86 oh 1, RTX 4000.")
     #expect(ArticleSpeech.spoken("See https://www.example.com/foo?x=1. It was big.[12][citation needed] 🎉 ❤️ x → y.")
-            == "See example dot com. It was big. x to y.")
+            == "See example dot com. It was big. party popper heavy black heart x to y.")
+    #expect(ArticleSpeech.spoken("That was great🔥🔥 🔥, I ❤️ it 👍🏽 and 👩‍💻 in 🇯🇵, step 1️⃣.")
+            == "That was great fire, I heavy black heart it thumbs up sign and woman personal computer in flag of Japan, step 1.")
+    #expect(ArticleSpeech.spoken("😂") == "face with tears of joy")
 }
 
 @Test func evenMoreShorthandIsSaidInWords() {

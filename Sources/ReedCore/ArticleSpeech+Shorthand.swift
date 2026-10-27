@@ -4,19 +4,16 @@ extension ArticleSpeech {
     /// Shorthand written for reading, said in words: abbreviations ("Gov.", "St.", "et al."), times ("1am", "13:00"),
     /// amounts ("$1M", "A$10", "$5/month"), ranges ("10-15"), pairs ("24/7"), units, symbols, and roman numerals after names.
     /// Kokoro's own normalization reads these letter by letter, as fractions, or not at all.
-    /// Footnote markers, emoji and the parts of a web address nobody says aloud are left out.
+    /// Emoji are said by their Unicode names, except as a bullet before the words.
+    /// Footnote markers and the parts of a web address nobody says aloud are left out.
     /// An abbreviation's period is kept where it also ends the sentence.
     static func inWords(_ sentence: String) -> String {
-        [unsaid, abbreviations, times, amounts, units, symbols, romanNumerals].reduce(sentence) { $1($0) }
+        [unsaid, emoji, abbreviations, times, amounts, units, symbols, romanNumerals].reduce(sentence) { $1($0) }
             .replacing(#/ {2,}/#, with: " ").replacing(#/ (?=[,;:!?]|\.(?!\w))/#, with: "").trimmingCharacters(in: .whitespaces)
     }
 
     private static func unsaid(_ text: String) -> String {
-        String(String.UnicodeScalarView(text.unicodeScalars.filter {
-            !($0.properties.isEmojiPresentation || $0.properties.isEmojiModifier || [0xFE0F, 0x200D].contains($0.value)
-                || $0.properties.isEmoji && $0.value >= 0x2300)
-        }))
-        .replacing(#/\[(?:\d+|[a-z]{1,2}|note \d+|[a-z][a-z ]*(?:needed|\?))\]/#, with: "")
+        text.replacing(#/\[(?:\d+|[a-z]{1,2}|note \d+|[a-z][a-z ]*(?:needed|\?))\]/#, with: "")
         .replacing(#/\*\*([^*]+)\*\*|__([^_]+)__|`([^`]+)`/#) { String($0.1 ?? $0.2 ?? $0.3 ?? "") }
         .replacing(#/(^|[\s(])[*_]([^*_\s][^*_]*)[*_](?=[\s,.;:!?)]|$)/#) { "\($0.1)\($0.2)" }
         .replacing(#/(\w)(?:\*+|[†‡])(?=[\s,.;:!?)]|$)/#) { String($0.1) }
@@ -24,6 +21,47 @@ extension ArticleSpeech {
         .replacing(#/\b(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})(?:\/\S*?)?(?=[.,;:!?)\]]*(?:\s|$))/#.ignoresCase()) {
             String($0.1)
         }
+    }
+
+    // A run of the same emoji is said once. Names are Unicode's, so some are dated ("heavy black heart" for ❤️),
+    // and a sequence joined into one picture is said part by part ("woman personal computer" for 👩‍💻).
+    private static func emoji(_ text: String) -> String {
+        var text = Substring(text)
+        if let words = text.firstIndex(where: { !isEmoji($0) && !$0.isWhitespace }), words != text.startIndex,
+           text[..<words].contains(where: isEmoji), text[words...].contains(where: \.isLetter) {
+            text = text[words...]
+        }
+        var said = ""
+        var last: Character?
+        for character in text {
+            guard isEmoji(character) else {
+                said.append(character)
+                if !character.isWhitespace { last = nil }
+                continue
+            }
+            if character != last { said += " \(name(of: character)) " }
+            last = character
+        }
+        return said
+    }
+
+    private static func isEmoji(_ character: Character) -> Bool {
+        character.unicodeScalars.contains {
+            $0.properties.isEmojiPresentation || $0.properties.isEmoji && $0.value >= 0x2300 || $0.value == 0x20E3
+        }
+    }
+
+    private static func name(of character: Character) -> String {
+        let scalars = character.unicodeScalars
+        let regions = scalars.compactMap { (0x1F1E6...0x1F1FF).contains($0.value) ? Character(UnicodeScalar($0.value - 0x1F1E6 + 65)!) : nil }
+        if regions.count == 2, let country = Locale(identifier: "en").localizedString(forRegionCode: String(regions)) {
+            return "flag of \(country)"
+        }
+        // A keycap is the digit or sign on it.
+        if scalars.contains(where: { $0.value == 0x20E3 }) { return String(scalars.first!) }
+        return scalars.filter { !$0.properties.isEmojiModifier && ![0xFE0F, 0x200D].contains($0.value) && !(0xE0020...0xE007F).contains($0.value) }
+            .compactMap { $0.properties.name?.lowercased().replacing("emoji component ", with: "") }
+            .joined(separator: " ")
     }
 
     // Where a sentence goes on after an abbreviation, its period would be read as a pause, so it's dropped.
