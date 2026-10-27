@@ -95,7 +95,8 @@ struct LibraryView: View {
 
     /// The list's rows: series gathered into one row where their first listed part would be, except in
     /// search results and favorites, which are about single articles. A series is unread while any part
-    /// is, and finished once every part is. Unread lists oldest first, so the queue reads in order saved.
+    /// is, and finished once every part is. Unread lists started articles first, then the rest, each oldest
+    /// first, so the queue reads in order saved.
     private var entries: [Entry] {
         let filter = filter ?? .all
         guard query.isEmpty, filter != .favorites else { return visibleArticles.map(Entry.article) }
@@ -114,7 +115,14 @@ struct LibraryView: View {
                 entries.append(.article(article))
             }
         }
-        return entries
+        guard filter == .unread else { return entries }
+        func started(_ entry: Entry) -> Bool {
+            switch entry {
+            case .article(let article): article.progress > 0
+            case .series(_, let parts): parts.contains { $0.progress > 0 }
+            }
+        }
+        return entries.filter(started) + entries.filter { !started($0) }
     }
 
     private struct Following: Equatable {
