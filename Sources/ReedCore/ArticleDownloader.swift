@@ -33,13 +33,13 @@ public actor ArticleDownloader {
     }
 
     public func page(at url: URL) async throws -> DownloadedPage {
-        let (data, response) = try await fetch(Self.readablePage(for: url), limit: 8 * 1024 * 1024, kind: .html)
+        let (data, response) = try await fetchFollowingRefreshes(url, kind: .html)
         return try Self.page(from: data, response: response)
     }
 
     /// The page at `url`, or the PDF it serves.
     public func document(at url: URL) async throws -> DownloadedDocument {
-        let (data, response) = try await fetch(Self.readablePage(for: url), limit: 8 * 1024 * 1024, kind: .document)
+        let (data, response) = try await fetchFollowingRefreshes(url, kind: .document)
         if data.starts(with: Data("%PDF".utf8)) { return .pdf(data, url: response.url ?? url) }
         guard Self.htmlTypes.contains(response.mimeType?.lowercased() ?? "") else { throw ReedError.unsupportedContent }
         return .page(try Self.page(from: data, response: response))
@@ -50,6 +50,41 @@ public actor ArticleDownloader {
         let (data, response) = try await fetch(url, limit: 8 * 1024 * 1024, kind: .document)
         guard data.starts(with: Data("%PDF".utf8)) else { throw ReedError.unsupportedContent }
         return (data, response.url ?? url)
+    }
+
+    static let refreshLimit = 5
+
+    private func fetchFollowingRefreshes(_ url: URL, kind: Kind) async throws -> (Data, HTTPURLResponse) {
+        var target = Self.readablePage(for: url)
+        var hops = 0
+        while true {
+            let (data, response) = try await fetch(target, limit: 8 * 1024 * 1024, kind: kind)
+            guard hops < Self.refreshLimit, let base = response.url, let next = Self.refreshTarget(in: data, base: base) else {
+                return (data, response)
+            }
+            target = Self.readablePage(for: next)
+            hops += 1
+        }
+    }
+
+    /// Where a page sends its reader at once with a `<meta>` refresh, as link shorteners like t.co do for browsers.
+    /// A refresh inside `<noscript>` is only taken from a page too short to be anything but a redirect, since some
+    /// sites use one to send readers without scripts to a page asking for them.
+    static func refreshTarget(in data: Data, base: URL) -> URL? {
+        let shim = data.count <= 4096
+        var head = String(decoding: data.prefix(16 * 1024), as: UTF8.self)
+        if !shim { head.replace(/(?is)<noscript\b.*?<\/noscript>/, with: "") }
+        for tag in head.matches(of: /(?i)<meta\b[^>]*>/) {
+            guard tag.0.contains(/(?i)http-equiv\s*=\s*["']?refresh\b/),
+                  let content = tag.0.firstMatch(of: /(?i)\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)')/),
+                  let value = content.1 ?? content.2,
+                  let target = value.firstMatch(of: /(?i)^\s*0*(?:\.0*)?\s*[;,]\s*(?:url\s*=\s*)?["']?([^"'\s]+)/) else { continue }
+            let address = String(target.1).replacingOccurrences(of: "&amp;", with: "&")
+            guard let url = URL(string: address, relativeTo: base)?.absoluteURL,
+                  ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url != base else { continue }
+            return url
+        }
+        return nil
     }
 
     private static func page(from data: Data, response: HTTPURLResponse) throws -> DownloadedPage {
