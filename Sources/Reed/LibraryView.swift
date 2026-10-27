@@ -24,6 +24,22 @@ enum CollectionFilter: String, CaseIterable, Identifiable {
     }
 }
 
+enum ArticleSort: String, CaseIterable, Identifiable {
+    case progress = "Progress", newest = "Newest First", oldest = "Oldest First"
+    case shortest = "Shortest First", longest = "Longest First", shuffled = "Shuffled"
+    var id: Self { self }
+    var symbol: String {
+        switch self {
+        case .progress: "chart.bar.fill"
+        case .newest: "arrow.down"
+        case .oldest: "arrow.up"
+        case .shortest: "hare"
+        case .longest: "tortoise"
+        case .shuffled: "shuffle"
+        }
+    }
+}
+
 enum SidebarItem: Hashable {
     case collection(CollectionFilter), books(BookFilter), discover(Discover), stats, downloads
 }
@@ -62,6 +78,9 @@ struct LibraryView: View {
     @State private var seriesName = ""
     /// The article after the open one in the list, kept while the open one lingers out of it, as when finishing it in Unread.
     @State private var nextID: UUID?
+    @AppStorage("articleSort") private var sort = ArticleSort.progress
+    /// Mixed into each row's place when shuffled; choosing Shuffled again picks a new one.
+    @State private var shuffleSeed = Int.random(in: .min ... .max)
 
     private var filter: CollectionFilter? {
         if case .collection(let filter) = selection { filter } else { nil }
@@ -85,21 +104,26 @@ struct LibraryView: View {
             case .series(let series, _): series.id
             }
         }
-        var articleCount: Int {
+        var articles: [Article] {
             switch self {
-            case .article: 1
-            case .series(_, let parts): parts.count
+            case .article(let article): [article]
+            case .series(_, let parts): parts
             }
         }
+        var articleCount: Int { articles.count }
+    }
+
+    /// The list's rows in the chosen order, except search results, which keep the best matches first.
+    private var entries: [Entry] {
+        query.isEmpty ? sorted(unsortedEntries) : visibleArticles.map(Entry.article)
     }
 
     /// The list's rows: series gathered into one row where their first listed part would be, except in
-    /// search results and favorites, which are about single articles. A series is unread while any part
-    /// is, and finished once every part is. Unread lists started articles first, then the rest, each oldest
-    /// first, so the queue reads in order saved.
-    private var entries: [Entry] {
+    /// favorites, which are about single articles. A series is unread while any part is, and finished once
+    /// every part is. Unread lists oldest first, so the queue reads in order saved, and the rest newest first.
+    private var unsortedEntries: [Entry] {
         let filter = filter ?? .all
-        guard query.isEmpty, filter != .favorites else { return visibleArticles.map(Entry.article) }
+        guard filter != .favorites else { return visibleArticles.map(Entry.article) }
         var shown = Set<UUID>()
         var entries: [Entry] = []
         // Looked up once, rather than searching every series and article for each row.
@@ -115,14 +139,51 @@ struct LibraryView: View {
                 entries.append(.article(article))
             }
         }
-        guard filter == .unread else { return entries }
-        func started(_ entry: Entry) -> Bool {
-            switch entry {
-            case .article(let article): article.progress > 0
-            case .series(_, let parts): parts.contains { $0.progress > 0 }
+        return entries
+    }
+
+    /// Orders `entries` by `sort`, a series by all its parts together. Ties keep the order given.
+    private func sorted(_ entries: [Entry]) -> [Entry] {
+        // An article finished just now stays where its reading left it while it lingers.
+        func done(_ article: Article) -> Double { article.isRead && !lingering.contains(article.id) ? 1 : article.progress }
+        func key(_ entry: Entry) -> Double {
+            let parts = entry.articles
+            let words = Double(parts.reduce(0) { $0 + $1.wordCount })
+            switch sort {
+            case .progress: return -parts.reduce(0) { $0 + done($1) } / Double(max(parts.count, 1))
+            case .newest: return -(parts.map(\.savedAt).max() ?? .distantPast).timeIntervalSinceReferenceDate
+            case .oldest: return (parts.map(\.savedAt).min() ?? .distantPast).timeIntervalSinceReferenceDate
+            case .shortest: return words
+            case .longest: return -words
+            case .shuffled:
+                var hasher = Hasher()
+                hasher.combine(shuffleSeed)
+                hasher.combine(entry.id)
+                return Double(hasher.finalize())
             }
         }
-        return entries.filter(started) + entries.filter { !started($0) }
+        return entries.enumerated()
+            .map { (key: key($1), index: $0, entry: $1) }
+            .sorted { ($0.key, $0.index) < ($1.key, $1.index) }
+            .map(\.entry)
+    }
+
+    private func choose(_ option: ArticleSort) {
+        withAnimation(.snappy(duration: 0.3)) {
+            if option == .shuffled { shuffleSeed = .random(in: .min ... .max) }
+            sort = option
+        }
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            ForEach(ArticleSort.allCases) { option in
+                Toggle(option.rawValue, systemImage: option.symbol, isOn: Binding(get: { sort == option }, set: { _ in choose(option) }))
+            }
+        } label: {
+            Label("Sort", systemImage: "arrow.up.arrow.down")
+        }
+        .disabled(!query.isEmpty)
     }
 
     private struct Following: Equatable {
@@ -332,6 +393,13 @@ struct LibraryView: View {
         return VStack(spacing: 0) {
             #if os(macOS)
             ColumnHeader(title: (filter ?? .all).rawValue, subtitle: articleCount) {
+                sortMenu
+                    .labelStyle(.iconOnly).font(.system(size: 15, weight: .medium))
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .frame(width: 32, height: 32)
+                    .background(ReedStyle.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
+                    .tint(ReedStyle.accent)
+                    .help("Sort articles")
                 HeaderButton(help: "Save an article (⌘N)", label: "Save an article", symbol: "plus") { showingAdd = true }
             } below: {
                 searchField
@@ -385,6 +453,7 @@ struct LibraryView: View {
             ActivityFooter(library: library)
         }
         .columnTitle((filter ?? .all).rawValue) {
+            sortMenu
             Button("Save an article", systemImage: "plus") { showingAdd = true }
         }
     }
