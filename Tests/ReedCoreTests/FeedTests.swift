@@ -128,11 +128,28 @@ private let base = URL(string: "https://example.com/feed.xml")!
       <link type='application/atom+xml' href='https://example.com/atom.xml' rel='alternate'>
       <link rel="alternate" type="application/rss+xml" href="/feed.xml">
       <link rel="alternate" hreflang="fr" href="/fr/">
+      <link rel="alternate" type="application/rss+xml" title="Example &raquo; Comments Feed" href="/comments/feed/">
+      <link rel="alternate" type="application/rss+xml" title="Example &raquo; Hello Comments Feed" href="/hello/feed/">
     </head></html>
     """, base: URL(string: "https://example.com/blog/")!)
     #expect(found.map(\.url.absoluteString) == ["https://example.com/feed.xml", "https://example.com/atom.xml"])
     #expect(found[0].title == "Posts & notes")
     #expect(found[1].title == "example.com")
+}
+
+@Test func platformsKeepFeedsAtFixedAddresses() {
+    let feeds = { (page: String) in FeedParser.platformFeeds(for: URL(string: page)!).map(\.absoluteString) }
+    #expect(feeds("https://www.youtube.com/channel/UCabc/videos") == ["https://www.youtube.com/feeds/videos.xml?channel_id=UCabc"])
+    #expect(feeds("https://m.youtube.com/playlist?list=PLxyz") == ["https://www.youtube.com/feeds/videos.xml?playlist_id=PLxyz"])
+    #expect(feeds("https://www.youtube.com/@someone") == [])
+    #expect(feeds("https://old.reddit.com/r/swift/top/") == ["https://www.reddit.com/r/swift/.rss"])
+    #expect(feeds("https://www.reddit.com/u/someone") == ["https://www.reddit.com/user/someone/.rss"])
+    #expect(feeds("https://github.com/apple/swift/issues") == ["https://github.com/apple/swift/releases.atom",
+                                                              "https://github.com/apple/swift/tags.atom",
+                                                              "https://github.com/apple/swift/commits.atom"])
+    #expect(feeds("https://github.com/someone") == ["https://github.com/someone.atom"])
+    #expect(feeds("https://github.com/topics/swift") == [])
+    #expect(feeds("https://example.com/r/swift") == [])
 }
 
 @Test func theRiverIsNewestFirstWithEachLinkOnce() {
@@ -214,6 +231,70 @@ private let base = URL(string: "https://example.com/feed.xml")!
     #expect(try Library(root: root).feeds.isEmpty)
 
     await #expect(throws: ReedError.self) { try await library.findFeeds(at: "https://stub.test/missing") }
+}
+
+@MainActor @Test func findsFeedsAPageDoesNotLinkTo() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [UnlinkedFeedServer.self]
+    let library = try Library(root: root, downloader: ArticleDownloader(session: URLSession(configuration: configuration)))
+
+    let candidates = try await library.findFeeds(at: "https://stub.test/")
+    #expect(candidates.map(\.url.absoluteString) == ["https://stub.test/feed/?post_type=episode", "https://stub.test/feed/?post_type=article"])
+    #expect(candidates.map(\.title) == ["Stub — Episodes", "Stub — Articles"])
+
+    // An article that links no feed takes its site's.
+    #expect(try await library.findFeeds(at: "https://home.test/2026/post").map(\.url.absoluteString) == ["https://home.test/index.rss"])
+    // Nor does its site, but it links one by name.
+    #expect(try await library.findFeeds(at: "https://named.test/post").map(\.url.absoluteString) == ["https://named.test/essays.html"])
+}
+
+/// Sites whose pages don't link to their feeds; stub.test is WordPress, and its own feed holds only the placeholder post.
+private final class UnlinkedFeedServer: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let (status, headers, body) = Self.respond(to: request)
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+
+    static func respond(to request: URLRequest) -> (Int, [String: String], String) {
+        func rss(_ path: String, on date: String) -> String {
+            "<rss><channel><title>Stub</title><item><title>\(path)</title><link>https://stub.test/\(path)</link><pubDate>\(date)</pubDate></item></channel></rss>"
+        }
+        switch (request.url?.host(), request.url?.path()) {
+        case ("home.test", "/"):
+            return (200, ["Content-Type": "text/html"], #"<link rel="alternate" type="application/rss+xml" href="/index.rss">"#)
+        case ("home.test", "/index.rss"), ("named.test", "/essays.html"):
+            return (200, [:], rss("a", on: "Tue, 27 Oct 2026 00:00:00 GMT"))
+        case ("home.test", "/2026/post"), ("named.test", "/"):
+            return (200, ["Content-Type": "text/html"], "<p>Hello</p>")
+        case ("named.test", "/post"):
+            return (200, ["Content-Type": "text/html"], #"<a href="/essays.html">RSS</a> <a href="/makersschedule.html">Schedule</a>"#)
+        case ("stub.test", _): break
+        default: return (404, [:], "")
+        }
+        switch (request.url?.path(), request.url?.query()) {
+        case ("/", _):
+            return (200, ["Content-Type": "text/html"], #"<link rel="https://api.w.org/" href="https://stub.test/wp-json/">"#)
+        case ("/wp-json/wp/v2/types", _):
+            return (200, ["Content-Type": "application/json"], """
+            {"post": {"name": "Posts", "slug": "post"}, "wp_block": {"name": "Patterns", "slug": "wp_block"},
+             "article": {"name": "Articles", "slug": "article"}, "episode": {"name": "Episodes", "slug": "episode"},
+             "sponsor": {"name": "Sponsors", "slug": "sponsor"}}
+            """)
+        case ("/feed/", "post_type=article"): return (200, [:], rss("a", on: "Tue, 27 Oct 2026 00:00:00 GMT"))
+        case ("/feed/", "post_type=episode"): return (200, [:], rss("e", on: "Wed, 28 Oct 2026 00:00:00 GMT"))
+        // Also served for post types that aren't public.
+        case ("/feed/", _), ("/rss", _): return (200, [:], rss("hello-world", on: "Tue, 02 Jul 2024 00:00:00 GMT"))
+        default: return (404, [:], "")
+        }
+    }
 }
 
 private final class StubFeedServer: URLProtocol {

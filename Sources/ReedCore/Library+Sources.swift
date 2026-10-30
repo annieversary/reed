@@ -68,17 +68,62 @@ extension Library {
         root.appendingPathComponent("FrontPages", isDirectory: true).appendingPathComponent(source.key + ".json")
     }
 
-    /// The feeds at `input`: the address itself if it is a feed, otherwise the feeds the page links to.
+    /// The feeds at `input`: the address itself if it is a feed, otherwise the feeds the page or its site's home page
+    /// links to, then those found where sites commonly keep feeds they don't link to.
     public func findFeeds(at input: String) async throws -> [FeedCandidate] {
         let url = try ArticleURL.parse(input)
+        let known = await Self.verify(FeedParser.platformFeeds(for: url).map { ($0, nil) }, droppingQuiet: false, using: downloader)
+        if !known.isEmpty { return known }
         guard case .fetched(let data, let finalURL, _, _) = try await downloader.feed(at: url) else { throw ReedError.noFeed }
         if let parsed = await Self.parse(data, from: finalURL) {
             return [FeedCandidate(url: finalURL, title: parsed.title ?? finalURL.host() ?? finalURL.absoluteString)]
         }
-        guard let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .windowsCP1252) else { throw ReedError.noFeed }
-        let found = FeedParser.discover(in: html, base: finalURL)
+        guard let html = Self.text(of: data) else { throw ReedError.noFeed }
+        var linked = FeedParser.discover(in: html, base: finalURL)
+        var api = FeedParser.wordPressAPI(in: html, base: finalURL)
+        if linked.isEmpty, let home = URL(string: "/", relativeTo: finalURL)?.absoluteURL, home != finalURL,
+           case .fetched(let homeData, let homeURL, _, _)? = try? await downloader.feed(at: home), let homeHTML = Self.text(of: homeData) {
+            linked = FeedParser.discover(in: homeHTML, base: homeURL)
+            api = api ?? FeedParser.wordPressAPI(in: homeHTML, base: homeURL)
+        }
+        var guesses: [(url: URL, label: String?)] = []
+        if let api, let types = try? await downloader.json(at: api.appending(path: "wp/v2/types")) {
+            guesses += FeedParser.wordPressFeeds(types: types, api: api).map { ($0.url, $0.label) }
+        }
+        if linked.isEmpty {
+            let platform = FeedParser.canonical(in: html, base: finalURL).map(FeedParser.platformFeeds) ?? []
+            guesses += (platform + FeedParser.guesses(in: html, for: finalURL)).map { ($0, nil) }
+        }
+        let linkedURLs = Set(linked.map(\.url))
+        let found = linked + (await Self.verify(guesses.filter { !linkedURLs.contains($0.url) }, using: downloader))
         if found.isEmpty { throw ReedError.noFeed }
         return found
+    }
+
+    private nonisolated static func text(of data: Data) -> String? {
+        String(data: data, encoding: .utf8) ?? String(data: data, encoding: .windowsCP1252)
+    }
+
+    /// The guessed feeds that turn out to be feeds, freshest first, leaving out repeats of another's entries and,
+    /// unless `droppingQuiet` is false, any gone quiet for a year longer than the freshest, which on many sites is a
+    /// placeholder left by their software.
+    nonisolated static func verify(_ guesses: [(url: URL, label: String?)], droppingQuiet: Bool = true,
+                                   using downloader: ArticleDownloader) async -> [FeedCandidate] {
+        let requests = guesses.map { FeedRequest(id: UUID(), url: $0.url, etag: nil, lastModified: nil) }
+        let results = await fetch(requests, using: downloader)
+        let feeds = zip(requests, guesses).compactMap { request, guess -> (candidate: FeedCandidate, entries: [URL], newest: Date)? in
+            guard case .success(let fetched?) = results[request.id], !fetched.feed.entries.isEmpty else { return nil }
+            let site = fetched.feed.title ?? guess.url.host() ?? guess.url.absoluteString
+            let title = guess.label.map { "\(site) — \($0)" } ?? site
+            return (FeedCandidate(url: guess.url, title: title), fetched.feed.entries.map(\.url),
+                    fetched.feed.entries.compactMap(\.postedAt).max() ?? .distantPast)
+        }
+        guard let freshest = feeds.map(\.newest).max() else { return [] }
+        var seen = Set<[URL]>()
+        return feeds
+            .filter { (!droppingQuiet || $0.newest > freshest.addingTimeInterval(-365 * 24 * 60 * 60)) && seen.insert($0.entries).inserted }
+            .sorted { $0.newest > $1.newest }
+            .map(\.candidate)
     }
 
     @discardableResult public func subscribe(to url: URL) async throws -> Feed {

@@ -121,7 +121,7 @@ enum FeedParser {
             })
     }
 
-    /// The feeds a web page links to, in the page's order.
+    /// The feeds a web page links to, in the page's order, leaving out feeds of its comments.
     static func discover(in html: String, base: URL) -> [FeedCandidate] {
         let types = ["application/rss+xml", "application/atom+xml", "application/feed+json", "application/rdf+xml"]
         var seen = Set<URL>()
@@ -129,8 +129,82 @@ enum FeedParser {
             let rel = attribute("rel", in: tag)?.lowercased().split(separator: " ") ?? []
             guard rel.contains("alternate"), let type = attribute("type", in: tag)?.lowercased(), types.contains(type),
                   let href = attribute("href", in: tag), let url = link(href, base: base), seen.insert(url).inserted else { return nil }
-            return FeedCandidate(url: url, title: clean(attribute("title", in: tag)) ?? url.host() ?? url.absoluteString)
+            let title = clean(attribute("title", in: tag))
+            if title?.lowercased().contains("comments feed") == true || url.path().lowercased().contains("/comments/feed") { return nil }
+            return FeedCandidate(url: url, title: title ?? url.host() ?? url.absoluteString)
         }
+    }
+
+    /// The address a page gives as its own, which may say more than the one it was reached by.
+    static func canonical(in html: String, base: URL) -> URL? {
+        matches(of: #"<link\b[^>]*>"#, in: html).lazy
+            .filter { attribute("rel", in: $0)?.lowercased() == "canonical" }
+            .compactMap { attribute("href", in: $0).flatMap { link($0, base: base) } }
+            .first
+    }
+
+    /// Feeds that sites keep at fixed addresses but whose pages don't link to them, or are hard to read for links.
+    static func platformFeeds(for page: URL) -> [URL] {
+        let host = (page.host() ?? "").lowercased().replacing(/^(www|m|old)\./, with: "")
+        let parts = page.pathComponents.filter { $0 != "/" }
+        let addresses: [String]
+        switch (host, parts.first) {
+        case ("youtube.com", "channel") where parts.count > 1:
+            addresses = ["https://www.youtube.com/feeds/videos.xml?channel_id=\(parts[1])"]
+        case ("youtube.com", "playlist"):
+            let list = URLComponents(url: page, resolvingAgainstBaseURL: true)?.queryItems?.first { $0.name == "list" }?.value
+            addresses = list.map { ["https://www.youtube.com/feeds/videos.xml?playlist_id=\($0)"] } ?? []
+        case ("reddit.com", "r"?), ("reddit.com", "user"?), ("reddit.com", "u"?):
+            guard parts.count > 1 else { return [] }
+            addresses = ["https://www.reddit.com/\(parts[0] == "u" ? "user" : parts[0])/\(parts[1])/.rss"]
+        case ("github.com", let owner?) where !githubPages.contains(owner.lowercased()):
+            addresses = parts.count > 1
+                ? ["releases", "tags", "commits"].map { "https://github.com/\(owner)/\(parts[1])/\($0).atom" }
+                : ["https://github.com/\(owner).atom"]
+        default:
+            return []
+        }
+        return addresses.compactMap { link($0, base: page) }
+    }
+
+    /// GitHub's own pages, whose addresses look like those of an account.
+    private static let githubPages: Set = ["about", "collections", "explore", "features", "login", "marketplace", "notifications",
+                                           "orgs", "pricing", "search", "settings", "sponsors", "topics", "trending"]
+
+    /// Where a page that doesn't declare its feed may still have one: links named for it, then beside the page and at
+    /// the site's root.
+    static func guesses(in html: String, for page: URL) -> [URL] {
+        let anchors = matches(of: #"<a\b[^>]*>[^<]*"#, in: html).compactMap { anchor -> URL? in
+            guard let url = attribute("href", in: anchor).flatMap({ link($0, base: page) }), url.host() == page.host() else { return nil }
+            let text = clean(String(anchor[(anchor.firstIndex(of: ">").map(anchor.index(after:)) ?? anchor.endIndex)...]))?.lowercased()
+            let named = ["rss", "atom", "feed", "rss feed", "atom feed"].contains(text ?? "")
+            return named || url.lastPathComponent.lowercased().wholeMatch(of: /(rss|atom|feed)(\.\w+)?/) != nil ? url : nil
+        }
+        let names = ["feed", "rss", "feed.xml", "rss.xml", "atom.xml", "index.xml", "feed.json"]
+        let folders = Set([URL(string: "/", relativeTo: page), URL(string: ".", relativeTo: page)].compactMap { $0?.absoluteURL })
+        var seen = Set<URL>()
+        return (anchors + folders.sorted { $0.path().count > $1.path().count }.flatMap { folder in names.compactMap { link($0, base: folder) } })
+            .filter { seen.insert($0).inserted }
+    }
+
+    /// The WordPress REST API a page links to, when it is served at the usual `wp-json` path.
+    static func wordPressAPI(in html: String, base: URL) -> URL? {
+        matches(of: #"<link\b[^>]*>"#, in: html).lazy
+            .filter { attribute("rel", in: $0)?.lowercased() == "https://api.w.org/" }
+            .compactMap { attribute("href", in: $0).flatMap { link($0, base: base) } }
+            .first { $0.path().hasSuffix("/wp-json/") }
+    }
+
+    /// The feeds of a WordPress site's own post types, which it serves but seldom links to, labelled with each type's name.
+    static func wordPressFeeds(types data: Data, api: URL) -> [(url: URL, label: String)] {
+        struct PostType: Decodable { let name: String, slug: String }
+        guard let types = try? JSONDecoder().decode([String: PostType].self, from: data) else { return [] }
+        let builtIn: Set = ["post", "page", "attachment", "nav_menu_item"]
+        let feed = api.deletingLastPathComponent().appending(path: "feed/")
+        return types.values
+            .filter { !builtIn.contains($0.slug) && !$0.slug.hasPrefix("wp_") }
+            .sorted { $0.slug < $1.slug }
+            .map { (feed.appending(queryItems: [URLQueryItem(name: "post_type", value: $0.slug)]), $0.name) }
     }
 
     private static func matches(of pattern: String, in text: String) -> [String] {
