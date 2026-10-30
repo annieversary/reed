@@ -35,8 +35,13 @@ let result = site;
 const images = [];
 if (book) result = chapterContent(doc, book, images);
 if (!result) {
+    // Readability prefers a schema headline, which some sites fill with the subtitle; a shared title the page also
+    // heads itself with is the one readers see. Taken first, as Readability takes the heading out of the page.
+    const shared = meta(doc, "og:title");
+    const headed = shared && [...doc.querySelectorAll("h1")].some(h1 => h1.textContent.replace(/\s+/g, " ").trim() === shared);
     result = new Readability(doc, { maxElemsToParse: 60000 }).parse();
     if (!result || !result.textContent || result.textContent.trim().length < 100) return null;
+    if (headed) result.title = shared;
 }
 const clean = DOMPurify.sanitize(result.content, {
     ALLOWED_TAGS: ["p", "div", "section", "article", "h1", "h2", "h3", "h4", "h5", "h6", "a", "img", "figure", "figcaption", "picture", "blockquote", "pre", "code", "ul", "ol", "li", "dl", "dt", "dd", "table", "thead", "tbody", "tfoot", "tr", "td", "th", "caption", "strong", "em", "b", "i", "u", "s", "sub", "sup", "br", "hr", "span", "time", "abbr",

@@ -164,3 +164,15 @@ private let arxivAbstract = """
     #expect(article.html.contains("<code>Challenger 4</code>"))
     #expect(article.images.isEmpty)
 }
+
+@Test @MainActor func headingSharedAsTitleWinsOverSchemaHeadline() async throws {
+    let paragraph = "<p>Sprockets turn into gears under mild conditions, quickly and quietly, for anyone who needs gears.</p>"
+    let html = """
+    <html><head><title>The Gearworks - Example</title><meta property="og:title" content="The Gearworks">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"A love letter to sprockets"}</script></head>
+    <body><article><h1>
+        The Gearworks  </h1><div class="subtitle">A love letter to sprockets</div>\(paragraph)\(paragraph)\(paragraph)</article></body></html>
+    """
+    let article = try await extract(html, url: "https://example.org/gearworks")
+    #expect(article.title == "The Gearworks")
+}
