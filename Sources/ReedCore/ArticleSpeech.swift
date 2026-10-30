@@ -448,6 +448,8 @@ public enum ArticleSpeech {
         "monero": "mənˈɛɹO",
         "defi": "dˈifˌI",
         "gwern": "ɡwˈɜɹn",
+        "voila": "vwɑlˈɑ",
+        "voilà": "vwɑlˈɑ",
         // "live" and "lives" as verbs (see `verbLive(_:)`)
         "liv": "lˈɪv",
         "livs": "lˈɪvz",
