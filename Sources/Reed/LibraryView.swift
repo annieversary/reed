@@ -79,6 +79,7 @@ struct LibraryView: View {
     /// The article after the open one in the list, kept while the open one lingers out of it, as when finishing it in Unread.
     @State private var nextID: UUID?
     @AppStorage("articleSort") private var sort = ArticleSort.progress
+    @AppStorage("lastOpenedArticle") private var lastOpenedID = ""
     /// Mixed into each row's place when shuffled; choosing Shuffled again picks a new one.
     @State private var shuffleSeed = Int.random(in: .min ... .max)
 
@@ -299,7 +300,17 @@ struct LibraryView: View {
             // After the book's selection has reset what's open in it.
             Task { bookPath = ids.dropFirst().map { BookPage(chapter: $0) } }
         }
-        .onAppear { if !columnsStack { selection = .collection(.all) } }
+        .onAppear {
+            if let article = articleToResume {
+                selection = .collection(.all)
+                selectedID = article.id
+            } else if !columnsStack {
+                selection = .collection(.all)
+            }
+        }
+        .onChange(of: selectedID) { _, id in
+            if let id, library.articles.contains(where: { $0.id == id }) { lastOpenedID = id.uuidString }
+        }
         .onChange(of: [selectedID, narrator.readableID], initial: true) { _, ids in library.retained = Set(ids.compactMap { $0 }) }
         .onChange(of: narrator.savedVersion) { narrator.followNewVersion() }
         .onChange(of: selectedBookID) { bookPath = [] }
@@ -347,6 +358,13 @@ struct LibraryView: View {
             Button("Cancel", role: .cancel) {}
             Button("Rename") { library.rename(series, to: seriesName) }
         }
+    }
+
+    /// The last article opened if it isn't finished, or else the unread one furthest along, if any is started.
+    private var articleToResume: Article? {
+        let unread = library.articles.filter { !$0.isRead }
+        if let last = unread.first(where: { $0.id.uuidString == lastOpenedID }) { return last }
+        return unread.filter { $0.progress > 0 }.max { $0.progress < $1.progress }
     }
 
     /// Whether the columns are shown one at a time, as on iPhone, rather than side by side.
