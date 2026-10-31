@@ -6,9 +6,10 @@ import SwiftData
 
 @MainActor @Observable
 public final class Library {
+    /// The saved articles, newest first. `place(_:as:)` keeps this and `cached` to each article's `membership`.
     public internal(set) var articles: [Article] = []
     /// Front-page stories and recent feed entries downloaded ahead to read offline, kept outside the
-    /// library until saved.
+    /// library until saved, in the order they're downloaded.
     public internal(set) var cached: [Article] = []
     /// Cached articles kept even once they are no longer wanted, such as the one being read.
     public var retained: Set<UUID> = [] { didSet { removeClosedVersions() } }
@@ -52,8 +53,6 @@ public final class Library {
     /// Whether the network was last seen reachable; nil until it has been looked at.
     @ObservationIgnored var connected: Bool?
     var progressSave: Task<Void, Never>?
-    /// Articles removed while downloading, deleted once their download settles.
-    var discarded: Set<UUID> = []
     /// How many times each shared item has failed to be added, by its file name in the inbox.
     @ObservationIgnored var inboxFailures: [String: Int] = [:]
     struct PassageKey: Hashable { let content: URL, title: String }
@@ -71,8 +70,12 @@ public final class Library {
         container = try ModelContainer(for: Article.self, Book.self, BookChapter.self, ReadingRecord.self, ReadingDay.self,
                                        configurations: configuration)
         searchIndex = try SearchIndex(url: root.appendingPathComponent("Search.sqlite"))
-        let stored = try container.mainContext.fetch(FetchDescriptor<Article>(sortBy: [SortDescriptor(\.savedAt, order: .reverse)]))
-        articles = stored.filter { !$0.isCached }
+        var stored = try container.mainContext.fetch(FetchDescriptor<Article>(sortBy: [SortDescriptor(\.savedAt, order: .reverse)]))
+        // Let go of while downloading, and Reed closed before the download settled.
+        let discarded = stored.filter { $0.membership == .discarded }
+        stored.removeAll { $0.membership == .discarded }
+        for article in discarded { erase(article) }
+        articles = stored.filter(\.membership.isSaved)
         cached = stored.filter(\.isCached)
         try storage.cleanStaging()
         for article in stored {
@@ -134,7 +137,7 @@ public final class Library {
         container.mainContext.insert(article)
         do { try container.mainContext.save() }
         catch { container.mainContext.delete(article); throw error }
-        articles.insert(article, at: 0)
+        place(article, as: .saved(favorite: false))
         reindex(article)
         resumeDownloads()
         return article
@@ -167,28 +170,24 @@ public final class Library {
         } else {
             article = Article(url: url)
             note(discussion, of: article)
-            article.isCached = true
+            article.membership = .cached
             container.mainContext.insert(article)
             do { try container.mainContext.save() }
             catch { container.mainContext.delete(article); errorMessage = error.localizedDescription; return nil }
         }
         // Cached articles download in order, so the one being opened goes first.
-        cached.removeAll { $0.id == article.id }
-        cached.insert(article, at: 0)
+        place(article, as: .cached)
         resumeDownloads()
         return article
     }
 
-    /// Moves a cached article into the library, without downloading it again.
-    public func keep(_ article: Article) {
-        guard article.isCached else { return }
-        discarded.remove(article.id)
-        article.isCached = false
+    /// Moves a cached or discarded article into the library, without downloading it again.
+    public func keep(_ article: Article, asFavorite favorite: Bool = false) {
+        guard !article.membership.isSaved else { return }
         article.savedAt = .now
         if case .failed = article.saveState { article.saveState = .queued(failures: 0) }
+        place(article, as: .saved(favorite: favorite))
         save()
-        cached.removeAll { $0.id == article.id }
-        articles.insert(article, at: 0)
         reindex(article)
         if article.state.isReadable { lookForSiteFeeds(of: article) }
         resumeDownloads()
@@ -197,28 +196,33 @@ public final class Library {
     /// Takes the article out of the library but keeps its copy cached, so it stays readable while it is open
     /// or still wanted in the cache.
     public func removeFromLibrary(_ article: Article) {
-        guard !article.isCached else { return }
-        article.isCached = true
-        article.isFavorite = false
+        guard article.membership.isSaved else { return }
+        place(article, as: .cached)
         save()
-        articles.removeAll { $0.id == article.id }
-        cached.append(article)
         removeFromSeries(article)
         let id = article.id
         updateSearch { try await $0.remove(id) }
     }
 
     public func delete(_ article: Article) {
-        let id = article.id
-        guard let index = articles.firstIndex(where: { $0.id == id }) else { return }
+        guard article.membership.isSaved else { return }
         // One downloading goes from the library now, and is erased once its download settles, leaving nothing behind.
         if article.state == .downloading {
-            discarded.insert(id)
-            articles.remove(at: index)
-            removeFromSeries(article)
-        } else if erase(article) {
-            articles.remove(at: index)
-            removeFromSeries(article)
+            place(article, as: .discarded)
+            save()
+        } else if !erase(article) { return }
+        removeFromSeries(article)
+    }
+
+    /// Sets the article's membership, moving it to the front of the list that holds articles with it.
+    func place(_ article: Article, as membership: Membership) {
+        article.membership = membership
+        articles.removeAll { $0.id == article.id }
+        cached.removeAll { $0.id == article.id }
+        switch membership {
+        case .saved: articles.insert(article, at: 0)
+        case .cached: cached.insert(article, at: 0)
+        case .discarded: break
         }
     }
 
@@ -227,6 +231,8 @@ public final class Library {
         let id = article.id
         container.mainContext.delete(article)
         do { try container.mainContext.save() } catch { errorMessage = error.localizedDescription; return false }
+        articles.removeAll { $0.id == id }
+        cached.removeAll { $0.id == id }
         updateSearch { try await $0.remove(id) }
         do { try storage.removeArticle(id) } catch { errorMessage = error.localizedDescription }
         return true
@@ -234,8 +240,12 @@ public final class Library {
 
     /// Favoriting a cached article saves it, so it isn't dropped from the cache.
     public func toggleFavorite(_ article: Article) {
-        article.isFavorite.toggle()
-        if article.isFavorite && article.isCached { keep(article) } else { save() }
+        if case .saved(let favorite) = article.membership {
+            article.membership = .saved(favorite: !favorite)
+            save()
+        } else {
+            keep(article, asFavorite: true)
+        }
     }
 
     public func setRead(_ read: Bool, for articles: [Article]) {

@@ -30,7 +30,7 @@ extension Library {
         container.mainContext.insert(article)
         do { try container.mainContext.save() }
         catch { container.mainContext.delete(article); try? storage.removeArticle(article.id); throw error }
-        articles.insert(article, at: 0)
+        place(article, as: .saved(favorite: false))
         reindex(article)
         resumeDownloads()
         return article

@@ -46,6 +46,19 @@ public enum SaveState: Equatable, Sendable {
     }
 }
 
+/// Where an article stands with the library.
+public enum Membership: Equatable, Sendable {
+    /// In the library, and whether it's a favorite.
+    case saved(favorite: Bool)
+    /// Downloaded ahead to read offline, such as from a front page or feed, but not saved to the library. The cache
+    /// keeps it while it's wanted there or open.
+    case cached
+    /// Gone from the library and the cache, to be erased once its download settles.
+    case discarded
+
+    public var isSaved: Bool { if case .saved = self { true } else { false } }
+}
+
 @Model
 public final class Article {
     @Attribute(.unique) public var id: UUID
@@ -65,14 +78,15 @@ public final class Article {
     public var missingImageCount: Int
     public var progress: Double
     public var isRead: Bool
-    public var isFavorite: Bool
+    // `membership`, kept as columns.
+    @Attribute(originalName: "isFavorite") private var isFavoriteColumn: Bool
     public var contentVersion: String?
     /// The passage narration last reached, to resume from.
     public var narrationPassage: Int?
     /// The start of that passage, to find it again if the passages are numbered differently.
     public var narrationAnchor: String?
-    /// Downloaded ahead from a front page or feed so it can be read offline, but not saved to the library.
-    public var isCached: Bool = false
+    @Attribute(originalName: "isCached") private var isCachedColumn: Bool = false
+    private var isDiscarded: Bool = false
     /// Whether the page links to chapters either side of it; nil if it was saved before that was looked for.
     public var leadsToOtherChapters: Bool?
     /// Where the link is discussed, such as its Hacker News thread, in the order they were found.
@@ -96,7 +110,7 @@ public final class Article {
         missingImageCount = 0
         progress = 0
         isRead = false
-        isFavorite = false
+        isFavoriteColumn = false
         narrationPassage = nil
     }
 
@@ -121,6 +135,18 @@ public final class Article {
             failedAttempts = newValue.failures
         }
     }
+
+    public var membership: Membership {
+        get { isDiscarded ? .discarded : isCachedColumn ? .cached : .saved(favorite: isFavoriteColumn) }
+        set {
+            isDiscarded = newValue == .discarded
+            isCachedColumn = newValue == .cached
+            isFavoriteColumn = newValue == .saved(favorite: true)
+        }
+    }
+
+    public var isFavorite: Bool { membership == .saved(favorite: true) }
+    public var isCached: Bool { membership == .cached }
 
     /// `saveState` in brief, a saved copy being partial when images are missing from it.
     public var state: DownloadState {

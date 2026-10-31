@@ -130,7 +130,7 @@ extension Library {
         var staging: URL?
         // Caching happens quietly; only saving to the library is reported.
         func report(_ message: String, fraction: Double? = nil) {
-            if !article.isCached { saving = SaveProgress(id: article.id, step: message, fraction: fraction) }
+            if article.membership.isSaved { saving = SaveProgress(id: article.id, step: message, fraction: fraction) }
         }
         defer {
             saving = nil
@@ -215,7 +215,7 @@ extension Library {
             article.saveState = .saved
             try container.mainContext.save()
             if let previous { retire(previous, of: .article(article.id), heldBy: [article.id]) }
-            if !article.isCached, !discarded.contains(article.id) {
+            if article.membership.isSaved {
                 reindex(article)
                 lookForSiteFeeds(of: article)
             }
@@ -223,7 +223,7 @@ extension Library {
             // A failed refresh leaves the copy already saved readable.
             if contentURL(for: article) != nil {
                 article.saveState = .saved
-                if !article.isCached, !discarded.contains(article.id) { errorMessage = error.localizedDescription }
+                if article.membership.isSaved { errorMessage = error.localizedDescription }
             } else if let wait = SaveRetry.wait(after: error, failures: &failures) {
                 article.saveState = .waiting(until: .now + wait, failures: failures, reason: SaveRetry.message(for: error))
             } else {
@@ -231,7 +231,7 @@ extension Library {
             }
             save()
         }
-        if discarded.remove(article.id) != nil { erase(article) }
+        if article.membership == .discarded { erase(article) }
     }
 
     /// How many images are fetched at once.

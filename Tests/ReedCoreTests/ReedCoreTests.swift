@@ -61,7 +61,7 @@ import Testing
         let container = try ModelContainer(for: Article.self, configurations: configuration)
         let article = Article(url: URL(string: "https://example.com/story")!)
         article.saveState = .downloading(failures: 0)
-        article.isFavorite = true
+        article.membership = .saved(favorite: true)
         article.progress = 0.45
         container.mainContext.insert(article)
         try container.mainContext.save()
@@ -71,6 +71,25 @@ import Testing
     #expect(library.articles[0].state == .queued)
     #expect(library.articles[0].isFavorite)
     #expect(library.articles[0].progress == 0.45)
+}
+
+@Test @MainActor func discardedArticlesAreErasedAtLaunch() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let storage = try ArticleStorage(root: root)
+    let configuration = ModelConfiguration(url: root.appendingPathComponent("Library.store"))
+    do {
+        let container = try ModelContainer(for: Article.self, configurations: configuration)
+        let article = Article(url: URL(string: "https://example.com/story")!)
+        article.saveState = .downloading(failures: 0)
+        article.membership = .discarded
+        container.mainContext.insert(article)
+        try container.mainContext.save()
+    }
+    let library = try Library(root: storage.root)
+    #expect(library.articles.isEmpty && library.cached.isEmpty)
+    let stored = try library.container.mainContext.fetch(FetchDescriptor<Article>())
+    #expect(stored.isEmpty)
 }
 
 @Test @MainActor func missingOfflineFilesAreNotReportedAsReady() throws {

@@ -30,7 +30,7 @@ extension Library {
             } else {
                 let article = Article(url: item.url)
                 note(item.discussionURL, of: article)
-                article.isCached = true
+                article.membership = .cached
                 container.mainContext.insert(article)
                 kept.append(article)
                 keptAddresses.formUnion(article.addresses)
@@ -39,7 +39,7 @@ extension Library {
         let keptIDs = Set(kept.map(\.id))
         for article in cached where !keptIDs.contains(article.id) {
             if retained.contains(article.id) { kept.append(article) }
-            else if article.state == .downloading { discarded.insert(article.id) }
+            else if article.state == .downloading { article.membership = .discarded }
             else { erase(article) }
         }
         cached = kept
