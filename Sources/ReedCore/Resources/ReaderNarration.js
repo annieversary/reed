@@ -80,7 +80,14 @@ window.reedNarration = (() => {
     ]);
 
     let elements = [], sentences = [], passagesOf = new Map();
-    let current = null, currentIndex = null, currentSentence = null, following = true, leftView = false, reportedAway = '', lastScrolled = 0;
+    let current = null, currentIndex = null, currentSentence = null;
+    // Whether what's being read is kept on screen:
+    // - idle: nothing is being read;
+    // - following: it is, the page scrolling along as it moves;
+    // - scrolled: the reader scrolled by hand, last at `at`, and it hasn't left the screen since;
+    // - away: it has left the screen since, and is `direction` of it ('up' or 'down'), or '' when back on screen
+    //   without the reader scrolling there. Scrolling it back into view follows it again.
+    let view = {mode: 'idle'};
     // What's being read: the sentence's range when it was found, otherwise its passage's element.
     let target = null, marks = [], tintedFormulas = [];
 
@@ -211,31 +218,28 @@ window.reedNarration = (() => {
         if (!always && box.top >= 0 && box.bottom <= innerHeight * 0.75) return;
         window.scrollTo({top: scrollY + box.top - innerHeight * 0.2, behavior: 'smooth'});
     });
-    // Tells the app whether what's being read is above or below the screen, or '' when it's in view.
-    const reportAway = () => {
-        let away = '';
-        if (!following && target && !inView(target)) {
-            leftView = true;
-            away = target.getBoundingClientRect().top < 0 ? 'up' : 'down';
-        }
-        if (away === reportedAway) return;
-        reportedAway = away;
-        window.webkit.messageHandlers.narrationAway.postMessage(away);
+    // Tells the app whether what's being read is above or below the screen, or '' when it's in view or followed.
+    const setView = next => {
+        const away = next.mode === 'away' ? next.direction : '';
+        if (away !== (view.mode === 'away' ? view.direction : '')) window.webkit.messageHandlers.narrationAway.postMessage(away);
+        view = next;
     };
+    const detached = () => view.mode === 'scrolled' || view.mode === 'away';
+    // The scrolled or away view as of `at`, given where what's being read is now.
+    const scrolledView = at => target && !inView(target)
+        ? {mode: 'away', at, direction: target.getBoundingClientRect().top < 0 ? 'up' : 'down'}
+        : view.mode === 'away' ? {mode: 'away', at, direction: ''} : {mode: 'scrolled', at};
 
     const scrollKeys = ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '];
     const scrolledByHand = event => {
-        if (currentIndex === null || (event.type === 'keydown' && !scrollKeys.includes(event.key))) return;
-        following = false;
-        lastScrolled = Date.now();
+        if (view.mode === 'idle' || (event.type === 'keydown' && !scrollKeys.includes(event.key))) return;
+        setView(view.mode === 'following' ? {mode: 'scrolled', at: Date.now()} : {...view, at: Date.now()});
     };
     for (const type of ['wheel', 'touchmove', 'keydown']) window.addEventListener(type, scrolledByHand, {passive: true});
     window.addEventListener('scroll', () => {
-        if (following || !target) return;
-        lastScrolled = Date.now();
+        if (!detached() || !target) return;
         // Scrolling back to what's being read picks following up again.
-        if (leftView && inView(target)) { following = true; leftView = false; }
-        reportAway();
+        setView(view.mode === 'away' && inView(target) ? {mode: 'following'} : scrolledView(Date.now()));
     }, {passive: true});
     // The passage and sentence at a point on screen, found by where the caret would go there.
     const sentenceAt = (x, y, target) => {
@@ -296,7 +300,9 @@ window.reedNarration = (() => {
             currentIndex = index;
             currentSentence = sentence;
             // A scroll that left what was being read on screen, and has settled, didn't mean to stop following it.
-            if (!following && target && inView(target) && Date.now() - lastScrolled > 1000) following = true;
+            if (view.mode === 'idle' || (detached() && target && inView(target) && Date.now() - view.at > 1000)) {
+                setView({mode: 'following'});
+            }
             current?.classList.remove('reed-narrating');
             unmark();
             current = elements[index] ?? null;
@@ -305,15 +311,13 @@ window.reedNarration = (() => {
             const marked = range ? mark(range) : null;
             if (!marked) current?.classList.add('reed-narrating');
             target = marked ?? current;
-            if (following) scrollToCurrent(false);
-            reportAway();
+            if (view.mode === 'following') scrollToCurrent(false);
+            else setView(scrolledView(view.at));
             window.reedNotes?.refresh();
         },
         // Back to what's being read, following it again.
         follow() {
-            following = true;
-            leftView = false;
-            reportAway();
+            if (view.mode !== 'idle') setView({mode: 'following'});
             scrollToCurrent(true);
         },
         clear() {
@@ -324,9 +328,7 @@ window.reedNarration = (() => {
             target = null;
             currentIndex = null;
             currentSentence = null;
-            following = true;
-            leftView = false;
-            reportAway();
+            setView({mode: 'idle'});
             window.reedNotes?.refresh();
         },
     };

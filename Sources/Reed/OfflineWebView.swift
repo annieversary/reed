@@ -50,6 +50,28 @@ enum NarrationDirection: String {
     case up, down
 }
 
+/// What the page has been sent, so each change is sent once, and only once the page can take it.
+enum PageState {
+    /// Loading, from the start or again after its process ended; nothing has been sent to it.
+    case loading
+    case loaded(PageShown)
+}
+
+/// What a loaded page has been sent.
+struct PageShown {
+    var fontSize: Double?
+    var cards: [EndCard]?
+    /// The passages and notes, sent together once both are known.
+    var text: PageText?
+}
+
+/// What's shown of the text. Narration and opening the notes need the passages and notes on the page first.
+struct PageText {
+    var passages: [[String]]
+    var narration: NarrationPosition?
+    var notesOpen: Bool
+}
+
 @MainActor struct OfflineWebView {
     let url: URL
     let fontSize: Double
@@ -132,12 +154,7 @@ enum NarrationDirection: String {
 
     @MainActor func update(_ webView: WKWebView, coordinator: Coordinator) {
         coordinator.parent = self
-        guard coordinator.loaded else { return }
-        coordinator.applyFont(webView)
-        coordinator.applyPassages(webView)
-        coordinator.applyNarration(webView)
-        coordinator.applyNotesOpen(webView)
-        coordinator.applyCards(webView)
+        coordinator.sync(webView)
         #if os(iOS)
         // Swiping back from the screen's edge closes the notes, rather than leaving the article.
         if coordinator.backSwipeDisabled != notesOpen { coordinator.setBackSwipe(enabled: !notesOpen, from: webView) }
@@ -165,77 +182,59 @@ enum NarrationDirection: String {
 
     @MainActor final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         var parent: OfflineWebView
-        var loaded = false
         var contextLink: URL?
-        private var currentFontSize: Double?
-        private var sentPassages: [[String]]?
-        private var shownNarration: NarrationPosition?
-        private var sentNotes = false
-        private var shownNotesOpen = false
-        private var shownCards: [EndCard]?
+        private var page = PageState.loading
         init(parent: OfflineWebView) { self.parent = parent }
 
-        func applyFont(_ webView: WKWebView) {
-            guard currentFontSize != parent.fontSize else { return }
-            currentFontSize = parent.fontSize
-            webView.evaluateJavaScript("document.documentElement.style.setProperty('--font-size', '\(parent.fontSize)px')", in: nil, in: .defaultClient) { _ in }
-        }
-
-        func applyPassages(_ webView: WKWebView) {
-            guard let passages = parent.passages, let notes = parent.notes, passages != sentPassages || !sentNotes else { return }
-            sentPassages = passages
-            sentNotes = true
-            shownNarration = nil
-            let written: [String: Any] = ["overall": notes.overall,
-                                          "sentences": notes.sentences.map { ["passage": $0.passage, "sentence": $0.sentence, "text": $0.text] },
-                                          "pictures": notes.pictures.map { ["source": $0.source, "alt": $0.alt, "text": $0.text] }]
-            webView.callAsyncJavaScript("reedNarration.setPassages(passages); reedNotes.setNotes(notes)",
-                                        arguments: ["passages": passages, "notes": written], in: nil, in: .defaultClient) { _ in }
-        }
-
-        func applyNotesOpen(_ webView: WKWebView) {
-            guard sentNotes, shownNotesOpen != parent.notesOpen else { return }
-            shownNotesOpen = parent.notesOpen
-            webView.evaluateJavaScript("reedNotes.setOpen(\(parent.notesOpen))", in: nil, in: .defaultClient) { _ in }
-        }
-
-        func applyCards(_ webView: WKWebView) {
-            guard shownCards != parent.cards else { return }
-            shownCards = parent.cards
-            let cards = parent.cards.map { ["id": $0.id, "kicker": $0.kicker, "source": $0.source, "title": $0.title, "detail": $0.detail] }
-            webView.callAsyncJavaScript("reedCards.set(cards)", arguments: ["cards": cards], in: nil, in: .defaultClient) { _ in }
-        }
-
-        func applyNarration(_ webView: WKWebView) {
-            guard sentPassages != nil, shownNarration != parent.narrating else { return }
-            shownNarration = parent.narrating
-            if let position = parent.narrating {
-                webView.callAsyncJavaScript("reedNarration.show(index, sentence)", arguments: ["index": position.passage, "sentence": position.sentence],
-                                            in: nil, in: .defaultClient) { _ in }
-            } else {
-                webView.evaluateJavaScript("reedNarration.clear()", in: nil, in: .defaultClient) { _ in }
+        /// Sends the page whatever it hasn't been sent yet.
+        func sync(_ webView: WKWebView) {
+            guard case .loaded(var shown) = page else { return }
+            if shown.fontSize != parent.fontSize {
+                shown.fontSize = parent.fontSize
+                webView.evaluateJavaScript("document.documentElement.style.setProperty('--font-size', '\(parent.fontSize)px')", in: nil, in: .defaultClient) { _ in }
             }
+            if shown.cards != parent.cards {
+                shown.cards = parent.cards
+                let cards = parent.cards.map { ["id": $0.id, "kicker": $0.kicker, "source": $0.source, "title": $0.title, "detail": $0.detail] }
+                webView.callAsyncJavaScript("reedCards.set(cards)", arguments: ["cards": cards], in: nil, in: .defaultClient) { _ in }
+            }
+            if let passages = parent.passages, let notes = parent.notes, passages != shown.text?.passages {
+                // New passages clear what narration showed, but the notes stay open or closed.
+                shown.text = PageText(passages: passages, narration: nil, notesOpen: shown.text?.notesOpen ?? false)
+                let written: [String: Any] = ["overall": notes.overall,
+                                              "sentences": notes.sentences.map { ["passage": $0.passage, "sentence": $0.sentence, "text": $0.text] },
+                                              "pictures": notes.pictures.map { ["source": $0.source, "alt": $0.alt, "text": $0.text] }]
+                webView.callAsyncJavaScript("reedNarration.setPassages(passages); reedNotes.setNotes(notes)",
+                                            arguments: ["passages": passages, "notes": written], in: nil, in: .defaultClient) { _ in }
+            }
+            if var text = shown.text {
+                if text.narration != parent.narrating {
+                    text.narration = parent.narrating
+                    if let position = parent.narrating {
+                        webView.callAsyncJavaScript("reedNarration.show(index, sentence)", arguments: ["index": position.passage, "sentence": position.sentence],
+                                                    in: nil, in: .defaultClient) { _ in }
+                    } else {
+                        webView.evaluateJavaScript("reedNarration.clear()", in: nil, in: .defaultClient) { _ in }
+                    }
+                }
+                if text.notesOpen != parent.notesOpen {
+                    text.notesOpen = parent.notesOpen
+                    webView.evaluateJavaScript("reedNotes.setOpen(\(parent.notesOpen))", in: nil, in: .defaultClient) { _ in }
+                }
+                shown.text = text
+            }
+            page = .loaded(shown)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            loaded = true
-            applyFont(webView)
-            applyPassages(webView)
-            applyNotesOpen(webView)
-            applyCards(webView)
-            if parent.narrating != nil { applyNarration(webView) }
+            if case .loading = page { page = .loaded(PageShown()) }
+            sync(webView)
         }
 
         /// The system ends the page's process when memory runs short, such as while narrating with the phone locked,
         /// which leaves the page blank until it's loaded again.
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-            loaded = false
-            currentFontSize = nil
-            sentPassages = nil
-            shownNarration = nil
-            sentNotes = false
-            shownNotesOpen = false
-            shownCards = nil
+            page = .loading
             webView.loadFileURL(parent.url, allowingReadAccessTo: parent.url.deletingLastPathComponent())
         }
 
@@ -255,7 +254,10 @@ enum NarrationDirection: String {
             }
             if message.name == "notesOpen" {
                 guard let open = message.body as? Bool else { return }
-                shownNotesOpen = open
+                if case .loaded(var shown) = page, shown.text != nil {
+                    shown.text?.notesOpen = open
+                    page = .loaded(shown)
+                }
                 parent.onNotesOpen(open)
                 return
             }
@@ -274,7 +276,7 @@ enum NarrationDirection: String {
                 parent.onNarrationAway((message.body as? String).flatMap(NarrationDirection.init(rawValue:)))
                 return
             }
-            guard loaded, let number = message.body as? Double else { return }
+            guard case .loaded = page, let number = message.body as? Double else { return }
             parent.onProgress(number)
         }
 
