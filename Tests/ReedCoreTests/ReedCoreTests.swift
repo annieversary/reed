@@ -60,7 +60,7 @@ import Testing
     do {
         let container = try ModelContainer(for: Article.self, configurations: configuration)
         let article = Article(url: URL(string: "https://example.com/story")!)
-        article.state = .downloading
+        article.saveState = .downloading(failures: 0)
         article.isFavorite = true
         article.progress = 0.45
         container.mainContext.insert(article)
@@ -80,14 +80,13 @@ import Testing
     do {
         let container = try ModelContainer(for: Article.self, configurations: ModelConfiguration(url: root.appendingPathComponent("Library.store")))
         let article = Article(url: URL(string: "https://example.com/missing")!)
-        article.state = .ready
+        article.saveState = .saved
         article.contentVersion = "gone"
         container.mainContext.insert(article)
         try container.mainContext.save()
     }
     let library = try Library(root: root)
-    #expect(library.articles[0].state == .failed)
-    #expect(library.articles[0].failureMessage == ReedError.damagedArticle.localizedDescription)
+    #expect(library.articles[0].saveState == .failed(reason: ReedError.damagedArticle.localizedDescription))
 }
 
 @Test @MainActor func deletionRemovesMetadataAndArticleFiles() throws {
@@ -101,7 +100,7 @@ import Testing
     do {
         let container = try ModelContainer(for: Article.self, configurations: ModelConfiguration(url: root.appendingPathComponent("Library.store")))
         let article = Article(url: URL(string: "https://example.com/deleted")!, id: id)
-        article.state = .ready
+        article.saveState = .saved
         article.contentVersion = "v1"
         container.mainContext.insert(article)
         try container.mainContext.save()
@@ -585,7 +584,7 @@ import Testing
             let article = Article(url: URL(string: "https://example.com/\(index)")!)
             article.title = title
             // Failed, so the library doesn't try to download them.
-            article.state = .failed
+            article.saveState = .failed(reason: "")
             container.mainContext.insert(article)
         }
         try container.mainContext.save()
@@ -694,7 +693,7 @@ import Testing
     defer { try? FileManager.default.removeItem(at: root) }
     let library = try Library(root: root)
     let article = Article(url: URL(string: "https://example.com/story")!)
-    article.state = .downloading
+    article.saveState = .downloading(failures: 0)
     library.container.mainContext.insert(article)
     let extracted = ExtractedArticle(
         title: "A story", author: "Ann", publishedAt: nil, excerpt: "",

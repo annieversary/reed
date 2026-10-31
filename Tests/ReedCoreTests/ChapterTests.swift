@@ -110,7 +110,7 @@ private func contents(_ count: Int, newestFirst: Bool = false) -> PageLinks {
             let article = Article(url: URL(string: "https://example.com/" + title.lowercased().replacingOccurrences(of: " ", with: "-"))!)
             article.title = title
             // Failed, so the library doesn't try to download them.
-            article.state = .failed
+            article.saveState = .failed(reason: "")
             container.mainContext.insert(article)
         }
         try container.mainContext.save()

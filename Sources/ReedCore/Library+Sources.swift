@@ -23,7 +23,7 @@ extension Library {
             guard !keptAddresses.contains(address) else { continue }
             if let existing = cachedByAddress[address] {
                 // Earlier failures are often just being offline.
-                if existing.state == .failed { existing.state = .queued; existing.failureMessage = nil }
+                if case .failed = existing.saveState { existing.saveState = .queued(failures: 0) }
                 note(item.discussionURL, of: existing)
                 kept.append(existing)
                 keptAddresses.formUnion(existing.addresses)

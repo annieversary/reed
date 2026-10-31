@@ -17,6 +17,35 @@ public enum DownloadState: String, Codable, Sendable {
     }
 }
 
+/// Where saving an article has got. Each case holds only what means something in it; whether a copy is already
+/// saved, to read while it's saved again, is told by the article's `contentVersion`.
+public enum SaveState: Equatable, Sendable {
+    /// Waiting its turn. `failures` counts the saves in a row that failed in a way that may pass, besides being offline,
+    /// so the next failure waits longer.
+    case queued(failures: Int)
+    /// Waiting until `until` to be tried again after a save that may yet work, `reason` saying why.
+    case waiting(until: Date, failures: Int, reason: String)
+    case downloading(failures: Int)
+    /// Saved, with any images that couldn't be counted in the article's `missingImageCount`.
+    case saved
+    case failed(reason: String)
+
+    /// Why it's waiting or failed.
+    public var reason: String? {
+        switch self {
+        case .waiting(_, _, let reason), .failed(let reason): reason
+        case .queued, .downloading, .saved: nil
+        }
+    }
+
+    var failures: Int {
+        switch self {
+        case .queued(let failures), .waiting(_, let failures, _), .downloading(let failures): failures
+        case .saved, .failed: 0
+        }
+    }
+}
+
 @Model
 public final class Article {
     @Attribute(.unique) public var id: UUID
@@ -28,8 +57,9 @@ public final class Article {
     public var savedAt: Date
     public var publishedAt: Date?
     public var downloadedAt: Date?
-    public var stateRaw: String
-    public var failureMessage: String?
+    // `saveState`, kept as columns.
+    private var stateRaw: String
+    private var failureMessage: String?
     public var wordCount: Int
     public var imageCount: Int
     public var missingImageCount: Int
@@ -49,13 +79,10 @@ public final class Article {
     public var discussionURLs: [String]?
     /// When it was first opened in the reader, whether or not it was read any further.
     public var openedAt: Date?
-    /// When a save that failed in a way that may pass, such as being offline, is tried again; nil to try as soon as its turn comes.
-    public var retryAt: Date?
-    /// How many times in a row saving has failed in a way that may pass, besides being offline.
-    public var failedAttempts: Int = 0
+    private var retryAt: Date?
+    private var failedAttempts: Int = 0
 
-    /// Queued, but waiting to be tried again after a save that may yet work.
-    public var isWaitingToRetry: Bool { state == .queued && retryAt != nil }
+    public var isWaitingToRetry: Bool { if case .waiting = saveState { true } else { false } }
 
     public init(url: URL, id: UUID = UUID()) {
         self.id = id
@@ -73,9 +100,36 @@ public final class Article {
         narrationPassage = nil
     }
 
+    public var saveState: SaveState {
+        get {
+            switch DownloadState(rawValue: stateRaw) {
+            case .queued: retryAt.map { .waiting(until: $0, failures: failedAttempts, reason: failureMessage ?? "") } ?? .queued(failures: failedAttempts)
+            case .downloading: .downloading(failures: failedAttempts)
+            case .ready, .partial: .saved
+            case .failed, nil: .failed(reason: failureMessage ?? "")
+            }
+        }
+        set {
+            stateRaw = switch newValue {
+            case .queued, .waiting: DownloadState.queued.rawValue
+            case .downloading: DownloadState.downloading.rawValue
+            case .saved: DownloadState.ready.rawValue
+            case .failed: DownloadState.failed.rawValue
+            }
+            if case .waiting(let until, _, _) = newValue { retryAt = until } else { retryAt = nil }
+            failureMessage = newValue.reason
+            failedAttempts = newValue.failures
+        }
+    }
+
+    /// `saveState` in brief, a saved copy being partial when images are missing from it.
     public var state: DownloadState {
-        get { DownloadState(rawValue: stateRaw) ?? .failed }
-        set { stateRaw = newValue.rawValue }
+        switch saveState {
+        case .queued, .waiting: .queued
+        case .downloading: .downloading
+        case .saved: missingImageCount > 0 ? .partial : .ready
+        case .failed: .failed
+        }
     }
 
     /// Where the article can be found on the web; nil for a file shared to Reed.

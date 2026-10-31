@@ -31,7 +31,13 @@ extension Library {
             defer { self.worker = nil; self.saving = nil; self.imageActivity = nil; self.wakeForRetry() }
             while !Task.isCancelled {
                 let now = Date.now
-                func due(_ article: Article) -> Bool { article.state == .queued && (article.retryAt ?? now) <= now }
+                func due(_ article: Article) -> Bool {
+                    switch article.saveState {
+                    case .queued: true
+                    case .waiting(let until, _, _): until <= now
+                    default: false
+                    }
+                }
                 if let article = self.articles.last(where: due) {
                     await self.download(article)
                 } else if let book = self.books.last(where: { $0.state == .queued }) {
@@ -47,7 +53,8 @@ extension Library {
     func wakeForRetry() {
         retryWake?.cancel()
         retryWake = nil
-        guard let next = (articles + cached).filter(\.isWaitingToRetry).compactMap(\.retryAt).min() else { return }
+        let retries = (articles + cached).compactMap { if case .waiting(let until, _, _) = $0.saveState { until } else { nil } }
+        guard let next = retries.min() else { return }
         retryWake = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(max(next.timeIntervalSinceNow, 0))) } catch { return }
             self?.resumeDownloads()
@@ -56,7 +63,9 @@ extension Library {
 
     /// Tries the saves waiting to be retried now, such as once the network is back.
     public func retryWaiting() {
-        for article in articles + cached where article.isWaitingToRetry { article.retryAt = nil }
+        for article in articles + cached {
+            if case .waiting(_, let failures, _) = article.saveState { article.saveState = .queued(failures: failures) }
+        }
         resumeDownloads()
     }
 
@@ -77,11 +86,10 @@ extension Library {
     }
 
     public func retry(_ article: Article) {
-        guard article.state != .downloading && !(article.state == .queued && article.retryAt == nil) else { return }
-        article.state = .queued
-        article.failureMessage = nil
-        article.retryAt = nil
-        article.failedAttempts = 0
+        switch article.saveState {
+        case .queued, .downloading: return
+        case .waiting, .saved, .failed: article.saveState = .queued(failures: 0)
+        }
         save()
         resumeDownloads()
     }
@@ -116,7 +124,8 @@ extension Library {
     }
 
     func download(_ article: Article) async {
-        article.state = .downloading
+        var failures = article.saveState.failures
+        article.saveState = .downloading(failures: failures)
         save()
         var staging: URL?
         // Caching happens quietly; only saving to the library is reported.
@@ -203,10 +212,7 @@ extension Library {
             let previous = article.contentVersion
             article.contentVersion = version
             article.downloadedAt = .now
-            article.state = missing.isEmpty ? .ready : .partial
-            article.failureMessage = nil
-            article.retryAt = nil
-            article.failedAttempts = 0
+            article.saveState = .saved
             try container.mainContext.save()
             if let previous { retire(previous, of: .article(article.id), heldBy: [article.id]) }
             if !article.isCached, !discarded.contains(article.id) {
@@ -216,17 +222,12 @@ extension Library {
         } catch {
             // A failed refresh leaves the copy already saved readable.
             if contentURL(for: article) != nil {
-                article.state = article.missingImageCount > 0 ? .partial : .ready
+                article.saveState = .saved
                 if !article.isCached, !discarded.contains(article.id) { errorMessage = error.localizedDescription }
-            } else if let wait = SaveRetry.wait(after: error, failures: &article.failedAttempts) {
-                article.state = .queued
-                article.retryAt = .now + wait
-                article.failureMessage = SaveRetry.message(for: error)
+            } else if let wait = SaveRetry.wait(after: error, failures: &failures) {
+                article.saveState = .waiting(until: .now + wait, failures: failures, reason: SaveRetry.message(for: error))
             } else {
-                article.state = .failed
-                article.failureMessage = error.localizedDescription
-                article.retryAt = nil
-                article.failedAttempts = 0
+                article.saveState = .failed(reason: error.localizedDescription)
             }
             save()
         }

@@ -13,7 +13,7 @@ import Testing
         article.wordCount = words
         article.progress = progress
         article.isRead = isRead
-        article.state = .failed
+        article.saveState = .failed(reason: "")
         container.mainContext.insert(article)
         try container.mainContext.save()
     }

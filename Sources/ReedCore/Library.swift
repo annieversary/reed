@@ -76,12 +76,11 @@ public final class Library {
         cached = stored.filter(\.isCached)
         try storage.cleanStaging()
         for article in stored {
-            if article.state == .downloading { article.state = .queued }
+            switch article.saveState {
             // Opening Reed is as good a time as any to try again.
-            article.retryAt = nil
-            if article.state.isReadable && contentURL(for: article) == nil {
-                article.state = .failed
-                article.failureMessage = ReedError.damagedArticle.localizedDescription
+            case .downloading(let failures), .waiting(_, let failures, _): article.saveState = .queued(failures: failures)
+            case .saved where contentURL(for: article) == nil: article.saveState = .failed(reason: ReedError.damagedArticle.localizedDescription)
+            default: break
             }
         }
         books = try container.mainContext.fetch(FetchDescriptor<Book>(sortBy: [SortDescriptor(\.addedAt, order: .reverse)]))
@@ -159,8 +158,11 @@ public final class Library {
         if let existing = cachedArticle(at: url) {
             article = existing
             note(discussion, of: article)
-            if article.state == .failed { article.state = .queued }
-            article.retryAt = nil
+            switch article.saveState {
+            case .failed: article.saveState = .queued(failures: 0)
+            case .waiting(_, let failures, _): article.saveState = .queued(failures: failures)
+            default: break
+            }
             save()
         } else {
             article = Article(url: url)
@@ -183,7 +185,7 @@ public final class Library {
         discarded.remove(article.id)
         article.isCached = false
         article.savedAt = .now
-        if article.state == .failed { article.state = .queued; article.failureMessage = nil }
+        if case .failed = article.saveState { article.saveState = .queued(failures: 0) }
         save()
         cached.removeAll { $0.id == article.id }
         articles.insert(article, at: 0)

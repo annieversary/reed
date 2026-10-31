@@ -26,24 +26,18 @@ import Testing
     StubServer.respond = { _ in .failure(URLError(.notConnectedToInternet)) }
     let article = try library.add("https://stub.test/story")
     await library.idle()
-    #expect(article.isWaitingToRetry)
-    #expect(article.failedAttempts == 0)
-    #expect(article.failureMessage == "Waiting for a connection to save.")
+    guard case .waiting(_, 0, "Waiting for a connection to save.") = article.saveState else { Issue.record("\(article.saveState)"); return }
 
     StubServer.respond = { _ in .success(503) }
     library.retryWaiting()
     await library.idle()
-    #expect(article.isWaitingToRetry)
-    #expect(article.failedAttempts == 1)
-    #expect(article.failureMessage?.contains("503") == true)
+    guard case .waiting(_, 1, let reason) = article.saveState, reason.contains("503") else { Issue.record("\(article.saveState)"); return }
     #expect(library.retryWake != nil)
 
     StubServer.respond = { _ in .success(404) }
     library.retryWaiting()
     await library.idle()
-    #expect(article.state == .failed)
-    #expect(article.retryAt == nil && article.failedAttempts == 0)
-    #expect(article.failureMessage?.contains("404") == true)
+    guard case .failed(let reason) = article.saveState, reason.contains("404") else { Issue.record("\(article.saveState)"); return }
 }
 
 @MainActor @Test func launchingTriesWaitingSavesAgain() async throws {
@@ -52,10 +46,10 @@ import Testing
     let library = try Library(root: root)
     let article = try library.add("https://reed.invalid/story")
     await library.idle()
-    article.retryAt = .distantFuture
+    article.saveState = .waiting(until: .distantFuture, failures: 2, reason: "")
     library.save()
     let reopened = try Library(root: root)
-    #expect(reopened.articles.first?.retryAt == nil)
+    #expect(reopened.articles.first?.saveState == .queued(failures: 2))
     await reopened.idle()
 }
 

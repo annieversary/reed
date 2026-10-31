@@ -138,14 +138,14 @@ struct DownloadsView: View {
 
     private func failureMessage(of item: Item) -> String? {
         switch item {
-        case .article(let article): article.failureMessage
+        case .article(let article): article.saveState.reason
         case .book(let book): book.failureMessage
         }
     }
 
     private func waitingMessage(of item: Item) -> String? {
         guard case .article(let article) = item, article.isWaitingToRetry else { return nil }
-        return article.failureMessage
+        return article.saveState.reason
     }
 
     private func header(_ title: String) -> some View {

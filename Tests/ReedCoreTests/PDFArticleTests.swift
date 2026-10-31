@@ -102,7 +102,7 @@ func drawnPDF(_ paragraphs: [Paragraph]) -> Data {
 
     let deadline = Date().addingTimeInterval(60)
     while shared.state != .ready && shared.state != .failed && Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
-    #expect(shared.state == .ready, "\(shared.failureMessage ?? "")")
+    #expect(shared.state == .ready, "\(shared.saveState.reason ?? "")")
     #expect(shared.title == "Shared Without a Link" && shared.wordCount > 50)
     let html = try String(contentsOf: try #require(library.contentURL(for: shared)), encoding: .utf8)
     #expect(html.contains("A paper shared from the Files app"))

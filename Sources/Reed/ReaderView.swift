@@ -107,7 +107,7 @@ struct ReaderView: View {
                     if article.state == .downloading || article.state == .queued {
                         ProgressView().controlSize(.large)
                         Text("Saving").font(.system(size: 25, design: .serif))
-                        if article.isWaitingToRetry, let message = article.failureMessage {
+                        if article.isWaitingToRetry, let message = article.saveState.reason {
                             Text(message).font(.subheadline).foregroundStyle(.secondary)
                         } else if article.state == .downloading, let imageActivity = library.imageActivity {
                             Text(imageActivity).font(.subheadline).foregroundStyle(.secondary)
@@ -115,7 +115,7 @@ struct ReaderView: View {
                     } else {
                         Image(systemName: "wifi.exclamationmark").font(.system(size: 36, weight: .light)).foregroundStyle(.secondary)
                         Text("Save failed.").font(.system(size: 25, design: .serif))
-                        Text(article.failureMessage ?? "The article couldn't be downloaded.")
+                        Text(article.saveState.reason ?? "The article couldn't be downloaded.")
                             .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 380)
                         HStack {
                             Button("Retry download") { library.retry(article) }.buttonStyle(.borderedProminent)

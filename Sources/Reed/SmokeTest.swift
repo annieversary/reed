@@ -40,17 +40,17 @@ import ReedCore
                 while library.articles.contains(where: { ($0.state == .queued && !$0.isWaitingToRetry) || $0.state == .downloading }) && Date() < deadline {
                     try await Task.sleep(for: .milliseconds(100))
                 }
-                try check(article.state == .partial, "Article text survives a missing image (\(article.failureMessage ?? article.state.rawValue))")
+                try check(article.state == .partial, "Article text survives a missing image (\(article.saveState.reason ?? article.state.rawValue))")
                 try check(article.imageCount == 1 && article.missingImageCount == 1, "One local image saved; one failed image reported")
                 try check(article.title == "The art of paying attention", "Readability extracts the article title")
                 try check(article.author == "Reed Studio", "Readability extracts the author")
                 try check(article.resolvedURL == base + "/story", "Redirected source URL is retained")
-                try check(failed.state == .failed && failed.failureMessage?.contains("404") == true, "HTTP errors are surfaced")
-                try check(busy.isWaitingToRetry && busy.failureMessage?.contains("503") == true, "Saves from a busy site are tried again later")
+                try check(failed.state == .failed && failed.saveState.reason?.contains("404") == true, "HTTP errors are surfaced")
+                try check(busy.isWaitingToRetry && busy.saveState.reason?.contains("503") == true, "Saves from a busy site are tried again later")
                 try check(unsupported.state == .failed, "Content that is neither HTML nor a readable PDF is rejected")
                 try check(rendered.state == .ready && rendered.wordCount > 150, "Pages built by script are rendered before extraction")
                 try check(paper.state == .ready && paper.title == "Reading Papers Offline" && paper.wordCount > 150,
-                          "PDFs are saved as articles (\(paper.failureMessage ?? paper.title))")
+                          "PDFs are saved as articles (\(paper.saveState.reason ?? paper.title))")
                 if let content = library.contentURL(for: paper) {
                     let html = try String(contentsOf: content, encoding: .utf8)
                     try check(html.contains("<h2>1 Introduction</h2>") && html.components(separatedBy: "<p>").count - 1 == 2,
