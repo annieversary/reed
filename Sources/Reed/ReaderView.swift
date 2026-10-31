@@ -145,7 +145,11 @@ struct ReaderView: View {
                     .inspectorColumnWidth(min: 320, ideal: 420)
             }
         }
-        .task(id: article?.id) { if let article { loadDiscussions(of: article) } }
+        .task(id: article?.id) {
+            guard let article else { return }
+            loadDiscussions(of: article)
+            library.lookForSiteFeeds(of: article)
+        }
         .onAppear {
             if let chapter { library.open(chapter) }
             if let article { library.open(article) }
@@ -172,7 +176,7 @@ struct ReaderView: View {
         return cards
     }
 
-    /// The comments kept from when they were last shown. Opening an article fetches nothing, so no site learns it was read.
+    /// The comments kept from when they were last shown; opening an article doesn't fetch them again.
     private func loadDiscussions(of article: Article) {
         discussions = Dictionary(article.discussionSites.compactMap { site in library.discussion(site, of: article).map { (site, $0) } },
                                  uniquingKeysWith: { first, _ in first })
@@ -234,6 +238,7 @@ struct ReaderView: View {
             }
             if let url = article?.sourceURL {
                 Divider()
+                feedButton
                 Button("Comments", systemImage: "text.bubble") { commentsOpen.toggle() }
                 Button("Open Original", systemImage: "safari") { openURL(url) }
             }
@@ -243,6 +248,28 @@ struct ReaderView: View {
         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         #endif
         .help("More")
+    }
+
+    /// Subscribes to the article's site, once its feeds have been found.
+    @ViewBuilder private var feedButton: some View {
+        if let article, library.savedFeed(for: article) != nil {
+            Button("Feed Saved", systemImage: "checkmark.circle") {}.disabled(true)
+        } else if let article, let found = library.siteFeeds[article.domain], !found.isEmpty {
+            if found.count == 1 {
+                Button("Save Feed", systemImage: "dot.radiowaves.up.forward") { subscribe(to: found[0]) }
+            } else {
+                Menu("Save Feed", systemImage: "dot.radiowaves.up.forward") {
+                    ForEach(found) { candidate in Button(candidate.title) { subscribe(to: candidate) } }
+                }
+            }
+        }
+    }
+
+    private func subscribe(to candidate: FeedCandidate) {
+        Task {
+            do { try await library.subscribe(to: candidate.url) }
+            catch { library.errorMessage = error.localizedDescription }
+        }
     }
 
     @ViewBuilder private var textSizeButtons: some View {

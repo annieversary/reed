@@ -28,6 +28,9 @@ public final class Library {
     /// When the feeds were last looked at, so what has arrived since can be told apart.
     public internal(set) var feedsVisitedAt: Date?
     public internal(set) var refreshingFeeds = false
+    /// The feeds found on each site something was saved from, by domain; empty where it has none.
+    public internal(set) var siteFeeds: [String: [FeedCandidate]] = [:]
+    @ObservationIgnored var lookingForSiteFeeds: Set<String> = []
     /// Books added from EPUB files, most recently added first.
     public internal(set) var books: [Book] = []
     /// Saved articles grouped into series, in the order they were made.
@@ -100,6 +103,7 @@ public final class Library {
             feedItems = Self.river(of: feeds)
             feedsVisitedAt = store.visitedAt
         }
+        siteFeeds = Self.restore([String: [FeedCandidate]].self, from: Self.siteFeedsURL(root: root)) ?? [:]
         if let stored = Self.restore([Series].self, from: Self.seriesURL(root: root)) {
             let saved = Set(articles.map(\.id))
             series = stored.map { var series = $0; series.parts.removeAll { !saved.contains($0) }; return series }
@@ -184,6 +188,7 @@ public final class Library {
         cached.removeAll { $0.id == article.id }
         articles.insert(article, at: 0)
         reindex(article)
+        if article.state.isReadable { lookForSiteFeeds(of: article) }
         resumeDownloads()
     }
 

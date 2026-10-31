@@ -250,6 +250,23 @@ private let base = URL(string: "https://example.com/feed.xml")!
     #expect(try await library.findFeeds(at: "https://named.test/post").map(\.url.absoluteString) == ["https://named.test/essays.html"])
 }
 
+@MainActor @Test func savingAnArticleFindsItsSitesFeeds() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [UnlinkedFeedServer.self]
+    let library = try Library(root: root, downloader: ArticleDownloader(session: URLSession(configuration: configuration)))
+    let article = Article(url: URL(string: "https://www.home.test/2026/post")!)
+    library.lookForSiteFeeds(of: article)
+    while library.siteFeeds.isEmpty { await Task.yield() }
+    #expect(library.siteFeeds["home.test"]?.map(\.url.absoluteString) == ["https://www.home.test/index.rss"])
+    #expect(library.savedFeed(for: article) == nil)
+
+    try await library.subscribe(to: library.siteFeeds["home.test"]![0].url)
+    #expect(library.savedFeed(for: article) != nil)
+    #expect(try Library(root: root).siteFeeds == library.siteFeeds)
+}
+
 /// Sites whose pages don't link to their feeds; stub.test is WordPress, and its own feed holds only the placeholder post.
 private final class UnlinkedFeedServer: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -267,7 +284,7 @@ private final class UnlinkedFeedServer: URLProtocol {
         func rss(_ path: String, on date: String) -> String {
             "<rss><channel><title>Stub</title><item><title>\(path)</title><link>https://stub.test/\(path)</link><pubDate>\(date)</pubDate></item></channel></rss>"
         }
-        switch (request.url?.host(), request.url?.path()) {
+        switch (request.url?.host()?.replacing("www.", with: ""), request.url?.path()) {
         case ("home.test", "/"):
             return (200, ["Content-Type": "text/html"], #"<link rel="alternate" type="application/rss+xml" href="/index.rss">"#)
         case ("home.test", "/index.rss"), ("named.test", "/essays.html"):

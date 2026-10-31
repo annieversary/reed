@@ -209,7 +209,10 @@ extension Library {
             article.failedAttempts = 0
             try container.mainContext.save()
             if let previous { retire(previous, of: .article(article.id), heldBy: [article.id]) }
-            if !article.isCached, !discarded.contains(article.id) { reindex(article) }
+            if !article.isCached, !discarded.contains(article.id) {
+                reindex(article)
+                lookForSiteFeeds(of: article)
+            }
         } catch {
             // A failed refresh leaves the copy already saved readable.
             if contentURL(for: article) != nil {

@@ -126,6 +126,35 @@ extension Library {
             .map(\.candidate)
     }
 
+    /// Looks once for the feeds of the site `article` came from, so they can be offered while reading it.
+    public func lookForSiteFeeds(of article: Article) {
+        guard let url = article.sourceURL, YouTube.videoID(in: url) == nil else { return }
+        let site = article.domain
+        guard siteFeeds[site] == nil, savedFeed(forSite: site) == nil, lookingForSiteFeeds.insert(site).inserted else { return }
+        Task {
+            defer { lookingForSiteFeeds.remove(site) }
+            let found: [FeedCandidate]
+            do { found = try await findFeeds(at: url.absoluteString) }
+            catch ReedError.noFeed { found = [] }
+            // Looked for again with the next article saved from the site.
+            catch { return }
+            siteFeeds[site] = found
+            try? JSONEncoder().encode(siteFeeds).write(to: Self.siteFeedsURL(root: storage.root), options: .atomic)
+        }
+    }
+
+    static func siteFeedsURL(root: URL) -> URL { root.appendingPathComponent("SiteFeeds.json") }
+
+    /// A subscribed feed of the site `article` came from, if there is one.
+    public func savedFeed(for article: Article) -> Feed? { savedFeed(forSite: article.domain) }
+
+    func savedFeed(forSite site: String) -> Feed? {
+        let found = Set((siteFeeds[site] ?? []).map(\.url))
+        return feeds.first { feed in
+            found.contains(feed.url) || [feed.url, feed.siteURL].contains { $0.flatMap(Article.domain(of:)) == site }
+        }
+    }
+
     @discardableResult public func subscribe(to url: URL) async throws -> Feed {
         if let existing = feed(at: url) { return existing }
         guard case .fetched(let data, let finalURL, let etag, let lastModified) = try await downloader.feed(at: url),

@@ -49,7 +49,7 @@ public struct Feed: Codable, Identifiable, Hashable, Sendable {
 }
 
 /// A feed offered by a page, before subscribing to it.
-public struct FeedCandidate: Identifiable, Hashable, Sendable {
+public struct FeedCandidate: Identifiable, Hashable, Codable, Sendable {
     public let url: URL
     public let title: String
     public var id: URL { url }
