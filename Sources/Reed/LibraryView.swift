@@ -302,7 +302,7 @@ struct LibraryView: View {
         }
         .onAppear {
             if let article = articleToResume {
-                selection = .collection(.all)
+                selection = .collection(.unread)
                 selectedID = article.id
             } else if !columnsStack {
                 selection = .collection(.all)
