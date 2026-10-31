@@ -212,7 +212,7 @@ import ReedCore
             .onChange(of: scenePhase) { _, phase in
                 guard let library else { return }
                 // Synthesis can fail in the background, so it's picked up again on return.
-                if phase == .active { addShared(to: library); library.retryWaiting(); narrator.retry() }
+                if phase == .active { addShared(to: library); library.retryWaiting(); narrator.retrySynthesis() }
                 else { library.save() }
             }
         }

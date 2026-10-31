@@ -27,10 +27,43 @@ final class Narrator {
     private(set) var sentence = 0
     /// The last passage queued on the player.
     private(set) var scheduled = -1
-    private(set) var isPlaying = false
+    private(set) var playback = Playback.idle
+    private(set) var synthesis = Synthesis.stopped(finishing: nil)
     private(set) var isLoadingVoice = false
-    /// Why synthesis stopped. Passages already made keep playing.
-    private(set) var errorMessage: String?
+
+    enum Playback: Equatable {
+        /// Nothing is being read.
+        case idle
+        case playing
+        /// `since` is when it was paused, nil if it's yet to play. `queued` is whether the player still holds what comes next,
+        /// so it can carry straight on; otherwise resuming starts the passage afresh. `interrupted` is whether another app's
+        /// audio paused it, so it may carry on once that ends.
+        case paused(since: Date?, queued: Bool, interrupted: Bool = false)
+        /// Couldn't start, such as while the audio session is held elsewhere. Resuming starts the passage afresh.
+        case failed(String)
+
+        /// Still paused, but with nothing queued, as once the player is flushed.
+        mutating func unqueue() {
+            if case .paused(let since, _, let interrupted) = self { self = .paused(since: since, queued: false, interrupted: interrupted) }
+        }
+    }
+
+    enum Synthesis {
+        /// `finishing` is a stopped task still finishing its sentence, which the next one waits for so the two never make the same passage.
+        case stopped(finishing: Task<Void, Never>?)
+        case running(Task<Void, Never>)
+        /// Passages already made keep playing.
+        case failed(String)
+    }
+
+    var isPlaying: Bool { playback == .playing }
+
+    /// Why playback couldn't start, or why synthesis stopped.
+    var errorMessage: String? {
+        if case .failed(let message) = playback { return message }
+        if case .failed(let message) = synthesis { return message }
+        return nil
+    }
     /// Playback speed. Speech is stretched without changing pitch, so cached passages are reused at any speed.
     var rate: Float = UserDefaults.standard.object(forKey: "narrationRate") as? Float ?? 1 {
         didSet {
@@ -58,9 +91,8 @@ final class Narrator {
                 // The old voice's queued audio goes; the new one is made and queued on resuming.
                 epoch += 1
                 player.stop()
-                generator?.cancel()
-                generator = nil
-                needsStart = true
+                cancelSynthesis()
+                playback.unqueue()
             }
         }
     }
@@ -71,7 +103,12 @@ final class Narrator {
     private(set) var previewError: String?
 
     /// Playback has reached a passage that isn't synthesized yet.
-    var isWaiting: Bool { readableID != nil && scheduled < current && errorMessage == nil }
+    var isWaiting: Bool {
+        switch (playback, synthesis) {
+        case (.idle, _), (.failed, _), (_, .failed): false
+        default: scheduled < current
+        }
+    }
 
     @ObservationIgnored private var passages: [String] = []
     @ObservationIgnored private var sentences: [[String]] = []
@@ -84,7 +121,6 @@ final class Narrator {
     @ObservationIgnored private var directory: URL?
     @ObservationIgnored private var kokoro: KokoroAneManager?
     @ObservationIgnored private var loadingKokoro: Task<KokoroAneManager, any Error>?
-    @ObservationIgnored private var generator: Task<Void, Never>?
     /// Reads the speech of what `play` was last asked to read, so asking for something else, or stopping, drops it.
     @ObservationIgnored private var opening: Task<Void, Never>?
     /// Reads the next passage's audio to queue it.
@@ -108,15 +144,9 @@ final class Narrator {
     /// The sentence of the current passage to start from, once its audio is made and where the sentence begins is known.
     @ObservationIgnored private var pendingSentence: Int?
     /// How far into the current passage was last heard. The player's clock is lost when the engine stops.
-    @ObservationIgnored var heard: Double = 0
-    /// Nothing is queued for the current passage, so resuming must start it afresh.
-    @ObservationIgnored var needsStart = false
-    /// When playback was last paused, to pick up the thread again after a long break.
-    @ObservationIgnored private var pausedAt: Date?
+    @ObservationIgnored private var heard: Double = 0
     /// Stops narration once it's been paused long enough that it's unlikely to be picked up again soon.
     @ObservationIgnored private var idleStop: Task<Void, Never>?
-    /// An interruption paused playback, so it may carry on once the interruption ends.
-    @ObservationIgnored var interruptedWhilePlaying = false
     /// Lengths of synthesized passages, in seconds.
     @ObservationIgnored private var durations: [Int: Double] = [:]
     /// Estimated lengths of every passage, from its words, until it's synthesized.
@@ -212,6 +242,7 @@ final class Narrator {
         passageCount = passages.count
         directory = library.storage.audioDirectory(item.location, version: version, voice: voice)
         self.artwork = artwork
+        playback = .paused(since: nil, queued: false)
         measure()
     }
 
@@ -223,20 +254,21 @@ final class Narrator {
     func followNewVersion() {
         guard let item, let library, let version = item.contentVersion, version != self.version, opening == nil,
               passages.indices.contains(current) else { return }
-        let reached = current, anchor = ArticleNotes.anchor(for: passages[current]), wasPlaying = isPlaying
+        let reached = current, anchor = ArticleNotes.anchor(for: passages[current])
         opening = Task {
             let speech = await library.speech(for: item)
             let artwork = Self.artwork(from: await library.leadImage(for: item))
             guard !Task.isCancelled, item.contentVersion == version, let speech, !speech.passages.isEmpty else { return }
             opening = nil
             let passage = ArticleNotes.passage(near: reached, anchor: anchor, in: speech.passages)
+            let was = playback
             load(item, speech: speech, version: version, artwork: artwork, in: library)
-            if wasPlaying {
+            if was == .playing {
                 start(at: passage)
             } else {
+                if case .paused(let since, _, let interrupted) = was { playback = .paused(since: since, queued: false, interrupted: interrupted) }
                 current = passage
                 heard = 0
-                needsStart = true
                 rememberPosition()
                 updateNowPlaying()
             }
@@ -249,11 +281,10 @@ final class Narrator {
         player.pause()
         // A running engine counts as playing, so the lock screen would keep offering Pause.
         engine.pause()
-        isPlaying = false
-        pausedAt = .now
+        playback = .paused(since: .now, queued: true)
         stopTracking()
         // Synthesis carries on from where it's resumed, so the Neural Engine rests while nothing is heard.
-        generator?.cancel()
+        pauseSynthesis()
         idleStop = Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.idleStopPause))
             guard !Task.isCancelled, let self else { return }
@@ -265,23 +296,28 @@ final class Narrator {
     }
 
     func resume() {
-        guard readableID != nil, !isPlaying else { return }
+        let pausedAt: Date?, queued: Bool
+        switch playback {
+        case .idle, .playing: return
+        case .paused(let since, let isQueued, _): (pausedAt, queued) = (since, isQueued)
+        case .failed: (pausedAt, queued) = (nil, false)
+        }
         let pausedFor = pausedAt.map { Date.now.timeIntervalSince($0) } ?? 0
         if pausedFor >= Self.passageRewindPause {
             start(at: current)
         } else if pausedFor >= Self.sentenceRewindPause {
             start(at: current, offset: starts(of: current)[sentenceIndex(at: heard)])
-        } else if !needsStart, restartEngine() {
+        } else if queued, restartEngine() {
             idleStop?.cancel()
             idleStop = nil
-            isPlaying = true
+            playback = .playing
             player.play()
             track()
             updateNowPlaying()
         } else {
             start(at: current, offset: heard)
         }
-        if generator == nil || generator?.isCancelled == true { generate(from: current) }
+        if case .running = synthesis {} else { generate(from: current) }
     }
 
     func togglePlayback() { isPlaying ? pause() : resume() }
@@ -311,11 +347,34 @@ final class Narrator {
         }
     }
 
-    /// Picks synthesis up again after it stopped, from the passage being heard.
+    /// Tries again whatever failed: starting playback, or synthesis.
     func retry() {
+        if case .failed = playback { resume() } else { retrySynthesis() }
+    }
+
+    /// Picks synthesis up again after it failed, from the passage being heard.
+    func retrySynthesis() {
+        guard readableID != nil, case .failed = synthesis else { return }
+        generate(from: current)
+    }
+
+    /// Another app's audio took over, flushing what was queued. Narration that was playing may carry on once that ends.
+    func interrupt() {
+        // Narration sitting paused when another app's audio takes over has been left for now.
+        guard isPlaying else { return stop() }
+        pause()
+        if case .paused(let since, _, _) = playback { playback = .paused(since: since, queued: false, interrupted: true) }
+    }
+
+    func interruptionEnded(shouldResume: Bool) {
+        guard case .paused(let since, let queued, interrupted: true) = playback else { return }
+        if shouldResume { resume() } else { playback = .paused(since: since, queued: queued) }
+    }
+
+    /// The engine stopped itself, as when the output device changes, and what was queued went with it.
+    func engineStopped() {
         guard readableID != nil else { return }
-        errorMessage = nil
-        if generator == nil { generate(from: current) }
+        if isPlaying { start(at: current, offset: heard) } else { playback.unqueue() }
     }
 
     func stop() {
@@ -332,8 +391,7 @@ final class Narrator {
     /// Lets go of what's being read, leaving the engine and audio session as they are for whatever's read next.
     private func reset() {
         epoch += 1
-        generator?.cancel()
-        generator = nil
+        cancelSynthesis()
         idleStop?.cancel()
         idleStop = nil
         player.stop()
@@ -346,8 +404,7 @@ final class Narrator {
         current = 0
         sentence = 0
         scheduled = -1
-        isPlaying = false
-        errorMessage = nil
+        playback = .idle
         directory = nil
         item = nil
         version = nil
@@ -422,8 +479,6 @@ final class Narrator {
         }
         startOffset = AVAudioFramePosition(offset * PassageAudio.sampleRate)
         heard = offset
-        needsStart = false
-        pausedAt = nil
         idleStop?.cancel()
         idleStop = nil
         self.sentence = pendingSentence ?? sentenceIndex(at: offset)
@@ -433,13 +488,13 @@ final class Narrator {
             connectEngine()
             if !engine.isRunning { try engine.start() }
         } catch {
-            errorMessage = error.localizedDescription
-            isPlaying = false
+            playback = .failed(error.localizedDescription)
+            stopTracking()
             updateNowPlaying()
             return
         }
         player.play()
-        isPlaying = true
+        playback = .playing
         track()
         scheduleReady()
         generate(from: index)
@@ -618,7 +673,7 @@ final class Narrator {
             library.updateProgress(item, value: 1, listening: true)
             // A book carries on into its next chapter, keeping the audio session so it can while the phone is locked.
             if let next = library.next(after: item) {
-                isPlaying = false
+                playback = .paused(since: nil, queued: false)
                 stopTracking()
                 updateNowPlaying()
                 play(next, from: 0, in: library)
@@ -644,14 +699,26 @@ final class Narrator {
         library.save()
     }
 
+    /// Stops making audio, leaving the task stopped to finish its sentence before synthesis starts again.
+    private func pauseSynthesis() {
+        guard case .running(let task) = synthesis else { return }
+        task.cancel()
+        synthesis = .stopped(finishing: task)
+    }
+
+    /// Stops making audio that's no longer wanted, such as for something else or in another voice, and forgets any failure.
+    private func cancelSynthesis() {
+        if case .running(let task) = synthesis { task.cancel() }
+        synthesis = .stopped(finishing: nil)
+    }
+
     private func generate(from start: Int) {
         // The one it replaces finishes the sentence it's on first, so the two never make the same passage.
-        let replaced = generator
-        replaced?.cancel()
+        pauseSynthesis()
         guard let directory else { return }
+        let replaced: Task<Void, Never>? = if case .stopped(let finishing) = synthesis { finishing } else { nil }
         let sentences = sentences, keys = keys, voice = voice
-        errorMessage = nil
-        generator = Task { [weak self] in
+        synthesis = .running(Task { [weak self] in
             await replaced?.value
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -676,12 +743,11 @@ final class Narrator {
                     }
                     self?.scheduleReady()
                 }
-                if !Task.isCancelled { self?.generator = nil }
+                if !Task.isCancelled { self?.synthesis = .stopped(finishing: nil) }
             } catch where !Task.isCancelled {
-                self?.generator = nil
-                self?.errorMessage = "Couldn't synthesize the next part: \(error.localizedDescription)"
+                self?.synthesis = .failed("Couldn't synthesize the next part: \(error.localizedDescription)")
             } catch {}
-        }
+        })
     }
 
     /// Kokoro's Core ML chain crashes in libBNNS on iOS 26 when given exactly 46 phonemes, whatever they are,

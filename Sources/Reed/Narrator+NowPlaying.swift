@@ -21,11 +21,7 @@ extension Narrator {
         let center = NotificationCenter.default
         // The engine stops itself when the output device changes; carry on from the same passage.
         center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, self.readableID != nil else { return }
-                // What was queued on the player is gone too.
-                if self.isPlaying { self.start(at: self.current, offset: self.heard) } else { self.needsStart = true }
-            }
+            MainActor.assumeIsolated { self?.engineStopped() }
         }
         #if os(iOS)
         center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
@@ -34,15 +30,8 @@ extension Narrator {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 switch type {
-                case .began:
-                    // Another app's audio taking over while narration sits paused means it's been left for now.
-                    guard self.isPlaying else { return self.stop() }
-                    self.interruptedWhilePlaying = true
-                    self.pause()
-                    self.needsStart = true
-                case .ended:
-                    if self.interruptedWhilePlaying, options.contains(.shouldResume) { self.resume() }
-                    self.interruptedWhilePlaying = false
+                case .began: self.interrupt()
+                case .ended: self.interruptionEnded(shouldResume: options.contains(.shouldResume))
                 default: break
                 }
             }
