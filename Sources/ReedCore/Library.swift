@@ -114,6 +114,7 @@ public final class Library {
         syncCache()
         syncSearch()
         removeLeftoverVersions()
+        removeUnheardAudio()
     }
 
     /// What was saved at `url`, or nil if nothing was. A file that can't be read is moved aside to

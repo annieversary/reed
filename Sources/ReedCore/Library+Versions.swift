@@ -46,6 +46,14 @@ extension Library {
             }
         }
     }
+
+    /// How long narration is kept after it was last listened to. It's made again if wanted later.
+    static let audioKeptFor: TimeInterval = 3 * 24 * 60 * 60
+
+    func removeUnheardAudio() {
+        let storage = storage, cutoff = Date.now.addingTimeInterval(-Self.audioKeptFor)
+        Task.detached(priority: .background) { storage.removeAudio(unheardSince: cutoff) }
+    }
 }
 
 extension ArticleStorage {

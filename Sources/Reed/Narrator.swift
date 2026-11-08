@@ -483,6 +483,7 @@ final class Narrator {
         idleStop = nil
         self.sentence = pendingSentence ?? sentenceIndex(at: offset)
         rememberPosition()
+        noteListened()
         do {
             try activateSession()
             connectEngine()
@@ -658,6 +659,12 @@ final class Narrator {
         library.updateProgress(item, value: through, listening: true)
     }
 
+    /// Keeps the audio of what's being read from being pruned as unheard.
+    private func noteListened() {
+        guard let item, let library else { return }
+        library.storage.noteListened(item.location)
+    }
+
     private func stopTracking() {
         tracker?.cancel()
         tracker = nil
@@ -666,6 +673,7 @@ final class Narrator {
     private func finished(_ index: Int, epoch: Int) {
         guard epoch == self.epoch, index == current else { return }
         creditListening(through: index)
+        noteListened()
         guard current + 1 < passageCount else {
             guard let item, let library else { stop(); return }
             item.narrationPassage = nil

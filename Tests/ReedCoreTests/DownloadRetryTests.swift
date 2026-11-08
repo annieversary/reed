@@ -129,6 +129,29 @@ private final class StubServer: URLProtocol {
     #expect(left == [current, "Discussions", newer])
 }
 
+@Test func audioNotListenedToLatelyGoesButTheRestStays() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let storage = try ArticleStorage(root: root)
+    let stale = UUID(), heard = UUID(), book = UUID(), version = UUID().uuidString
+    let staleAudio = storage.audioDirectory(stale, version: version, voice: "voice")
+    let heardAudio = storage.audioDirectory(heard, version: version, voice: "voice")
+    let bookAudio = storage.audioDirectory(.chapter(book: book, index: 0), version: version, voice: "voice")
+    for url in [staleAudio, heardAudio, bookAudio, storage.articleDirectory(stale).appendingPathComponent(version)] {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+    let longAgo = Date.now.addingTimeInterval(-30 * 24 * 60 * 60)
+    for location in [ReadableLocation.article(stale), .article(heard), .chapter(book: book, index: 0)] {
+        try FileManager.default.setAttributes([.modificationDate: longAgo], ofItemAtPath: storage.audioRoot(location).path)
+    }
+    storage.noteListened(.article(heard))
+    storage.removeAudio(unheardSince: Date.now.addingTimeInterval(-60))
+    #expect(!FileManager.default.fileExists(atPath: storage.audioRoot(.article(stale)).path))
+    #expect(!FileManager.default.fileExists(atPath: storage.audioRoot(.chapter(book: book, index: 0)).path))
+    #expect(FileManager.default.fileExists(atPath: storage.articleDirectory(stale).appendingPathComponent(version).path))
+    #expect(FileManager.default.fileExists(atPath: heardAudio.path))
+}
+
 private final class ImageServer: URLProtocol {
     static let slowRequests = Mutex(0)
 

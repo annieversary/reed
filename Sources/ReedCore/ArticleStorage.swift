@@ -23,8 +23,7 @@ public struct ArticleStorage: Sendable {
 
     /// Narration of one saved version in one voice. It sits beside the versions, so deleting the article removes it.
     public func audioDirectory(_ id: UUID, version: String, voice: String) -> URL {
-        articleDirectory(id).appendingPathComponent("Audio", isDirectory: true)
-            .appendingPathComponent(version, isDirectory: true).appendingPathComponent(voice, isDirectory: true)
+        audioRoot(.article(id)).appendingPathComponent(version, isDirectory: true).appendingPathComponent(voice, isDirectory: true)
     }
 
     /// Notes written beside the article. They sit beside the versions, so they outlast a fresh download.
@@ -62,9 +61,39 @@ public struct ArticleStorage: Sendable {
     public func audioDirectory(_ location: ReadableLocation, version: String, voice: String) -> URL {
         switch location {
         case .article(let id): audioDirectory(id, version: version, voice: voice)
-        case .chapter(let book, let index):
-            bookDirectory(book).appendingPathComponent("Audio", isDirectory: true).appendingPathComponent(version, isDirectory: true)
+        case .chapter(_, let index):
+            audioRoot(location).appendingPathComponent(version, isDirectory: true)
                 .appendingPathComponent(voice, isDirectory: true).appendingPathComponent(String(index), isDirectory: true)
+        }
+    }
+
+    /// All the narration of an article, or of a whole book, in every version and voice. Its modification date is when
+    /// it was last listened to.
+    func audioRoot(_ location: ReadableLocation) -> URL {
+        switch location {
+        case .article(let id): articleDirectory(id).appendingPathComponent("Audio", isDirectory: true)
+        case .chapter(let book, _): bookDirectory(book).appendingPathComponent("Audio", isDirectory: true)
+        }
+    }
+
+    /// Marks the narration of `location` as just listened to, so it's kept a while longer.
+    public func noteListened(_ location: ReadableLocation) {
+        try? FileManager.default.setAttributes([.modificationDate: Date.now], ofItemAtPath: audioRoot(location).path)
+    }
+
+    /// Removes the narration of every article and book not listened to since `date`.
+    public func removeAudio(unheardSince date: Date) {
+        let manager = FileManager.default
+        for kind in ["Articles", "Books"] {
+            guard let owners = try? manager.contentsOfDirectory(at: root.appendingPathComponent(kind, isDirectory: true),
+                                                                includingPropertiesForKeys: nil) else { continue }
+            for owner in owners {
+                let audio = owner.appendingPathComponent("Audio", isDirectory: true)
+                // Read just before removing, so narration started meanwhile keeps its audio.
+                guard let listened = try? audio.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                      listened < date else { continue }
+                try? manager.removeItem(at: audio)
+            }
         }
     }
 
