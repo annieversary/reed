@@ -12,6 +12,31 @@ public final class PageRenderer: NSObject, WKNavigationDelegate {
     public override init() { super.init() }
 
     public func html(at url: URL) async throws -> String {
+        guard let html = try await render(url, then: Self.snapshot) as? String else { throw ReedError.emptyArticle }
+        return html
+    }
+
+    /// Where the page's scripts pointed the images it names by a lazy-loading attribute, keyed by that attribute's
+    /// address resolved against the page, as extraction resolves it. Images whose address is unchanged are left out.
+    public func lazyImageSources(at url: URL) async throws -> [String: String] {
+        guard let json = try await render(url, then: Self.lazySources) as? String else { return [:] }
+        return (try? JSONDecoder().decode([String: String].self, from: Data(json.utf8))) ?? [:]
+    }
+
+    private static let lazySources = """
+    const sources = {};
+    for (const img of document.querySelectorAll("img")) {
+        const lazy = img.getAttribute("data-src") || img.getAttribute("data-original") || img.getAttribute("data-lazy-src");
+        if (!lazy || !/^https?:/.test(img.src)) continue;
+        let named;
+        try { named = new URL(lazy, location.href).href; } catch { continue; }
+        if (img.src !== named) sources[named] = img.src;
+    }
+    JSON.stringify(sources)
+    """
+
+    /// Loads `url`, lets its scripts run, then evaluates `script` against the result.
+    private func render(_ url: URL, then script: String) async throws -> Any? {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         configuration.mediaTypesRequiringUserActionForPlayback = .all
@@ -41,10 +66,7 @@ public final class PageRenderer: NSObject, WKNavigationDelegate {
             steady = current > 0 && current == length ? steady + 1 : 0
             length = current
         }
-        guard let html = try await view.evaluateJavaScript(Self.snapshot) as? String else {
-            throw ReedError.emptyArticle
-        }
-        return html
+        return try await view.evaluateJavaScript(script)
     }
 
     /// The document, with drawings given their size on the page and the colours and type their stylesheets set,

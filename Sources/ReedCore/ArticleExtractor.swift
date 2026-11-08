@@ -6,6 +6,23 @@ public struct ExtractedArticle: Codable, Sendable {
         public let url: String
         public let filename: String
         public let alt: String
+        /// Named by a lazy-loading attribute such as `data-src`, which the page's own scripts may resolve elsewhere.
+        public let lazy: Bool
+
+        public init(url: String, filename: String, alt: String, lazy: Bool = false) {
+            self.url = url
+            self.filename = filename
+            self.alt = alt
+            self.lazy = lazy
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            url = try container.decode(String.self, forKey: .url)
+            filename = try container.decode(String.self, forKey: .filename)
+            alt = try container.decode(String.self, forKey: .alt)
+            lazy = try container.decodeIfPresent(Bool.self, forKey: .lazy) ?? false
+        }
     }
     public let title: String
     public let author: String?

@@ -45,6 +45,12 @@ sentence = "A paper set for print reads here as an article, in paragraphs that f
 paper = pdf([("Times-Bold", 22, 72, 700, "Reading Papers Offline"), ("Times-Bold", 12, 72, 660, "1 Introduction")]
             + [("Times-Roman", 10, 72, 640 - 12 * i, sentence) for i in range(8)]
             + [("Times-Roman", 10, 72, 530 - 12 * i, sentence) for i in range(6)])
+# Its figure is named lazily, and its script loads it from a folder of figures rather than beside the page.
+figures = ("""<!doctype html><html><head><title>Figures elsewhere</title>
+<script>document.addEventListener("DOMContentLoaded", () => document.querySelectorAll("img[data-src]").forEach(img => img.src = "/figures/" + img.dataset.src));</script>
+</head><body><article><h1>Figures elsewhere</h1>""" + "".join(
+    f"<p>Paragraph {i} sits beside a figure that the page's script loads from a folder of its own, not from beside the page, so the address in the page alone leads nowhere.</p>"
+    for i in range(8)) + """<img data-src="chart.png" alt="A chart"></article></body></html>""").encode()
 image = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
 requests = []
 
@@ -59,6 +65,8 @@ class Handler(BaseHTTPRequestHandler):
         payload, status, mime = {
             "/story": (fixture, 200, "text/html; charset=utf-8"),
             "/rendered": (rendered, 200, "text/html; charset=utf-8"),
+            "/figures-elsewhere": (figures, 200, "text/html; charset=utf-8"),
+            "/figures/chart.png": (image, 200, "image/png"),
             "/image.png": (image, 200, "image/png"),
             "/document.pdf": (b"%PDF", 200, "application/pdf"),
             "/paper.pdf": (paper, 200, "application/pdf"),

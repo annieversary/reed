@@ -29,6 +29,7 @@ import ReedCore
             guard argument("--library-root") != nil else { throw Failure(message: "Smoke test requires an isolated library root") }
             if let base = argument("--smoke-url") {
                 let rendered = try library.add(base + "/rendered")
+                let figures = try library.add(base + "/figures-elsewhere")
                 let article = try library.add(base + "/article")
                 let duplicate = try library.add(base + "/article#section")
                 try check(article.id == duplicate.id, "URL fragments do not create duplicate articles")
@@ -49,6 +50,8 @@ import ReedCore
                 try check(busy.isWaitingToRetry && busy.saveState.reason?.contains("503") == true, "Saves from a busy site are tried again later")
                 try check(unsupported.state == .failed, "Content that is neither HTML nor a readable PDF is rejected")
                 try check(rendered.state == .ready && rendered.wordCount > 150, "Pages built by script are rendered before extraction")
+                try check(figures.state == .ready && figures.imageCount == 1,
+                          "Lazy images are fetched from where the page's script points them (\(figures.missingImageCount) missing)")
                 try check(paper.state == .ready && paper.title == "Reading Papers Offline" && paper.wordCount > 150,
                           "PDFs are saved as articles (\(paper.saveState.reason ?? paper.title))")
                 if let content = library.contentURL(for: paper) {
@@ -68,7 +71,7 @@ import ReedCore
                     library.save()
                 }
             } else {
-                try check(library.articles.count == 6, "Library survives a full app restart")
+                try check(library.articles.count == 7, "Library survives a full app restart")
                 if argument("--smoke-book") != nil {
                     try check(library.books.count == 1 && library.books[0].orderedChapters.first?.isRead == true, "Books and their reading survive a restart")
                 }

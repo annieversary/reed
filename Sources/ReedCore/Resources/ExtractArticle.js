@@ -8,9 +8,14 @@ base.href = sourceURL;
 doc.head.prepend(base);
 // Taken before Readability, which drops the navigation between chapters.
 const navigation = book ? { title: "", links: [] } : pageLinks(doc, sourceURL);
+// Addresses taken from lazy-loading attributes, which the page's scripts may resolve against somewhere other than the page.
+const lazyURLs = new Set();
 for (const img of doc.querySelectorAll("img")) {
     const lazy = img.getAttribute("data-src") || img.getAttribute("data-original") || img.getAttribute("data-lazy-src");
-    if (lazy) img.setAttribute("src", lazy);
+    if (lazy) {
+        img.setAttribute("src", lazy);
+        try { lazyURLs.add(new URL(lazy, sourceURL).href); } catch {}
+    }
     // Spacers and tracking pixels; Readability would count them as images and drop the tables they indent.
     else if (["width", "height"].some(name => parseFloat(img.getAttribute(name)) <= 1)) { img.remove(); continue; }
     if (!img.getAttribute("src")) {
@@ -113,7 +118,7 @@ for (const img of book ? [] : output.querySelectorAll("img, svg image")) {
         // Offline, WebKit types images by extension, and renders SVG only when typed as such.
         filename = "image-" + images.length + (/\.svg$/i.test(url.pathname) ? ".svg" : "");
         seen.set(url.href, filename);
-        images.push({ url: url.href, filename, alt: img.getAttribute("alt") || img.getAttribute("aria-label") || "" });
+        images.push({ url: url.href, filename, alt: img.getAttribute("alt") || img.getAttribute("aria-label") || "", lazy: lazyURLs.has(url.href) });
     }
     img.setAttribute(attribute, filename);
 }

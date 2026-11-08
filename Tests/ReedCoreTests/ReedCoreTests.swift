@@ -707,6 +707,14 @@ import Testing
     #expect(await Library.replacing([], in: html) == html)
 }
 
+@MainActor @Test func imagesNamedByLazyAttributesAreMarked() async throws {
+    let text = (0..<6).map { _ in "<p>A paragraph long enough for Readability to take this for the article it is reading.</p>" }.joined()
+    let html = "<html><body><article><h1>Figures</h1>\(text)<img data-src=\"chart.png\" alt=\"Chart\"><img src=\"photo.png\" alt=\"Photo\"></article></body></html>"
+    let article = try await ArticleExtractor().extract(html: html, url: URL(string: "https://example.com/post")!) { _ in "" }
+    #expect(article.images.map(\.url) == ["https://example.com/chart.png", "https://example.com/photo.png"])
+    #expect(article.images.map(\.lazy) == [true, false])
+}
+
 @MainActor @Test func previewsAreReadableBeforeTheirImagesAreFetched() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }

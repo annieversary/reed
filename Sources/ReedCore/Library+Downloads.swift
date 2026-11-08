@@ -189,11 +189,15 @@ extension Library {
             }
             let directory = try storage.createStagingDirectory()
             staging = directory
-            let missing = try await saveImages(extracted.images, pictures: pictures, into: directory) { done in
+            var missing = try await saveImages(extracted.images, pictures: pictures, into: directory) { done in
                 let count = extracted.images.count
                 let message = "Saving image \(min(done + 1, count)) of \(count)…"
                 imageActivity = message
                 report(message, fraction: Double(done) / Double(count))
+            }
+            missing = try await savingLazyImages(missing, of: extracted.images, pageURL: pageURL, into: directory) { message in
+                imageActivity = message
+                report(message)
             }
             var body = await Self.replacing(missing, in: extracted.html)
             let descriptions = try await describeImages(in: body, directory: directory, limit: 20, from: "an article titled \"\(extracted.title)\"",
@@ -287,6 +291,27 @@ extension Library {
             }
         }
         return images.indices.filter(failed.contains).map { images[$0] }
+    }
+
+    /// Fetches those of `missing` the page named lazily, and that `saveImages` tried, again from wherever the page's own
+    /// scripts point them, which needn't be beside the page. Returns the images still missing.
+    func savingLazyImages(_ missing: [ExtractedArticle.Image], of images: [ExtractedArticle.Image], pageURL: URL, into directory: URL,
+                          report: (String) -> Void) async throws -> [ExtractedArticle.Image] {
+        let tried = Set(images.prefix(40).map(\.filename))
+        let lazy = missing.filter { $0.lazy && tried.contains($0.filename) }
+        guard !lazy.isEmpty else { return missing }
+        report("Rendering \(pageURL.host() ?? "the page")…")
+        let sources = (try? await renderer.lazyImageSources(at: pageURL)) ?? [:]
+        try Task.checkCancellation()
+        let moved = lazy.compactMap { image in
+            sources[image.url].map { ExtractedArticle.Image(url: $0, filename: image.filename, alt: image.alt) }
+        }
+        guard !moved.isEmpty else { return missing }
+        let failed = Set(try await saveImages(moved, pictures: [:], into: directory) { done in
+            report("Saving image \(min(done + 1, moved.count)) of \(moved.count)…")
+        }.map(\.filename))
+        let saved = Set(moved.map(\.filename)).subtracting(failed)
+        return missing.filter { !saved.contains($0.filename) }
     }
 
     /// Saves the article's text, with any pictures that came with it, as its content until the full copy replaces it.
