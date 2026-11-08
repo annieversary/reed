@@ -20,6 +20,7 @@ struct ReaderView: View {
     @Environment(\.showNarrationReturn) private var showNarrationReturn
     @State private var passages: [[String]]?
     @State private var reader = ReaderProxy()
+    @State private var position = ReadingPosition()
     @State private var notes: ReadableNotes?
     @State private var notesOpen = false
     @State private var findingChapters = false
@@ -68,7 +69,9 @@ struct ReaderView: View {
                 OfflineWebView(url: url, fontSize: fontSize, progress: readable.progress, anchor: anchor, passages: passages,
                                narrating: isNarrating ? NarrationPosition(passage: narrator.current, sentence: narrator.sentence) : nil,
                                proxy: reader, notes: notes, notesOpen: notesOpen, cards: endCards) { value in
-                    library.updateProgress(readable, value: value, listening: isNarrating && narrator.isPlaying)
+                    position.scrolled(readable.id, to: value) { [library, readable, narrator] in
+                        library.updateProgress(readable, value: value, listening: narrator.readableID == readable.id && narrator.isPlaying)
+                    }
                 } onAddLink: { link in
                     do { try library.add(link.absoluteString) }
                     catch { library.errorMessage = error.localizedDescription }
@@ -154,7 +157,11 @@ struct ReaderView: View {
             if let chapter { library.open(chapter) }
             if let article { library.open(article) }
         }
-        .onDisappear { library.save() }
+        .onChange(of: readable.id) { position.settle() }
+        .onDisappear {
+            position.settle()
+            library.save()
+        }
     }
 
     private static let commentsCard = "comments"
@@ -183,13 +190,9 @@ struct ReaderView: View {
     }
 
     private var progressLabel: some View {
-        Group {
-            if readable.isRead { Text("Finished") } else { PercentText(fraction: readable.progress) }
-        }
-        .font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
-        .animation(.easeOut(duration: 0.1), value: readable.progress)
-        // Opening another article shows its position straight away rather than counting to it.
-        .id(readable.id)
+        ProgressLabel(readable: readable, position: position)
+            // Opening another article shows its position straight away rather than counting to it.
+            .id(readable.id)
     }
 
     private var listenButton: some View {
@@ -276,6 +279,49 @@ struct ReaderView: View {
         Button("Smaller", systemImage: "textformat.size.smaller") { fontSize = max(14, fontSize - 1) }
         Button("Reset", systemImage: "textformat.size") { fontSize = 19 }
         Button("Larger", systemImage: "textformat.size.larger") { fontSize = min(28, fontSize + 1) }
+    }
+}
+
+/// Where the page is scrolled to. The label follows every scroll, but the library, and every list showing the
+/// article, is only told once scrolling settles, since redrawing those while scrolling makes it stutter.
+@MainActor @Observable private final class ReadingPosition {
+    private(set) var shown: (id: UUID, progress: Double)?
+    @ObservationIgnored private var save: (() -> Void)?
+    @ObservationIgnored private var pending: Task<Void, Never>?
+
+    func scrolled(_ id: UUID, to progress: Double, save: @escaping () -> Void) {
+        shown = (id, progress)
+        self.save = save
+        pending?.cancel()
+        pending = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
+            self?.settle()
+        }
+    }
+
+    /// Saves the position now, if it hasn't been.
+    func settle() {
+        pending?.cancel()
+        pending = nil
+        save?()
+        save = nil
+    }
+}
+
+private struct ProgressLabel: View {
+    let readable: any Readable
+    let position: ReadingPosition
+
+    private var progress: Double {
+        if let shown = position.shown, shown.id == readable.id { shown.progress } else { readable.progress }
+    }
+
+    var body: some View {
+        Group {
+            if readable.isRead { Text("Finished") } else { PercentText(fraction: progress) }
+        }
+        .font(.system(size: 12)).monospacedDigit().foregroundStyle(.secondary)
+        .animation(.easeOut(duration: 0.1), value: progress)
     }
 }
 
