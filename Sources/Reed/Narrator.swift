@@ -72,7 +72,7 @@ final class Narrator {
             updateNowPlaying()
         }
     }
-    static let rates: [Float] = [0.8, 1, 1.2, 1.4, 1.6, 1.8, 2]
+    static let rates: [Float] = [0.8, 1, 1.2, 1.4, 1.6, 1.8, 2, 2.2, 2.4, 2.6, 2.8, 3]
     /// The Kokoro voice reading. Each voice keeps its own cached audio, so switching back is instant.
     var voice: String = UserDefaults.standard.string(forKey: "narrationVoice").flatMap { Voice($0) }?.id
         ?? KokoroAneConstants.defaultVoice {
