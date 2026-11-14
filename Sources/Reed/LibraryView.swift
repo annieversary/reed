@@ -62,7 +62,7 @@ struct LibraryView: View {
     @State private var matches: [SearchIndex.Match] = []
     @State private var showingAdd = false
     @State private var showingSettings = false
-    @State private var articleToDelete: Article?
+    @State private var undo = UndoToast()
     @State private var visibility = NavigationSplitViewVisibility.all
     @State private var searchRowHeight: CGFloat = 0
     /// How much of the search row is scrolled out of view, from 0 to 1.
@@ -257,7 +257,7 @@ struct LibraryView: View {
                 } else if selection == .stats {
                     StatsView(library: library)
                 } else if selection == .downloads {
-                    DownloadsView(library: library, selection: $selectedID) { articleToDelete = $0 } onDeleteBook: { bookToDelete = $0 }
+                    DownloadsView(library: library, selection: $selectedID) { delete($0) } onDeleteBook: { bookToDelete = $0 }
                 } else {
                     articleList
                 }
@@ -283,7 +283,12 @@ struct LibraryView: View {
             }
             .safeAreaInset(edge: .bottom, spacing: 0) { narrationBar(when: true, narrationReturn: narrationReturn) }
             .environment(\.showNarrationReturn) { narrationReturn = $0 }
+            .environment(\.openArticle) { open($0) }
         }
+        .overlay(alignment: .bottom) {
+            UndoToastView(toast: undo).padding(.bottom, narrator.readableID == nil ? 18 : 80)
+        }
+        .environment(undo)
         .sheet(isPresented: $showingAdd) {
             AddArticleView { url in
                 let article = try library.add(url)
@@ -333,14 +338,6 @@ struct LibraryView: View {
         .alert("Library error", isPresented: Bindable(library).errorMessage.isPresent(), presenting: library.errorMessage) { _ in
             Button("OK") { library.errorMessage = nil }
         } message: { Text($0) }
-        .confirmationDialog("Delete this saved article?", isPresented: $articleToDelete.isPresent(), titleVisibility: .visible,
-                            presenting: articleToDelete) { article in
-            Button("Delete Article", role: .destructive) {
-                if selectedID == article.id { selectedID = nil }
-                if narrator.readableID == article.id { narrator.stop() }
-                library.delete(article)
-            }
-        } message: { _ in Text("Its offline copy will be removed from this device.") }
         .confirmationDialog("Delete this book?", isPresented: $bookToDelete.isPresent(), titleVisibility: .visible,
                             presenting: bookToDelete) { book in
             Button("Delete Book", role: .destructive) {
@@ -382,6 +379,24 @@ struct LibraryView: View {
         if shown, narrator.readableID != nil {
             NarrationBar(narrator: narrator, narrationReturn: narrationReturn, compact: columnsStack, onOpen: openNarrated)
         }
+    }
+
+    /// Takes the article out of the library, offering to put it back.
+    private func delete(_ article: Article) {
+        if selectedID == article.id { selectedID = nil }
+        if narrator.readableID == article.id { narrator.stop() }
+        guard let pending = library.deleteUndoably(article) else { return }
+        undo.offer("Deleted “\(article.title)”") { library.undo(pending) } commit: { library.commit(pending) }
+    }
+
+    /// Opens a saved article, showing all of them if it isn't in the list shown.
+    private func open(_ article: Article) {
+        if let series = library.series(of: article) { expandedSeries.insert(series.id) }
+        if filter == nil || !visibleArticles.contains(where: { $0.id == article.id }) {
+            selection = .collection(.all)
+            query = ""
+        }
+        selectedID = article.id
     }
 
     /// When the columns stack, the article is pushed from the article list's selection, so that list
@@ -500,7 +515,7 @@ struct LibraryView: View {
                     }
                     let finished = parts.allSatisfy(\.isRead)
                     Button(finished ? "Mark All Unread" : "Mark All Finished", systemImage: "checkmark.circle") {
-                        library.setRead(!finished, for: parts)
+                        if finished { library.setRead(false, for: parts) } else { undo.markFinished(parts, in: library) }
                     }
                     Divider()
                     Button("Ungroup Series", systemImage: "square.stack.3d.down.right") { library.ungroup(series) }
@@ -520,15 +535,13 @@ struct LibraryView: View {
         row
             .listLink(value: article.id, insets: insets)
             .swipeActions(edge: .leading) {
-                Button { library.toggleRead(article) } label: {
+                Button { undo.toggleRead(article, in: library) } label: {
                     Label(article.isRead ? "Unread" : "Finished", systemImage: article.isRead ? "book.closed" : "checkmark.circle")
                 }
                 .tint(ReedStyle.accent)
             }
-            // No destructive role: it would remove the row before the delete is confirmed.
             .swipeActions(edge: .trailing) {
-                Button { articleToDelete = article } label: { Label("Delete", systemImage: "trash") }
-                    .tint(.red)
+                Button(role: .destructive) { delete(article) } label: { Label("Delete", systemImage: "trash") }
                 Button { library.toggleFavorite(article) } label: {
                     Label(article.isFavorite ? "Unfavorite" : "Favorite", systemImage: article.isFavorite ? "star.slash" : "star")
                 }
@@ -536,16 +549,19 @@ struct LibraryView: View {
             }
             .contextMenu {
                 Button(article.isFavorite ? "Remove Favorite" : "Favorite", systemImage: "star") { library.toggleFavorite(article) }
-                Button(article.isRead ? "Mark Unread" : "Mark Finished", systemImage: "checkmark.circle") { library.toggleRead(article) }
+                Button(article.isRead ? "Mark Unread" : "Mark Finished", systemImage: "checkmark.circle") { undo.toggleRead(article, in: library) }
                 if article.state == .failed || article.state == .partial {
                     Button("Retry Download", systemImage: "arrow.clockwise") { library.retry(article) }
                 } else if article.state == .ready {
                     Button("Refresh", systemImage: "arrow.clockwise") { library.retry(article) }
                 }
+                if let url = article.sourceURL {
+                    ShareLink(item: ArticleURL.shareable(url)) { Label("Share", systemImage: "square.and.arrow.up") }
+                }
                 Divider()
                 seriesMenu(for: article)
                 Divider()
-                Button("Delete", systemImage: "trash", role: .destructive) { articleToDelete = article }
+                Button("Delete", systemImage: "trash", role: .destructive) { delete(article) }
             }
     }
 

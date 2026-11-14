@@ -460,6 +460,24 @@
 			<key>fileRef</key>
 			<string>D7C3EFD9EEA43938E577AB06</string>
 		</dict>
+		<key>773B3204EF48D35E81E45FD1</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/Reed/UndoToast.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>E9761302AEEBB401730CA769</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>773B3204EF48D35E81E45FD1</string>
+		</dict>
 		<key>0D05B48E6BF1CF037AF4F282</key>
 		<dict>
 			<key>isa</key>
@@ -874,6 +892,24 @@
 			<key>fileRef</key>
 			<string>D338D9C78760F07BFB59FBF3</string>
 		</dict>
+		<key>BAFF7E4BA55070404B0B5DDE</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Library+Undo.swift</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>sourcecode.swift</string>
+		</dict>
+		<key>162A46CD8A2CDEDE42B78CD6</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>BAFF7E4BA55070404B0B5DDE</string>
+		</dict>
 		<key>463249C7458BFEBCD8DCB2EE</key>
 		<dict>
 			<key>isa</key>
@@ -981,6 +1017,24 @@
 			<string>PBXBuildFile</string>
 			<key>fileRef</key>
 			<string>1850E5BF6C58B215110D8301</string>
+		</dict>
+		<key>B07D838BC4BACA7E3B1ADCE9</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXFileReference</string>
+			<key>path</key>
+			<string>Sources/ReedCore/Resources/.claude</string>
+			<key>sourceTree</key>
+			<string>SOURCE_ROOT</string>
+			<key>lastKnownFileType</key>
+			<string>text</string>
+		</dict>
+		<key>F5955AE4A2B2EAEE1D34B2F6</key>
+		<dict>
+			<key>isa</key>
+			<string>PBXBuildFile</string>
+			<key>fileRef</key>
+			<string>B07D838BC4BACA7E3B1ADCE9</string>
 		</dict>
 		<key>62F2B30EADC9532F27B629D9</key>
 		<dict>
@@ -1542,6 +1596,7 @@
 				<string>E0D1E03E3838001C7278D202</string>
 				<string>05BA32DF7F4ABE3071C2774C</string>
 				<string>D7C3EFD9EEA43938E577AB06</string>
+				<string>773B3204EF48D35E81E45FD1</string>
 				<string>0D05B48E6BF1CF037AF4F282</string>
 				<string>24D87A3D58399F91B70B69B5</string>
 				<string>AC56CDA6B28E18E3CF2AFE6C</string>
@@ -1565,12 +1620,14 @@
 				<string>97AA2CBAACA34527483091CA</string>
 				<string>0F17BCA2BD33875F778339B4</string>
 				<string>D338D9C78760F07BFB59FBF3</string>
+				<string>BAFF7E4BA55070404B0B5DDE</string>
 				<string>463249C7458BFEBCD8DCB2EE</string>
 				<string>709F77BB5F9974865AC45CF4</string>
 				<string>AEB089C058AC26CF1AB99B52</string>
 				<string>E19C3B9C9D4C96E790AFE745</string>
 				<string>D49B00CFA40DD23E9D1BCB63</string>
 				<string>1850E5BF6C58B215110D8301</string>
+				<string>B07D838BC4BACA7E3B1ADCE9</string>
 				<string>62F2B30EADC9532F27B629D9</string>
 				<string>CEFEDFD4E31E49F4A1E14286</string>
 				<string>E4537F5D14830A127945A908</string>
@@ -1665,6 +1722,7 @@
 				<string>97B769EE3A4FECEA35AF013F</string>
 				<string>EC2670E0909CE52FAF473416</string>
 				<string>EA5311C60EBB1B1ABAE98631</string>
+				<string>E9761302AEEBB401730CA769</string>
 				<string>7861EDA4ED9D7A92471A8A1D</string>
 				<string>86B08DB1E682A9773DFC9F34</string>
 				<string>749B8CD50EA225F8B99ED603</string>
@@ -1688,6 +1746,7 @@
 				<string>971AC1654D567094D67AC2B0</string>
 				<string>3F347380774507BBCED376DF</string>
 				<string>3F748C0680387E59576F0926</string>
+				<string>162A46CD8A2CDEDE42B78CD6</string>
 				<string>EAE239FB473F186C78FB99DA</string>
 				<string>E990D3D09BB177A7DFFE6EEE</string>
 				<string>3CF39DB11D0ACCB7EDF7BF16</string>
@@ -1714,6 +1773,7 @@
 			<key>files</key>
 			<array>
 				<string>280AFA5966C83D33008AA46F</string>
+				<string>F5955AE4A2B2EAEE1D34B2F6</string>
 				<string>95F9C476FA29F4B4FE75BFA6</string>
 				<string>AEC029FEFB7F48EAA6D5738F</string>
 				<string>C47B733E82AC3618641BA5AE</string>

@@ -123,6 +123,15 @@ struct SourceListView: View {
         return SourceRow(item: item, label: label(for: item), saved: saved != nil, pointName: pointName)
             .readFading(saved ?? library.cachedArticle(at: item.url))
             .listLink(value: item.id, insets: EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+            .swipeActions(edge: .leading) {
+                let favorite = saved?.isFavorite ?? false
+                Button {
+                    if let article = saved ?? save(item) { library.toggleFavorite(article) }
+                } label: {
+                    Label(favorite ? "Unfavorite" : "Favorite", systemImage: favorite ? "star.slash" : "star")
+                }
+                .tint(.orange)
+            }
             .swipeActions(edge: .trailing) {
                 if let saved {
                     Button { library.removeFromLibrary(saved) } label: { Label("Remove", systemImage: "tray.and.arrow.up") }
@@ -138,6 +147,7 @@ struct SourceListView: View {
                 } else {
                     Button("Save to Library", systemImage: "tray.and.arrow.down") { save(item) }
                 }
+                ShareLink(item: ArticleURL.shareable(item.url)) { Label("Share", systemImage: "square.and.arrow.up") }
                 if let site = item.discussionURL.flatMap(DiscussionSite.init(url:)) {
                     Button("Comments", systemImage: "text.bubble") {
                         if let article = library.readable(at: item.url, discussion: item.discussionURL) { commentsFor = (article, site) }

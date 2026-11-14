@@ -61,6 +61,8 @@ enum PageState {
 struct PageShown {
     var fontSize: Double?
     var cards: [EndCard]?
+    /// The library's revision when links to saved articles were last marked.
+    var savedLinks: Int?
     /// The passages and notes, sent together once both are known.
     var text: PageText?
 }
@@ -87,6 +89,10 @@ struct PageText {
     var notes: ReadableNotes?
     var notesOpen = false
     var cards: [EndCard] = []
+    /// Whether a link leads to an article saved in the library, to open in Reed rather than the browser.
+    var isSaved: (URL) -> Bool = { _ in false }
+    /// Changes whenever what's saved may have, so links are marked again.
+    var libraryRevision = 0
     var onProgress: (Double) -> Void
     var onAddLink: (URL) -> Void
     var onNarrateFrom: (NarrationPosition) -> Void = { _ in }
@@ -96,6 +102,7 @@ struct PageText {
     /// Another saved document beside this one, such as a book's next chapter, by file name and element ID.
     var onOpenSibling: (String, String?) -> Void = { _, _ in }
     var onOpenCard: (String) -> Void = { _ in }
+    var onOpenSaved: (URL) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -110,6 +117,13 @@ struct PageText {
         const style = document.createElement('style');
         style.textContent = ':root{--paper:#fff}@media(prefers-color-scheme:dark){:root{--paper:#000}}';
         document.head.appendChild(style);
+        """))
+        configuration.userContentController.addUserScript(Self.userScript("""
+        const savedStyle = document.createElement('style');
+        savedStyle.textContent = 'a.reed-saved{text-decoration-style:dotted}'
+            + 'a.reed-saved::after{content:"";display:inline-block;width:.34em;height:.34em;margin-left:.22em;'
+            + 'vertical-align:.42em;border-radius:50%;background:var(--accent)}';
+        document.head.appendChild(savedStyle);
         """))
         // While narrating, the reader follows the narration rather than returning to where it was left.
         if let anchor {
@@ -198,6 +212,10 @@ struct PageText {
                 let cards = parent.cards.map { ["id": $0.id, "kicker": $0.kicker, "source": $0.source, "title": $0.title, "detail": $0.detail] }
                 webView.callAsyncJavaScript("reedCards.set(cards)", arguments: ["cards": cards], in: nil, in: .defaultClient) { _ in }
             }
+            if shown.savedLinks != parent.libraryRevision {
+                shown.savedLinks = parent.libraryRevision
+                markSavedLinks(webView)
+            }
             if let passages = parent.passages, let notes = parent.notes, passages != shown.text?.passages {
                 // New passages clear what narration showed, but the notes stay open or closed.
                 shown.text = PageText(passages: passages, narration: nil, notesOpen: shown.text?.notesOpen ?? false)
@@ -224,6 +242,24 @@ struct PageText {
                 shown.text = text
             }
             page = .loaded(shown)
+        }
+
+        /// Marks the links to articles in the library, which open in Reed.
+        private func markSavedLinks(_ webView: WKWebView) {
+            Task {
+                let found = try? await webView.callAsyncJavaScript("return [...new Set([...document.querySelectorAll('a[href]')].map(a => a.href))]",
+                                                                    contentWorld: .defaultClient)
+                guard let links = found as? [String] else { return }
+                let saved = links.filter { URL(string: $0).map { isWebLink($0) && parent.isSaved($0) } ?? false }
+                _ = try? await webView.callAsyncJavaScript("""
+                    for (const link of document.querySelectorAll('a[href]')) {
+                        const isSaved = saved.includes(link.href);
+                        if (isSaved === link.classList.contains('reed-saved')) continue;
+                        link.classList.toggle('reed-saved', isSaved);
+                        if (isSaved) link.title = 'In your library'; else link.removeAttribute('title');
+                    }
+                    """, arguments: ["saved": saved], contentWorld: .defaultClient)
+            }
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -288,7 +324,7 @@ struct PageText {
                     parent.onOpenSibling(url.lastPathComponent, url.fragment)
                     return .cancel
                 }
-                await openInBrowser(url)
+                if isWebLink(url), parent.isSaved(url) { parent.onOpenSaved(url) } else { await openInBrowser(url) }
                 return .cancel
             } else {
                 return url.isFileURL && url.deletingLastPathComponent().standardizedFileURL == parent.url.deletingLastPathComponent().standardizedFileURL ? .allow : .cancel

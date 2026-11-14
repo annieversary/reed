@@ -264,7 +264,7 @@ extension Library {
             }
             save()
         }
-        if article.membership == .discarded { erase(article) }
+        if article.membership == .discarded, !pendingDeletes.contains(article.id) { erase(article) }
     }
 
     /// How many images are fetched at once.

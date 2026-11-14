@@ -18,6 +18,8 @@ struct ReaderView: View {
     @Environment(\.openURL) private var openURL
     @Environment(Narrator.self) private var narrator
     @Environment(\.showNarrationReturn) private var showNarrationReturn
+    @Environment(\.openArticle) private var openArticle
+    @Environment(UndoToast.self) private var undo
     @State private var passages: [[String]]?
     @State private var reader = ReaderProxy()
     @State private var position = ReadingPosition()
@@ -68,7 +70,8 @@ struct ReaderView: View {
                 }
                 OfflineWebView(url: url, fontSize: fontSize, progress: readable.progress, anchor: anchor, passages: passages,
                                narrating: isNarrating ? NarrationPosition(passage: narrator.current, sentence: narrator.sentence) : nil,
-                               proxy: reader, notes: notes, notesOpen: notesOpen, cards: endCards) { value in
+                               proxy: reader, notes: notes, notesOpen: notesOpen, cards: endCards,
+                               isSaved: { savedArticle(at: $0) != nil }, libraryRevision: library.articles.count) { value in
                     position.scrolled(readable.id, to: value) { [library, readable, narrator] in
                         library.updateProgress(readable, value: value, listening: narrator.readableID == readable.id && narrator.isPlaying)
                     }
@@ -94,6 +97,8 @@ struct ReaderView: View {
                     onOpenChapter(target, anchor)
                 } onOpenCard: { id in
                     if id == Self.commentsCard { commentsOpen = true } else { onOpenNext() }
+                } onOpenSaved: { link in
+                    if let saved = savedArticle(at: link) { openArticle(saved) }
                 }
                 .id(readable.id.uuidString + (readable.contentVersion ?? "") + (anchor ?? ""))
                 // Text runs under the home indicator, but not under the narration controls.
@@ -166,6 +171,13 @@ struct ReaderView: View {
 
     private static let commentsCard = "comments"
 
+    /// The saved article a link leads to, other than this one.
+    private func savedArticle(at link: URL) -> Article? {
+        let parsed = (try? ArticleURL.parse(link.absoluteString)) ?? link
+        let found = library.article(at: link) ?? library.article(at: parsed) ?? library.article(at: ArticleURL.shareable(parsed))
+        return found?.id == readable.id ? nil : found
+    }
+
     private var endCards: [EndCard] {
         var cards: [EndCard] = []
         if let sites = article?.discussionSites, !sites.isEmpty {
@@ -229,7 +241,7 @@ struct ReaderView: View {
                 }
             }
             Button(readable.isRead ? "Mark Unread" : "Mark Finished", systemImage: readable.isRead ? "circle" : "checkmark.circle") {
-                library.toggleRead(readable)
+                undo.toggleRead(readable, in: library)
             }
             #if os(iOS)
             ControlGroup { textSizeButtons }.menuActionDismissBehavior(.disabled)
@@ -244,6 +256,7 @@ struct ReaderView: View {
                 feedButton
                 Button("Comments", systemImage: "text.bubble") { commentsOpen.toggle() }
                 Button("Open Original", systemImage: "safari") { openURL(url) }
+                ShareLink(item: ArticleURL.shareable(url)) { Label("Share", systemImage: "square.and.arrow.up") }
             }
         } label: { Label("More", systemImage: "ellipsis") }
         .labelStyle(.iconOnly)
@@ -280,6 +293,11 @@ struct ReaderView: View {
         Button("Reset", systemImage: "textformat.size") { fontSize = 19 }
         Button("Larger", systemImage: "textformat.size.larger") { fontSize = min(28, fontSize + 1) }
     }
+}
+
+extension EnvironmentValues {
+    /// Opens a saved article in the reader.
+    @Entry var openArticle: (Article) -> Void = { _ in }
 }
 
 /// Where the page is scrolled to. The label follows every scroll, but the library, and every list showing the

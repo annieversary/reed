@@ -108,6 +108,15 @@ struct DownloadsView: View {
         case .article(let article):
             content()
                 .listLink(value: article.id, insets: insets)
+                .swipeActions(edge: .leading) {
+                    if article.state == .failed || article.state == .partial {
+                        Button { library.retry(article) } label: { Label("Retry", systemImage: "arrow.clockwise") }
+                            .tint(ReedStyle.accent)
+                    }
+                }
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) { onDeleteArticle(article) } label: { Label("Delete", systemImage: "trash") }
+                }
                 .contextMenu {
                     if article.state == .failed || article.state == .partial {
                         Button("Retry Download", systemImage: "arrow.clockwise") { library.retry(article) }
@@ -120,6 +129,17 @@ struct DownloadsView: View {
                 .onTapGesture { NotificationCenter.default.post(name: .reedShowBook, object: [book.id]) }
                 .listRowSeparator(.hidden)
                 .listRowInsets(insets)
+                .swipeActions(edge: .leading) {
+                    if book.state == .failed {
+                        Button { library.retry(book) } label: { Label("Retry", systemImage: "arrow.clockwise") }
+                            .tint(ReedStyle.accent)
+                    }
+                }
+                .swipeActions(edge: .trailing) {
+                    if book.state != .downloading {
+                        Button { onDeleteBook(book) } label: { Label("Delete", systemImage: "trash") }.tint(.red)
+                    }
+                }
                 .contextMenu {
                     if book.state == .failed { Button("Retry", systemImage: "arrow.clockwise") { library.retry(book) } }
                     if book.state != .downloading {

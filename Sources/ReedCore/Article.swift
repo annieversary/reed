@@ -236,4 +236,33 @@ public enum ArticleURL {
         // A video's many links all save as the one.
         return YouTube.videoID(in: url).map { YouTube.watchURL($0) } ?? url
     }
+
+    /// `url` without the parameters that only track where it was shared or clicked from, to pass on.
+    public static func shareable(_ url: URL) -> URL {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false), let items = components.queryItems else { return url }
+        let host = components.host?.lowercased() ?? ""
+        func on(_ site: String) -> Bool { host == site || host.hasSuffix("." + site) }
+        let kept = items.filter { item in
+            let name = item.name.lowercased()
+            if name.hasPrefix("utm_") || trackingParameters.contains(name) { return false }
+            // Names other sites may well use for something else.
+            switch name {
+            case "si": return !(on("youtube.com") || on("youtu.be") || on("spotify.com"))
+            case "s", "t": return !(on("twitter.com") || on("x.com"))
+            case "r", "triedredirect": return !on("substack.com")
+            case "source": return !on("medium.com")
+            case "feature", "pp": return !on("youtube.com")
+            default: return true
+            }
+        }
+        guard kept.count != items.count else { return url }
+        components.queryItems = kept.isEmpty ? nil : kept
+        return components.url ?? url
+    }
+
+    private static let trackingParameters: Set<String> = [
+        "fbclid", "gclid", "dclid", "gbraid", "wbraid", "msclkid", "twclid", "ttclid", "li_fat_id", "yclid",
+        "mc_cid", "mc_eid", "_hsenc", "_hsmi", "hsctatracking", "mkt_tok", "igshid", "igsh", "ref_src", "ref_url",
+        "oly_anon_id", "oly_enc_id", "vero_id", "wickedid", "rb_clickid", "_ga", "_gl", "cmpid", "share_id",
+    ]
 }

@@ -15,6 +15,8 @@ public final class Library {
     public var retained: Set<UUID> = [] { didSet { removeClosedVersions() } }
     /// Replaced versions kept while they're open.
     @ObservationIgnored var retiredVersions: Set<RetiredVersion> = []
+    /// Articles deleted from the library whose delete can still be undone, so they aren't erased yet.
+    @ObservationIgnored var pendingDeletes: Set<UUID> = []
     public var errorMessage: String?
     /// The article or book being saved to the library, and how far along it is. Caching ahead goes unreported.
     public internal(set) var saving: SaveProgress?
