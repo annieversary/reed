@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import BackgroundTasks
+#endif
 #if SWIFT_PACKAGE
 import ReedCore
 #endif
@@ -189,8 +192,11 @@ import ReedCore
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        do { _library = State(initialValue: try openLibrary()) }
-        catch { _startupError = State(initialValue: error.localizedDescription) }
+        do {
+            let library = try openLibrary()
+            _library = State(initialValue: library)
+            BackgroundSave.register(for: library)
+        } catch { _startupError = State(initialValue: error.localizedDescription) }
         ShareInbox.forwardDeposits()
     }
 
@@ -212,10 +218,83 @@ import ReedCore
             .onChange(of: scenePhase) { _, phase in
                 guard let library else { return }
                 // Synthesis can fail in the background, so it's picked up again on return.
-                if phase == .active { addShared(to: library); library.retryWaiting(); narrator.retrySynthesis() }
-                else { library.save() }
+                if phase == .active {
+                    FinishingSaves.end()
+                    addShared(to: library); library.retryWaiting(); narrator.retrySynthesis()
+                } else { library.save() }
+                if phase == .background, library.hasPendingSaves {
+                    ShareInbox.scheduleBackgroundSave()
+                    FinishingSaves.begin(library)
+                }
             }
         }
+    }
+}
+
+/// Asks for the short while the system allows to carry on saving once Reed leaves the screen. Saves still unfinished
+/// when that's up are put back in the queue, for the background save task or Reed's next turn on screen.
+@MainActor enum FinishingSaves {
+    private static var task = UIBackgroundTaskIdentifier.invalid
+
+    static func begin(_ library: Library) {
+        guard task == .invalid else { return }
+        let started = UIApplication.shared.beginBackgroundTask(withName: "Finish saving") {
+            MainActor.assumeIsolated {
+                library.pauseDownloads()
+                library.save()
+                end()
+            }
+        }
+        task = started
+        Task {
+            await library.idle()
+            // Unless Reed has since come back and left again, asking anew.
+            if task == started { end() }
+        }
+    }
+
+    static func end() {
+        guard task != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(task)
+        task = .invalid
+    }
+}
+
+/// Saves what's shared and queued when the system launches or wakes Reed in the background, as it may after
+/// something is shared or Reed is left with saves unfinished.
+@MainActor final class BackgroundSave {
+    private let task: BGTask
+    private var finished = false
+
+    private init(_ task: BGTask) { self.task = task }
+
+    /// Must be called before launch completes, and only once.
+    static func register(for library: Library) {
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: ShareInbox.backgroundSaveTask, using: .main) { task in
+            MainActor.assumeIsolated { BackgroundSave(task).run(library) }
+        }
+    }
+
+    private func run(_ library: Library) {
+        task.expirationHandler = {
+            Task { @MainActor in
+                library.pauseDownloads()
+                library.save()
+                self.finish(library, success: false)
+            }
+        }
+        Task {
+            await library.saveAll(from: shareInbox)
+            finish(library, success: true)
+        }
+    }
+
+    /// Asks for another turn if time ran out, or a save is waiting to be retried, before letting the system suspend Reed.
+    private func finish(_ library: Library, success: Bool) {
+        guard !finished else { return }
+        finished = true
+        if library.hasPendingSaves || shareInbox?.isEmpty == false { ShareInbox.scheduleBackgroundSave() }
+        task.setTaskCompleted(success: success)
     }
 }
 #endif

@@ -55,6 +55,9 @@ final class ShareViewController: PlatformViewController {
             status.phase = .failed("Couldn't hand this to Reed. \(error.localizedDescription)")
             return
         }
+        #if os(iOS)
+        ShareInbox.scheduleBackgroundSave()
+        #endif
         status.phase = .saved
         try? await Task.sleep(for: .milliseconds(900))
         finish()
@@ -116,7 +119,7 @@ struct ShareView: View {
             case .saved:
                 Image(systemName: "checkmark.circle").font(.system(size: 34, weight: .light)).foregroundStyle(accent)
                 Text("Saved to Reed").font(.system(size: 20, design: .serif))
-                Text("It'll be ready next time Reed is open.").font(.footnote).foregroundStyle(.secondary)
+                Text(readyNote).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
             case .failed(let message):
                 Image(systemName: "exclamationmark.circle").font(.system(size: 34, weight: .light)).foregroundStyle(.secondary)
                 Text(message).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
@@ -130,6 +133,12 @@ struct ShareView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         #endif
     }
+
+    #if os(iOS)
+    private let readyNote = "Reed will save it in the background, or next time it's open."
+    #else
+    private let readyNote = "It'll be ready next time Reed is open."
+    #endif
 
     // Matches ReedStyle.accent in the app.
     private var accent: Color { Color(red: 0.32, green: 0.42, blue: 0.32) }

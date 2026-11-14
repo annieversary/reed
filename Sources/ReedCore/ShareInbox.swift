@@ -1,4 +1,7 @@
 import Foundation
+#if os(iOS)
+import BackgroundTasks
+#endif
 
 /// Links, PDFs and EPUBs handed from the share extension to the app, kept in the App Group container they share.
 /// Each is its own file, so the two processes never write to the same file.
@@ -28,6 +31,12 @@ public struct ShareInbox: Sendable {
     public static var shared: ShareInbox? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)
             .map { ShareInbox(directory: $0.appendingPathComponent("Inbox", isDirectory: true)) }
+    }
+
+    /// Whether nothing is waiting to be added.
+    public var isEmpty: Bool {
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        return !files.contains { ["link", "pdf", "epub"].contains(($0 as NSString).pathExtension.lowercased()) }
     }
 
     public func deposit(_ url: URL) throws {
@@ -105,6 +114,21 @@ public struct ShareInbox: Sendable {
         }
         try FileManager.default.removeItem(at: file)
     }
+
+    #if os(iOS)
+    /// The background task that saves what's shared, and anything else queued, while Reed isn't open.
+    /// It's listed in `BGTaskSchedulerPermittedIdentifiers` in the app's Info.plist.
+    public static let backgroundSaveTask = "town.versary.reed.save"
+
+    /// Asks the system to launch Reed in the background, once there's a network, to save what's waiting.
+    /// The share extension can ask too, though only the app is launched. Asking again replaces the earlier request.
+    public static func scheduleBackgroundSave() {
+        let request = BGProcessingTaskRequest(identifier: backgroundSaveTask)
+        request.requiresNetworkConnectivity = true
+        // Unavailable in Simulator, or with Background App Refresh off; then it waits until Reed is opened.
+        try? BGTaskScheduler.shared.submit(request)
+    }
+    #endif
 
     /// Re-posts deposits from other processes as `didDeposit` on the default notification center.
     public static func forwardDeposits() {

@@ -161,6 +161,9 @@ extension Library {
             try container.mainContext.save()
             moveNotes(of: book, as: moved)
             if let previous { retire(previous, of: .book(book.id), heldBy: holders) }
+        } catch where Task.isCancelled {
+            book.state = .queued
+            save()
         } catch {
             // A failed refresh leaves the copy already saved readable.
             if hasContent(book) {

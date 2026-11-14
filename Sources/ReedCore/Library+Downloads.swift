@@ -18,7 +18,7 @@ extension Library {
     }
 
     /// Waits until nothing is queued to download or convert.
-    func idle() async {
+    public func idle() async {
         while let worker { await worker.value }
     }
 
@@ -67,6 +67,32 @@ extension Library {
             if case .waiting(_, let failures, _) = article.saveState { article.saveState = .queued(failures: failures) }
         }
         resumeDownloads()
+    }
+
+    /// Whether anything is queued, being saved, or waiting to be retried.
+    public var hasPendingSaves: Bool {
+        (articles + cached).contains {
+            switch $0.saveState {
+            case .queued, .downloading, .waiting: true
+            case .saved, .failed: false
+            }
+        } || books.contains { $0.state == .queued || $0.state == .downloading }
+    }
+
+    /// Adds what's shared and saves everything queued or waiting, returning once nothing more is due,
+    /// for when the system gives Reed time to save in the background.
+    public func saveAll(from inbox: ShareInbox?) async {
+        if let inbox { await addShared(from: inbox) }
+        retryWaiting()
+        await idle()
+        save()
+    }
+
+    /// Stops saving, putting back in the queue what was being saved, to carry on with `resumeDownloads()`.
+    public func pauseDownloads() {
+        worker?.cancel()
+        retryWake?.cancel()
+        retryWake = nil
     }
 
     /// Retries waiting saves whenever the network comes back.
@@ -223,6 +249,9 @@ extension Library {
                 reindex(article)
                 lookForSiteFeeds(of: article)
             }
+        } catch where Task.isCancelled {
+            article.saveState = .queued(failures: failures)
+            save()
         } catch {
             // A failed refresh leaves the copy already saved readable.
             if contentURL(for: article) != nil {

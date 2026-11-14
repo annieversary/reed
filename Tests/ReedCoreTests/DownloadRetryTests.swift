@@ -172,3 +172,39 @@ private final class ImageServer: URLProtocol {
     }
     override func stopLoading() {}
 }
+
+@MainActor @Test func pausingPutsWhatWasBeingSavedBackInTheQueue() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [SilentServer.self]
+    let library = try Library(root: root, downloader: ArticleDownloader(session: URLSession(configuration: configuration)))
+    let article = try library.add("https://stub.test/story")
+    while article.saveState != .downloading(failures: 0) { await Task.yield() }
+    #expect(library.hasPendingSaves)
+    library.pauseDownloads()
+    await library.idle()
+    #expect(article.saveState == .queued(failures: 0))
+}
+
+@MainActor @Test func savingEverythingAddsWhatWasShared() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let inbox = ShareInbox(directory: root.appendingPathComponent("Inbox"))
+    try inbox.deposit(URL(string: "https://reed.invalid/story")!)
+    #expect(!inbox.isEmpty)
+    let library = try Library(root: root.appendingPathComponent("Library"))
+    await library.saveAll(from: inbox)
+    #expect(inbox.isEmpty)
+    #expect(library.articles.map(\.originalURL) == ["https://reed.invalid/story"])
+    // Tried, and left to retry, as the host can't be found.
+    guard case .waiting = library.articles.first?.saveState else { Issue.record("\(String(describing: library.articles.first?.saveState))"); return }
+}
+
+/// Never answers, so a save stays in progress until it's cancelled.
+private final class SilentServer: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {}
+    override func stopLoading() {}
+}

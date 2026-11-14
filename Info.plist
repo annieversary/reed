@@ -28,7 +28,9 @@
     </dict></array>
     <!-- Opened books arrive as copies for Reed to keep its own copy of. -->
     <key>LSSupportsOpeningDocumentsInPlace</key><false/>
-    <key>UIBackgroundModes</key><array><string>audio</string></array>
+    <key>UIBackgroundModes</key><array><string>audio</string><string>processing</string></array>
+    <!-- Saves shared links while Reed isn't open; see ShareInbox.backgroundSaveTask. -->
+    <key>BGTaskSchedulerPermittedIdentifiers</key><array><string>town.versary.reed.save</string></array>
     <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
     <key>UILaunchScreen</key><dict/>
     <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
