@@ -380,7 +380,7 @@ struct LibraryView: View {
     /// doesn't reach into the columns on iOS, which would leave the reader running underneath it.
     @ViewBuilder private func narrationBar(when shown: Bool, narrationReturn: NarrationReturn? = nil) -> some View {
         if shown, narrator.readableID != nil {
-            NarrationBar(narrator: narrator, narrationReturn: narrationReturn, onOpen: openNarrated)
+            NarrationBar(narrator: narrator, narrationReturn: narrationReturn, compact: columnsStack, onOpen: openNarrated)
         }
     }
 

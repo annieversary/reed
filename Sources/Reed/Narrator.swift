@@ -589,6 +589,13 @@ final class Narrator {
     /// How far into the current passage playback has got, kept while paused, when the player's clock may be gone.
     var position: Double { isPlaying ? elapsedInPassage : heard }
 
+    /// Seconds of narration left at the current speed.
+    var remaining: Double {
+        guard passageCount > 0 else { return 0 }
+        let left = max(duration(of: current) - position, 0) + (current + 1..<passageCount).reduce(0) { $0 + duration(of: $1) }
+        return left / Double(rate)
+    }
+
     /// Exact once a passage is synthesized and measured, estimated from its words until then.
     func duration(of index: Int) -> Double {
         durations[index] ?? estimates[index]
