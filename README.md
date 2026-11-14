@@ -15,7 +15,7 @@ A native SwiftUI read-later app for Mac and iOS. Save articles, PDFs, EPUBs and 
 
 ## Build
 
-Requires macOS 15+, Swift 6, and an Apple Development certificate for team `KR4TU3GTWZ` (the App Group needs it). iOS 17+.
+Requires macOS 15+, Swift 6, and an Apple Development certificate. To build under your own team, change `DEVELOPMENT_TEAM` in `scripts/generate_project.py` and `ShareInbox.appGroup`. iOS 17+.
 
 ```sh
 make mac      # build and open the Mac app
