@@ -116,17 +116,20 @@ public struct ShareInbox: Sendable {
     }
 
     #if os(iOS)
-    /// The background task that saves what's shared, and anything else queued, while Reed isn't open.
-    /// It's listed in `BGTaskSchedulerPermittedIdentifiers` in the app's Info.plist.
+    /// The background tasks that save what's shared, and anything else queued, while Reed isn't open: a processing
+    /// task, given minutes but often run only once the device is idle, and a refresh task, given seconds but run sooner.
+    /// Both are listed in `BGTaskSchedulerPermittedIdentifiers` in the app's Info.plist.
     public static let backgroundSaveTask = "town.versary.reed.save"
+    public static let backgroundRefreshTask = "town.versary.reed.refresh"
 
     /// Asks the system to launch Reed in the background, once there's a network, to save what's waiting.
-    /// The share extension can ask too, though only the app is launched. Asking again replaces the earlier request.
+    /// The share extension can ask too, though only the app is launched. Asking again replaces the earlier requests.
     public static func scheduleBackgroundSave() {
-        let request = BGProcessingTaskRequest(identifier: backgroundSaveTask)
-        request.requiresNetworkConnectivity = true
+        let processing = BGProcessingTaskRequest(identifier: backgroundSaveTask)
+        processing.requiresNetworkConnectivity = true
         // Unavailable in Simulator, or with Background App Refresh off; then it waits until Reed is opened.
-        try? BGTaskScheduler.shared.submit(request)
+        try? BGTaskScheduler.shared.submit(processing)
+        try? BGTaskScheduler.shared.submit(BGAppRefreshTaskRequest(identifier: backgroundRefreshTask))
     }
     #endif
 

@@ -28,7 +28,11 @@ extension Library {
         retryWake = nil
         worker = Task { [weak self] in
             guard let self else { return }
-            defer { self.worker = nil; self.saving = nil; self.imageActivity = nil; self.wakeForRetry() }
+            defer {
+                self.worker = nil; self.saving = nil; self.imageActivity = nil
+                // Paused, so nothing's started again until it's resumed.
+                if !Task.isCancelled { self.wakeForRetry() }
+            }
             while !Task.isCancelled {
                 let now = Date.now
                 func due(_ article: Article) -> Bool {
@@ -44,6 +48,10 @@ extension Library {
                     await self.convert(book)
                 } else if let article = self.cached.first(where: due) {
                     await self.download(article)
+                } else if self.describesImages, let article = (self.articles + self.cached).first(where: { $0.imagesUndescribed }) {
+                    await self.describeImages(of: article)
+                } else if self.describesImages, let book = self.books.first(where: { $0.imagesUndescribed }) {
+                    await self.describeImages(of: book)
                 } else { break }
             }
         }
@@ -226,8 +234,8 @@ extension Library {
                 report(message)
             }
             var body = await Self.replacing(missing, in: extracted.html)
-            let descriptions = try await describeImages(in: body, directory: directory, limit: 20, from: "an article titled \"\(extracted.title)\"",
-                                                        previous: earlier) { message, fraction in
+            let (descriptions, deferred) = try await describeImages(in: body, directory: directory, limit: 20,
+                                                                    from: Self.describing(extracted.title), previous: earlier) { message, fraction in
                 imageActivity = message
                 report(message, fraction: fraction)
             }
@@ -242,6 +250,7 @@ extension Library {
             let previous = article.contentVersion
             article.contentVersion = version
             article.downloadedAt = .now
+            article.imagesUndescribed = deferred
             article.saveState = .saved
             try container.mainContext.save()
             if let previous { retire(previous, of: .article(article.id), heldBy: [article.id]) }
@@ -384,20 +393,101 @@ extension Library {
 
     /// Alt text for the pictures in `html` saved in `directory` that have none, by file name: as `previous` described them,
     /// or else from the on-device model.
+    /// Alt text for the pictures in `html` that have none, by file name, and whether some were left to describe later
+    /// as `describesImages` is off.
     func describeImages(in html: String, directory: URL, limit: Int, from source: String, previous: (html: String, directory: URL)?,
-                        report: (String, Double) -> Void) async throws -> [String: String] {
-        guard ImageDescriptions.available || previous != nil else { return [:] }
+                        report: (String, Double) -> Void) async throws -> (descriptions: [String: String], deferred: Bool) {
+        guard ImageDescriptions.available || previous != nil else { return ([:], false) }
         let undescribed = await ImageDescriptions.undescribed(in: html, directory: directory, limit: limit)
         var descriptions: [String: String] = [:]
         if let previous { descriptions = await ImageDescriptions.carried(undescribed, in: directory, from: previous) }
-        guard ImageDescriptions.available else { return descriptions }
+        guard ImageDescriptions.available else { return (descriptions, false) }
         let remaining = undescribed.filter { descriptions[$0] == nil }
         for (index, name) in remaining.enumerated() {
             try Task.checkCancellation()
+            guard describesImages else { return (descriptions, true) }
             report("Describing image \(index + 1) of \(remaining.count)…", Double(index) / Double(remaining.count))
             descriptions[name] = await ImageDescriptions.describe(directory.appendingPathComponent(name), from: source)
         }
-        return descriptions
+        return (descriptions, false)
+    }
+
+    nonisolated static func describing(_ title: String) -> String { "an article titled \"\(title)\"" }
+
+    /// Describes the pictures of an article saved while Reed was in the background, as a new version.
+    func describeImages(of article: Article) async {
+        guard let version = article.contentVersion else { article.imagesUndescribed = false; return }
+        let id = article.id
+        let saved = storage.contentURL(id, version: version).deletingLastPathComponent()
+        let described = await redescribing(saved, files: ["index.html"], limit: 20, from: Self.describing(article.title)) {
+            try storage.commit(staging: $0, id: id, version: $1)
+        }
+        guard let described else {
+            // Unreadable, so not worth trying again; or paused, to carry on later.
+            if !Task.isCancelled { article.imagesUndescribed = false; save() }
+            return
+        }
+        guard let new = described.version else { article.imagesUndescribed = described.deferred; save(); return }
+        // Saved again meanwhile, which describes it anew.
+        guard article.contentVersion == version else { try? storage.removeArticleVersion(id, version: new); return }
+        article.contentVersion = new
+        article.imagesUndescribed = described.deferred
+        save()
+        retire(version, of: .article(id), heldBy: [id])
+    }
+
+    /// Describes the pictures of a book converted while Reed was in the background, as a new version.
+    func describeImages(of book: Book) async {
+        guard let version = book.contentVersion else { book.imagesUndescribed = false; return }
+        let id = book.id
+        let saved = storage.bookDirectory(id).appendingPathComponent(version, isDirectory: true)
+        let described = await redescribing(saved, files: book.chapters.map { BookFiles.chapter($0.index) }, limit: 60,
+                                           from: "the book \"\(book.title)\"") {
+            try storage.commitBook(staging: $0, id: id, version: $1)
+        }
+        guard let described else {
+            if !Task.isCancelled { book.imagesUndescribed = false; save() }
+            return
+        }
+        guard let new = described.version else { book.imagesUndescribed = described.deferred; save(); return }
+        guard book.contentVersion == version else { try? storage.removeBookVersion(id, version: new); return }
+        book.contentVersion = new
+        book.imagesUndescribed = described.deferred
+        save()
+        retire(version, of: .book(id), heldBy: Set(book.chapters.map(\.id)).union([id]))
+    }
+
+    /// Copies a saved version with alt text written into `files` for its undescribed pictures, committing it with `commit`
+    /// as a new version, unless none were described. Nil if it can't be read, or saving was paused.
+    private func redescribing(_ saved: URL, files: [String], limit: Int, from source: String,
+                              commit: (URL, String) throws -> Void) async -> (version: String?, deferred: Bool)? {
+        do {
+            let staging = try storage.createStagingDirectory()
+            defer { try? FileManager.default.removeItem(at: staging) }
+            try await Self.copyContents(of: saved, to: staging)
+            var pages: [String: String] = [:]
+            for file in files {
+                guard let data = await Self.read(staging.appendingPathComponent(file)) else { throw ReedError.damagedArticle }
+                pages[file] = String(decoding: data, as: UTF8.self)
+            }
+            let (descriptions, deferred) = try await describeImages(in: files.compactMap { pages[$0] }.joined(), directory: staging,
+                                                                    limit: limit, from: source, previous: nil) { _, _ in }
+            guard !descriptions.isEmpty else { return (nil, deferred) }
+            for (file, html) in pages {
+                try await Self.write(Data(await ImageDescriptions.applying(descriptions, to: html).utf8), to: staging.appendingPathComponent(file))
+            }
+            let version = UUID().uuidString
+            try commit(staging, version)
+            return (version, deferred)
+        } catch {
+            return nil
+        }
+    }
+
+    nonisolated static func copyContents(of directory: URL, to destination: URL) async throws {
+        for item in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
+            try FileManager.default.copyItem(at: item, to: destination.appendingPathComponent(item.lastPathComponent))
+        }
     }
 
     nonisolated static func read(_ url: URL) async -> Data? { try? Data(contentsOf: url) }

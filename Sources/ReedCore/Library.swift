@@ -55,6 +55,11 @@ public final class Library {
     /// Whether the network was last seen reachable; nil until it has been looked at.
     @ObservationIgnored var connected: Bool?
     var progressSave: Task<Void, Never>?
+    /// Whether saving describes pictures with the on-device model. Off while Reed is in the background, where the
+    /// model is slow and rate limited; pictures left undescribed are described once it's back on.
+    @ObservationIgnored public var describesImages = true {
+        didSet { if describesImages && !oldValue { resumeDownloads() } }
+    }
     /// How many times each shared item has failed to be added, by its file name in the inbox.
     @ObservationIgnored var inboxFailures: [String: Int] = [:]
     struct PassageKey: Hashable { let content: URL, title: String }

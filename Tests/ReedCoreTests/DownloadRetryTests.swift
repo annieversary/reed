@@ -208,3 +208,16 @@ private final class SilentServer: URLProtocol {
     override func startLoading() {}
     override func stopLoading() {}
 }
+
+@MainActor @Test func pausingLeavesRetriesForLater() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let library = try Library(root: root)
+    let article = try library.add("https://reed.invalid/story")
+    await library.idle()
+    guard case .waiting = article.saveState else { Issue.record("\(article.saveState)"); return }
+    library.resumeDownloads()
+    library.pauseDownloads()
+    await library.idle()
+    #expect(library.retryWake == nil)
+}

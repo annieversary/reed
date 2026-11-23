@@ -17,6 +17,8 @@ public final class Book {
     public var coverFile: String?
     /// Pictures the saved version couldn't keep, which make it partly saved.
     public var missingImageCount: Int = 0
+    /// Whether pictures in the saved version were left for the on-device model to describe once Reed is open.
+    public var imagesUndescribed: Bool = false
     public var isFavorite: Bool
     /// The chapter last opened, to carry on from.
     public var currentChapter: Int?

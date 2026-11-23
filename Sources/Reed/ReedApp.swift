@@ -217,6 +217,7 @@ import ReedCore
             .tint(ReedStyle.accent)
             .onChange(of: scenePhase) { _, phase in
                 guard let library else { return }
+                library.describesImages = phase != .background
                 // Synthesis can fail in the background, so it's picked up again on return.
                 if phase == .active {
                     FinishingSaves.end()
@@ -270,12 +271,15 @@ import ReedCore
 
     /// Must be called before launch completes, and only once.
     static func register(for library: Library) {
-        BGTaskScheduler.shared.register(forTaskWithIdentifier: ShareInbox.backgroundSaveTask, using: .main) { task in
-            MainActor.assumeIsolated { BackgroundSave(task).run(library) }
+        for identifier in [ShareInbox.backgroundSaveTask, ShareInbox.backgroundRefreshTask] {
+            BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: .main) { task in
+                MainActor.assumeIsolated { BackgroundSave(task).run(library) }
+            }
         }
     }
 
     private func run(_ library: Library) {
+        if UIApplication.shared.applicationState == .background { library.describesImages = false }
         task.expirationHandler = {
             Task { @MainActor in
                 library.pauseDownloads()

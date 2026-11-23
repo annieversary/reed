@@ -116,7 +116,7 @@ extension Library {
                 let chapters = book.chapters.map { storage.contentURL(.chapter(book: book.id, index: $0.index), version: version) }
                 earlier = (await Self.joined(chapters), storage.bookDirectory(book.id).appendingPathComponent(version, isDirectory: true))
             }
-            let descriptions = try await describeImages(in: extracted.map(\.html).joined(), directory: directory, limit: 60,
+            let (descriptions, deferred) = try await describeImages(in: extracted.map(\.html).joined(), directory: directory, limit: 60,
                                                         from: "the book \"\(book.title)\"", previous: earlier) { report($0, fraction: $1) }
             for index in extracted.indices { extracted[index].html = await ImageDescriptions.applying(descriptions, to: extracted[index].html) }
             for (index, chapter) in extracted.enumerated() {
@@ -156,6 +156,7 @@ extension Library {
             book.coverFile = coverFile
             book.contentVersion = version
             book.missingImageCount = missing
+            book.imagesUndescribed = deferred
             book.state = missing > 0 ? .partial : .ready
             book.failureMessage = nil
             try container.mainContext.save()

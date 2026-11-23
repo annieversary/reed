@@ -81,6 +81,8 @@ public final class Article {
     // `membership`, kept as columns.
     @Attribute(originalName: "isFavorite") private var isFavoriteColumn: Bool
     public var contentVersion: String?
+    /// Whether pictures in the saved version were left for the on-device model to describe once Reed is open.
+    public var imagesUndescribed: Bool = false
     /// The passage narration last reached, to resume from.
     public var narrationPassage: Int?
     /// The start of that passage, to find it again if the passages are numbered differently.
