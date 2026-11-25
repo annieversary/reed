@@ -8,7 +8,8 @@ struct AddFeedView: View {
     let library: Library
     @Environment(\.dismiss) private var dismiss
     @State private var address = ""
-    @State private var error: String?
+    /// Why the address in the field couldn't be subscribed to, until it's changed.
+    @State private var failure: (text: String, reason: String)?
     @State private var working = false
     @State private var task: Task<Void, Never>?
     /// Offered when a site has several feeds.
@@ -16,10 +17,10 @@ struct AddFeedView: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            SheetHeading(symbol: "dot.radiowaves.up.forward", title: "Add feed.", detail: "Enter a site or its feed. New posts will show up in Feeds.")
-            AddressField(label: "Site or feed address", prompt: "example.com", text: $address, focused: $focused, onSubmit: find)
-            .onChange(of: address) { candidates = []; error = nil }
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Add feed.").font(.system(size: 26, design: .serif))
+            LinkField(prompt: "Site or feed address", text: $address, failure: failure, detail: site, focused: $focused, onSubmit: find)
+                .onChange(of: address) { candidates = [] }
             if !candidates.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("This site has more than one feed.").font(.system(size: 11)).foregroundStyle(.secondary)
@@ -40,28 +41,39 @@ struct AddFeedView: View {
                     }
                 }
             }
-            if let error { Text(error).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
             HStack {
                 if working {
                     ProgressView().controlSize(.small)
                     Text("Looking for the feed…").font(.system(size: 11)).foregroundStyle(.secondary)
+                } else if address.isEmpty {
+                    SheetPasteButton { address = $0; find($0) }
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Subscribe", action: find).buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                Button("Subscribe") { find(address) }
+                    .buttonStyle(.borderedProminent).tint(ReedStyle.accent).keyboardShortcut(.defaultAction)
                     .disabled(address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || working)
             }
+            .controlSize(.large)
         }
         .sheetLayout()
+        .fittedSheet()
+        #if os(macOS)
         .onAppear { focused = true }
+        #endif
         // Closing the sheet abandons the search, rather than subscribing later.
         .onDisappear { task?.cancel() }
     }
 
-    private func find() {
-        guard !working else { return }
+    /// The site the address is on, so a mistyped one shows before it's looked up.
+    private var site: String? {
+        working ? nil : (try? ArticleURL.parse(address).host())
+    }
+
+    private func find(_ input: String) {
+        guard !working, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         work {
-            let found = try await library.findFeeds(at: address)
+            let found = try await library.findFeeds(at: input)
             if found.count == 1 {
                 try await library.subscribe(to: found[0].url)
                 dismiss()
@@ -79,11 +91,11 @@ struct AddFeedView: View {
     }
 
     private func work(_ body: @escaping () async throws -> Void) {
-        error = nil
+        failure = nil
         working = true
         task = Task {
             defer { working = false }
-            do { try await body() } catch is CancellationError {} catch { self.error = error.localizedDescription }
+            do { try await body() } catch is CancellationError {} catch { failure = (address, error.localizedDescription) }
         }
     }
 }
