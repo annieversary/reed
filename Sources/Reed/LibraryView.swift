@@ -534,19 +534,7 @@ struct LibraryView: View {
     private func actionable(_ row: some View, for article: Article, insets: EdgeInsets) -> some View {
         row
             .listLink(value: article.id, insets: insets)
-            .swipeActions(edge: .leading) {
-                Button { undo.toggleRead(article, in: library) } label: {
-                    Label(article.isRead ? "Unread" : "Finished", systemImage: article.isRead ? "book.closed" : "checkmark.circle")
-                }
-                .tint(ReedStyle.accent)
-            }
-            .swipeActions(edge: .trailing) {
-                Button(role: .destructive) { delete(article) } label: { Label("Delete", systemImage: "trash") }
-                Button { library.toggleFavorite(article) } label: {
-                    Label(article.isFavorite ? "Unfavorite" : "Favorite", systemImage: article.isFavorite ? "star.slash" : "star")
-                }
-                .tint(.orange)
-            }
+            .articleSwipes(article, library: library) { delete($0) }
             .contextMenu {
                 Button(article.isFavorite ? "Remove Favorite" : "Favorite", systemImage: "star") { library.toggleFavorite(article) }
                 Button(article.isRead ? "Mark Unread" : "Mark Finished", systemImage: "checkmark.circle") { undo.toggleRead(article, in: library) }

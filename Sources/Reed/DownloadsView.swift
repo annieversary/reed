@@ -108,17 +108,9 @@ struct DownloadsView: View {
         case .article(let article):
             content()
                 .listLink(value: article.id, insets: insets)
-                .swipeActions(edge: .leading) {
-                    if article.state == .failed || article.state == .partial {
-                        Button { library.retry(article) } label: { Label("Retry", systemImage: "arrow.clockwise") }
-                            .tint(ReedStyle.accent)
-                    }
-                }
-                .swipeActions(edge: .trailing) {
-                    Button(role: .destructive) { onDeleteArticle(article) } label: { Label("Delete", systemImage: "trash") }
-                }
+                .articleSwipes(article, library: library, onDelete: onDeleteArticle)
                 .contextMenu {
-                    if article.state == .failed || article.state == .partial {
+                    if article.state == .failed || article.state == .partial || article.isWaitingToRetry {
                         Button("Retry Download", systemImage: "arrow.clockwise") { library.retry(article) }
                     }
                     Button("Delete", systemImage: "trash", role: .destructive) { onDeleteArticle(article) }
@@ -134,6 +126,7 @@ struct DownloadsView: View {
                         Button { library.retry(book) } label: { Label("Retry", systemImage: "arrow.clockwise") }
                             .tint(ReedStyle.accent)
                     }
+                    ArticleSwipes.favorite(book.isFavorite) { library.toggleFavorite(book) }
                 }
                 .swipeActions(edge: .trailing) {
                     if book.state != .downloading {

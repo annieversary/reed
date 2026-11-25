@@ -45,14 +45,13 @@ struct BookShelfView: View {
                 ForEach(books) { book in
                     BookRow(library: library, book: book)
                         .listLink(value: book.id, insets: EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                        .swipeActions(edge: .leading) {
+                            ArticleSwipes.favorite(book.isFavorite) { library.toggleFavorite(book) }
+                        }
                         .swipeActions(edge: .trailing) {
                             if book.state != .downloading {
                                 Button { onDelete(book) } label: { Label("Delete", systemImage: "trash") }.tint(.red)
                             }
-                            Button { library.toggleFavorite(book) } label: {
-                                Label(book.isFavorite ? "Unfavorite" : "Favorite", systemImage: book.isFavorite ? "star.slash" : "star")
-                            }
-                            .tint(.orange)
                         }
                         .contextMenu { BookMenu(library: library, book: book, onDelete: onDelete) }
                 }

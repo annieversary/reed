@@ -203,13 +203,17 @@ public final class Library {
 
     /// Takes the article out of the library but keeps its copy cached, so it stays readable while it is open
     /// or still wanted in the cache.
-    public func removeFromLibrary(_ article: Article) {
-        guard article.membership.isSaved else { return }
+    @discardableResult public func removeFromLibrary(_ article: Article) -> Removal? {
+        guard article.membership.isSaved, let index = articles.firstIndex(where: { $0.id == article.id }) else { return nil }
+        let series = series(of: article)
+        let removal = Removal(article: article, membership: article.membership, index: index,
+                              series: series, part: series?.parts.firstIndex(of: article.id))
         place(article, as: .cached)
         save()
         removeFromSeries(article)
         let id = article.id
         updateSearch { try await $0.remove(id) }
+        return removal
     }
 
     public func delete(_ article: Article) {

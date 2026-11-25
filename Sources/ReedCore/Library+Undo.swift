@@ -8,6 +8,15 @@ public struct PendingDelete {
     let index: Int
 }
 
+/// An article taken out of the library but kept cached, to put back where it was.
+public struct Removal {
+    let article: Article
+    let membership: Membership
+    let index: Int
+    let series: Series?
+    let part: Int?
+}
+
 /// What marking things finished changed, to put it back.
 public struct FinishedMark {
     let readables: [any Readable]
@@ -43,6 +52,27 @@ extension Library {
         guard pendingDeletes.remove(article.id) != nil, article.membership == .discarded else { return }
         removeFromSeries(article)
         if article.state != .downloading { erase(article) }
+    }
+
+    /// Puts a removed article back in the library, and in its series, where it was.
+    public func undo(_ removal: Removal) {
+        let article = removal.article
+        guard article.membership == .cached else { return }
+        place(article, as: removal.membership)
+        articles.removeAll { $0.id == article.id }
+        articles.insert(article, at: min(removal.index, articles.count))
+        save()
+        reindex(article)
+        if let old = removal.series, let part = removal.part {
+            updateSeries { all in
+                if let index = all.firstIndex(where: { $0.id == old.id }) {
+                    all[index].parts.insert(article.id, at: min(part, all[index].parts.count))
+                } else {
+                    all.append(Series(id: old.id, name: old.name, parts: [article.id]))
+                }
+            }
+        }
+        resumeDownloads()
     }
 
     /// Marks those not finished yet as finished.

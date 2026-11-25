@@ -60,6 +60,7 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>town.versary.reed.save</string>
+		<string>town.versary.reed.refresh</string>
 	</array>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>

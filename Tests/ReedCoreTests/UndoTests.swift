@@ -39,6 +39,27 @@ import Testing
     await reopened.idle()
 }
 
+@MainActor @Test func removalsCanBeUndone() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let library = try Library(root: root)
+    let first = try library.add("https://reed.invalid/first")
+    let second = try library.add("https://reed.invalid/second")
+    try library.add("https://reed.invalid/third")
+    await library.idle()
+    let series = try #require(library.makeSeries(named: "Parts", of: [first, second]))
+    let partIndex = try #require(series.parts.firstIndex(of: second.id))
+    let order = library.articles.map(\.id)
+
+    let removal = try #require(library.removeFromLibrary(second))
+    #expect(!library.articles.contains { $0.id == second.id })
+    #expect(library.series(of: second) == nil)
+    library.undo(removal)
+    #expect(library.articles.map(\.id) == order)
+    #expect(library.series(of: second)?.parts.firstIndex(of: second.id) == partIndex)
+    await library.idle()
+}
+
 @MainActor @Test func finishingCanBeUndone() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }

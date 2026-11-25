@@ -53,6 +53,7 @@ struct SourceListView: View {
     @State private var showingFeeds = false
     /// The story whose comments are showing.
     @State private var commentsFor: (article: Article, site: DiscussionSite)?
+    @Environment(UndoToast.self) private var undo
 
     var body: some View {
         VStack(spacing: 0) {
@@ -124,26 +125,23 @@ struct SourceListView: View {
             .readFading(saved ?? library.cachedArticle(at: item.url))
             .listLink(value: item.id, insets: EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
             .swipeActions(edge: .leading) {
-                let favorite = saved?.isFavorite ?? false
-                Button {
-                    if let article = saved ?? save(item) { library.toggleFavorite(article) }
-                } label: {
-                    Label(favorite ? "Unfavorite" : "Favorite", systemImage: favorite ? "star.slash" : "star")
-                }
-                .tint(.orange)
-            }
-            .swipeActions(edge: .trailing) {
                 if let saved {
-                    Button { library.removeFromLibrary(saved) } label: { Label("Remove", systemImage: "tray.and.arrow.up") }
-                        .tint(.red)
+                    ArticleSwipes.keep(saved, library: library, undo: undo)
                 } else {
                     Button { save(item) } label: { Label("Save", systemImage: "tray.and.arrow.down") }
                         .tint(ReedStyle.accent)
+                    ArticleSwipes.favorite(false) { if let article = save(item) { library.toggleFavorite(article) } }
+                }
+            }
+            .swipeActions(edge: .trailing) {
+                if let saved {
+                    Button { remove(saved) } label: { Label("Remove", systemImage: "tray.and.arrow.up") }
+                        .tint(.red)
                 }
             }
             .contextMenu {
                 if let saved {
-                    Button("Remove from Library", systemImage: "tray.and.arrow.up", role: .destructive) { library.removeFromLibrary(saved) }
+                    Button("Remove from Library", systemImage: "tray.and.arrow.up", role: .destructive) { remove(saved) }
                 } else {
                     Button("Save to Library", systemImage: "tray.and.arrow.down") { save(item) }
                 }
@@ -311,7 +309,13 @@ struct SourceListView: View {
         open(article)
     }
 
-    @discardableResult private func save(_ item: SourceItem) -> Article? {
+    /// Takes the article out of the library, offering to put it back.
+    private func remove(_ article: Article) {
+        guard let removal = library.removeFromLibrary(article) else { return }
+        undo.offer("Removed “\(article.title)”") { library.undo(removal) }
+    }
+
+        @discardableResult private func save(_ item: SourceItem) -> Article? {
         do { return try library.add(item.url.absoluteString, discussion: item.discussionURL) }
         catch { library.errorMessage = error.localizedDescription; return nil }
     }
