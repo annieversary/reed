@@ -13,6 +13,16 @@ import Testing
     }
 }
 
+@Test func linksInText() {
+    #expect(ArticleURL.links(in: "  ") == [])
+    #expect(ArticleURL.links(in: " example.com/story\n") == ["example.com/story"])
+    #expect(ArticleURL.links(in: "Read this: https://a.com/1 and\nhttps://b.org/2, also https://a.com/1")
+            == ["https://a.com/1", "https://b.org/2"])
+    #expect(ArticleURL.links(in: "xkcd.com/1  reed-test.invalid/a\nxkcd.com/1") == ["xkcd.com/1", "reed-test.invalid/a"])
+    #expect(ArticleURL.links(in: "see example.com") == ["see example.com"])
+    #expect(ArticleURL.links(in: "not a link") == ["not a link"])
+}
+
 @Test func articlePackagesSurviveStorageRecreation() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }

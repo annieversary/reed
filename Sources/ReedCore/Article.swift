@@ -219,6 +219,28 @@ public enum ReedError: LocalizedError {
 }
 
 public enum ArticleURL {
+    /// The links in pasted or typed text, in order and each once, to save one by one. Full links are picked out
+    /// of any words around them; otherwise each word is taken as a link if they all look like addresses, and
+    /// the text is given back whole if not, so saving it says why it isn't a link.
+    public static func links(in text: String) -> [String] {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        var links: [String] = []
+        func keep(_ link: String) { if !links.contains(link) { links.append(link) } }
+        if trimmed.contains("://"), let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) {
+            for match in detector.matches(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)) {
+                guard let scheme = match.url?.scheme?.lowercased(), ["http", "https"].contains(scheme),
+                      let found = Range(match.range, in: trimmed) else { continue }
+                keep(String(trimmed[found]))
+            }
+            if !links.isEmpty { return links }
+        }
+        let words = trimmed.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard words.allSatisfy({ $0.contains(".") }) else { return [trimmed] }
+        words.forEach(keep)
+        return links
+    }
+
     public static func parse(_ input: String) throws -> URL {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.contains(where: \.isWhitespace) else { throw ReedError.invalidURL }
